@@ -20,8 +20,6 @@ dist/
 /db/pgdata/
 # movie maker demos, campaths and renders (scripts/mvm-server.ts)
 /mvm/
-# English translation of the client's own string tables (game text): local only
-/public/locale/
 *.db-shm
 *.db-wal
 
