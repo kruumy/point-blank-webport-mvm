@@ -176,10 +176,6 @@ const ARIAL_CELL_EM = (1854 + 434) / 2048;
 const JUSTIFY = ["flex-start", "center", "flex-end"];
 const TEXT_ALIGN = ["left", "center", "right"];
 
-// [RECRIADO] English copies of the sheets with PT-BR text painted in (scripts/locale-en-art.mjs), used instead of them: layered
-// over the PT-BR sheet, its glyphs showed through the translucent pixels
-const EN_ATLAS = new Set(["main_ui_source01", "main_ui_source02", "main_ui_source03", "main_ui_source04", "interface_ui_source_mapmode"]);
-
 export class I3Gui {
   readonly byName = new Map<string, Built>();
   private readonly o: I3GuiOptions;
@@ -201,7 +197,7 @@ export class I3Gui {
     const fx = flip & 1, fy = flip & 2;
     // no image-rendering: the D3D9 client samples its UI LINEAR (bilinear), so a stretched piece is smoothed too
     d.style.cssText = `position:absolute;left:${dx}px;top:${dy}px;width:${sw}px;height:${sh}px;pointer-events:none;`
-      + `background:url(${this.o.base}/${EN_ATLAS.has(file) ? "atlas-en" : "atlas"}/${file}.png) ${-u}px ${-v}px${size ? `/${size}px ${size}px` : ""} no-repeat;`
+      + `background:url(${this.o.base}/atlas/${file}.png) ${-u}px ${-v}px${size ? `/${size}px ${size}px` : ""} no-repeat;`
       + (scaled || flip ? `transform-origin:0 0;transform:translate(${fx ? dw : 0}px,${fy ? dh : 0}px) scale(${fx ? -kx : kx},${fy ? -ky : ky});` : "");
     parent.appendChild(d);
     return d;

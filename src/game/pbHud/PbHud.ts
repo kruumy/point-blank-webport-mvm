@@ -118,8 +118,7 @@ function missionSprite(el: HTMLElement, src: Rect, w: number, h: number): void {
   const kx = w / src.w, ky = h / src.h;
   el.style.width = `${w}px`;
   el.style.height = `${h}px`;
-  // [RECRIADO] English title (scripts/locale-en-art.mjs) over the PT-BR sheet
-  el.style.backgroundImage = `url(${CROSS_HUD}/hud-en/${MISSION_PANEL.sheet}), url(${CROSS_HUD}/hud/${MISSION_PANEL.sheet})`;
+  el.style.backgroundImage = `url(${CROSS_HUD}/hud/${MISSION_PANEL.sheet})`;
   el.style.backgroundSize = `${1024 * kx}px ${512 * ky}px`;
   el.style.backgroundPosition = `${-src.x * kx}px ${-src.y * ky}px`;
 }

@@ -14,12 +14,9 @@ let loading: Promise<StringsDict> | null = null;
 export function loadStrings(): Promise<StringsDict> {
   if (dict) return Promise.resolve(dict);
   if (!loading) {
-    // [RECRIADO] English overlay (public/locale/en/strings.json, same keys): the Cross client ships PT-BR only
-    const en = fetch("/locale/en/strings.json").then(res => (res.ok ? res.json() as Promise<StringsDict> : {}), () => ({}));
     loading = fetch(`${UI_BASE}/cross/strings.json`)
       .then(res => { if (!res.ok) throw new Error(`cross/strings.json: HTTP ${res.status}`); return res.json() as Promise<StringsDict>; })
-      .then(async d => {
-        Object.assign(d, await en);
+      .then(d => {
         // app rebrand: the client texts name the game "Point Blank"
         for (const k in d) if (typeof d[k] === "string") d[k] = d[k].replace(/Point Blank( Brasil)?/g, "Project Blackout");
         return (dict = d);
