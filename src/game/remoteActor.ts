@@ -155,6 +155,7 @@ export class RemoteActor implements Actor {
     }
     // firing drops the protection (same rule as the local player, game.ts)
     if (s.firing && s.alive) this.protectLeft = 0;
+    if (!s.alive && this.alive && s.deathPick !== undefined) this.setDeathPick(s.deathPick);
     this.alive = s.alive;
     this.crouch = s.crouch;
     let weaponChanged = false;
@@ -223,6 +224,33 @@ export class RemoteActor implements Actor {
       this.yawV = s.yaw;
       this.pitchV = this.targetPitch;
     }
+  }
+
+  /** [RECRIADO] theater seek: a fresh living body, before the replay that leads up to the seek time */
+  resetAnim(clock: number): void {
+    this.alive = true;
+    this.torsoAction = "idle";
+    this.fireAnimCd = 0;
+    this.lastFireAt = -999;
+    this.visual.resetAnim(clock);
+  }
+
+  /** [RECRIADO] demo playback: the clip pick of the coming death (the kill event or the dead state, whichever arrives first) */
+  setDeathPick(pick: number | string): void {
+    this.visual.deathPick = pick;
+  }
+
+  /** [RECRIADO] theater demo editor: the body to click on and its animator */
+  get charVisual(): CharVisual {
+    return this.visual;
+  }
+
+  /** [RECRIADO] demo playback: the pose interpolated between the two recorded ticks around now, with no smoothing lag */
+  setPose(pos: [number, number, number], yaw: number, pitch: number): void {
+    this.pos.set(pos[0], pos[1], pos[2]);
+    this.target.copy(this.pos);
+    this.yawV = this.targetYaw = yaw;
+    this.pitchV = this.targetPitch = pitch;
   }
 
   update(dt: number): void {

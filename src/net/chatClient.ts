@@ -257,7 +257,7 @@ export class ChatClient {
     const err = r.readD();
     r.readC();
     const nick = r.remaining >= 66 ? r.readU(66) : "";
-    if (err !== 0) this.system(`${nick || "Jogador"}: jogador não encontrado ou offline.`);
+    if (err !== 0) this.system(`${nick || "Player"}: player not found or offline.`);
   }
 
   // ---- block list (local filter, persisted) -------------------------------------------------------------------------

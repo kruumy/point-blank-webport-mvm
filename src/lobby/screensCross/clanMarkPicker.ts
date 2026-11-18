@@ -23,10 +23,10 @@ const PREFIXES = ["clanCreateClanMark", "changeClanMark"] as const;
 export const isClanMarkItem = (itemId: number): boolean => itemId > 1700000 && 1600000 + (itemId % 1000) === CLAN_MARK_ITEM_EFFECT;
 
 const TEXTS: Texts = {
-  clanCreateClanMarkPopupCaption: ["STBL_IDX_CLAN_CREATE_CLAN_MARK", "Criar emblema do clã"],
-  changeClanMarkPopupCaption: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Trocar emblema do clã"],
-  clanCreateClanMarkOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"], clanCreateClanMarkCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"],
-  changeClanMarkOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"], changeClanMarkCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"],
+  clanCreateClanMarkPopupCaption: ["STBL_IDX_CLAN_CREATE_CLAN_MARK", "Create clan mark"],
+  changeClanMarkPopupCaption: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Change clan mark"],
+  clanCreateClanMarkOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"], clanCreateClanMarkCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"],
+  changeClanMarkOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"], changeClanMarkCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"],
 };
 
 export interface MarkHooks {
@@ -179,24 +179,24 @@ export async function applyClanMark(s: MetaSession, item: InventoryItem, logo: n
   try {
     const code = await s.changeClanMark(item, logo);
     if (code === 1) return null;
-    return `Não foi possível trocar o emblema (0x${(code >>> 0).toString(16)}).`;
+    return `Could not change the clan mark (0x${(code >>> 0).toString(16)}).`;
   } catch (e) {
     console.warn("[cross] clan mark change", e);
-    return "Não foi possível trocar o emblema.";
+    return "Could not change the clan mark.";
   }
 }
 
 /** 856: is the emblem free (no other clan has it); the message to show */
 export async function checkClanMark(s: MetaSession, logo: number): Promise<string> {
   const conn = s.connection;
-  if (!conn || !conn.isOpen) return "Sem conexão com o servidor.";
+  if (!conn || !conn.isOpen) return "No connection to the server.";
   const c = new ClanClient(conn);
   try {
     const r = await c.checkMark(logo);
-    return r.ok ? "Emblema disponível." : "Emblema já usado por outro clã.";
+    return r.ok ? "Clan mark available." : "Clan mark already used by another clan.";
   } catch (e) {
     console.warn("[cross] clan mark check", e);
-    return "Sem resposta do servidor.";
+    return "No response from the server.";
   } finally {
     c.dispose();
   }

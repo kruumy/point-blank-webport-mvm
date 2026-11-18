@@ -16,34 +16,34 @@ export const MEMBER_ACTIONS: MemberActionDef[] = [
   { id: "deport", key: ["STBL_IDX_CLAN_CAPTION_DISMISSAL_MEMBER", "Expulsar membro"], can: canManage, target: CLAN_ACCESS.NORMAL },
   { id: "staff", key: ["STBL_IDX_CLAN_CAPTION_APPOINT_MEMBER", "Promover Membro"], can: isLeader, target: CLAN_ACCESS.NORMAL },
   { id: "regular", key: ["STBL_IDX_CLAN_CAPTION_DEMOTE_MEMBER", "Rebaixar membro"], can: canManage, target: CLAN_ACCESS.STAFF },
-  { id: "master", key: ["STBL_IDX_CLAN_CAPTION_COMMISSION_MASTER", "Trocar Líder"], can: isLeader, target: CLAN_ACCESS.STAFF },
+  { id: "master", key: ["STBL_IDX_CLAN_CAPTION_COMMISSION_MASTER", "Change leader"], can: isLeader, target: CLAN_ACCESS.STAFF },
 ];
 
 /** failure caption of each action (strings.json keys; the exe's CAPTION_*_FAIL) */
 export type ClanOp = "create" | "join" | "cancelJoin" | "secede" | "close" | "accept" | "deny" | "deport" | "staff" | "regular" | "master" | "notice" | "intro";
 const FAIL_CAPTION: Record<ClanOp, [string, string]> = {
-  create: ["STBL_IDX_CLAN_CAPTION_FAIL_CREATING", "Falha na criação do clã"],
-  join: ["STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_FAIL", "Não foi possível realizar o cadastro do clã"],
-  cancelJoin: ["STBL_IDX_CLAN_CAPTION_CANCEL_REQUEST_FAIL", "Falha no cancelamento de pedido de cadastro"],
-  secede: ["STBL_IDX_CLAN_CAPTION_SECESSION_FAIL", "Falha ao sair do clã."],
-  close: ["STBL_IDX_CLAN_CAPTION_DISSOLUTION_FAIL", "Falha na exclusão do clã."],
-  accept: ["STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_FAIL", "Não foi possível realizar o cadastro do clã"],
-  deny: ["STBL_IDX_CLAN_CAPTION_REJECTION_FAIL", "Falha ao rejeitar cadastro."],
-  deport: ["STBL_IDX_CLAN_CAPTION_DISMISSAL_FAIL", "Falha ao expulsar"],
-  staff: ["STBL_IDX_CLAN_CAPTION_COMMISION_STAFF_FAIL", "Falha ao cadastrar membro como Auxiliar."],
-  regular: ["STBL_IDX_CLAN_CAPTION_COMMISION_REGULAR_FAIL", "Falha ao rebaixar para Normal."],
-  master: ["STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_FAIL", "Falha ao trocar o dono do clã."],
-  notice: ["STBL_IDX_CLAN_CAPTION_MODIFY_FAIL", "Falha ao gravar alterações."],
-  intro: ["STBL_IDX_CLAN_CAPTION_MODIFY_FAIL", "Falha ao gravar alterações."],
+  create: ["STBL_IDX_CLAN_CAPTION_FAIL_CREATING", "Clan creation failed"],
+  join: ["STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_FAIL", "Could not register in the clan"],
+  cancelJoin: ["STBL_IDX_CLAN_CAPTION_CANCEL_REQUEST_FAIL", "Failed to cancel the application"],
+  secede: ["STBL_IDX_CLAN_CAPTION_SECESSION_FAIL", "Failed to leave the clan."],
+  close: ["STBL_IDX_CLAN_CAPTION_DISSOLUTION_FAIL", "Failed to delete the clan."],
+  accept: ["STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_FAIL", "Could not register in the clan"],
+  deny: ["STBL_IDX_CLAN_CAPTION_REJECTION_FAIL", "Failed to reject application."],
+  deport: ["STBL_IDX_CLAN_CAPTION_DISMISSAL_FAIL", "Failed to kick"],
+  staff: ["STBL_IDX_CLAN_CAPTION_COMMISION_STAFF_FAIL", "Failed to make member Staff."],
+  regular: ["STBL_IDX_CLAN_CAPTION_COMMISION_REGULAR_FAIL", "Failed to demote to Regular."],
+  master: ["STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_FAIL", "Failed to change the clan owner."],
+  notice: ["STBL_IDX_CLAN_CAPTION_MODIFY_FAIL", "Failed to save changes."],
+  intro: ["STBL_IDX_CLAN_CAPTION_MODIFY_FAIL", "Failed to save changes."],
 };
 /** the specific server errors that have their own text; any other error gets the action's caption */
 const SPECIFIC: Record<number, [string, string]> = {
-  [ClanErr.CREATE_CONDITION]: ["STBL_IDX_CLAN_NEED_HIGH_RANK", "Nível insuficiente para criar clã."],
-  [ClanErr.NAME_IN_USE]: ["STBL_IDX_CLAN_MESSAGE_FAIL_CREATING_OVERLAPPING", "\nFalha na criação do clã.\nJá existe um clã com mesmo nome \nou mesmo endereço de web."],
-  [ClanErr.ALREADY_IN_CLAN]: ["STBL_IDX_CLAN_MESSAGE_ALREADY_SUBSCRIPTION", "Já existe um pedido de cadastro."],
-  [ClanErr.OWNER_CANNOT_SECEDE]: ["STBL_IDX_CLAN_MESSAGE_SECESSION_MASTER_FAIL", "O dono do clã não pode sair."],
-  [ClanErr.MASTER_RANK]: ["STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_FAIL_RANK", "O dono do clã não pode dar autoridade para esse membro."],
-  [ClanErr.RANK_LIMIT]: ["STBL_IDX_CLAN_MESSAGE_CANNOT_SUBSCRIPTION_RANK", "Não pode cadastrar: nível abaixo do limite do clã."],
+  [ClanErr.CREATE_CONDITION]: ["STBL_IDX_CLAN_NEED_HIGH_RANK", "Level too low to create a clan."],
+  [ClanErr.NAME_IN_USE]: ["STBL_IDX_CLAN_MESSAGE_FAIL_CREATING_OVERLAPPING", "\nClan creation failed.\nA clan with the same name \nor web address already exists."],
+  [ClanErr.ALREADY_IN_CLAN]: ["STBL_IDX_CLAN_MESSAGE_ALREADY_SUBSCRIPTION", "An application already exists."],
+  [ClanErr.OWNER_CANNOT_SECEDE]: ["STBL_IDX_CLAN_MESSAGE_SECESSION_MASTER_FAIL", "The clan owner cannot leave."],
+  [ClanErr.MASTER_RANK]: ["STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_FAIL_RANK", "The clan owner cannot give permissions to this member."],
+  [ClanErr.RANK_LIMIT]: ["STBL_IDX_CLAN_MESSAGE_CANNOT_SUBSCRIPTION_RANK", "Cannot register: level below the clan's limit."],
 };
 
 /** text of a failed clan request: the server's special case, else the action's caption */
@@ -65,7 +65,7 @@ export function clanDate(v: number): string {
 export function presence(status: ClanStatus): [string, string] {
   switch (status.state) {
     case CLAN_STATE.ONLINE: return ["STBL_IDX_CLAN_ONLINE", "Online"];
-    case CLAN_STATE.ROOM: return ["STBL_IDX_CLAN_DECLARE_ROOM", "Canal%d Sala%d"];
+    case CLAN_STATE.ROOM: return ["STBL_IDX_CLAN_DECLARE_ROOM", "Channel %d Room %d"];
     case CLAN_STATE.LOBBY: return ["STBL_IDX_CLAN_ONLINE", "Online"];
     default: return ["STBL_IDX_CLAN_OFFLINE", "Offline"];
   }

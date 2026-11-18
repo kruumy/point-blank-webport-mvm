@@ -487,12 +487,14 @@ export class CharAnimator {
   }
 
   /** Death: dir = hit direction relative to the actor ("Front" = shot from the front). */
-  die(dir: Dir = "Front", crouch = false): string | null {
+  /** `pick` in [0, 1) chooses among the candidate clips (a demo replays the same pick; live play is random); a clip name forces that clip */
+  die(dir: Dir = "Front", crouch = false, pick: number | string = Math.random()): string | null {
     const cands = [...this.clips.keys()].filter((k) =>
       crouch ? new RegExp(`^Sit_Death${dir}`).test(k) : new RegExp(`^Stand_Death${dir}`).test(k)
     );
     const pool = cands.length ? cands : [...this.clips.keys()].filter((k) => /^Stand_Death/.test(k));
-    const name = pool.length ? pool[Math.floor(Math.random() * pool.length)] : this.clips.has("death") ? "death" : null;
+    const name = typeof pick === "string" && this.clips.has(pick) ? pick
+      : pool.length ? pool[Math.min(pool.length - 1, Math.floor((typeof pick === "number" ? pick : Math.random()) * pool.length))] : this.clips.has("death") ? "death" : null;
     if (!name) return null;
     this.undoAim();
     this.mixer.stopAllAction();
@@ -513,6 +515,14 @@ export class CharAnimator {
     return this.death !== null;
   }
 
+  /** [RECRIADO] theater demo editor: the death clip playing now, and every death clip this character has */
+  get deathClip(): string | null {
+    return this.death?.getClip().name ?? null;
+  }
+  deathClips(): string[] {
+    return [...this.clips.keys()].filter((k) => /^(Stand|Sit)_Death/.test(k) || k === "death").sort();
+  }
+
   respawn(): void {
     if (this.death) {
       this.death.stop();
@@ -526,6 +536,16 @@ export class CharAnimator {
     this.oneShot = null;
     this.lowKey = this.lowState = "";
     this.upKey = this.upState = "";
+  }
+
+  /** [RECRIADO] theater seek: a clean animator whose clock is the demo time (the idle clips' phase follows it) */
+  reset(clock: number): void {
+    this.undoAim();
+    this.respawn();
+    this.queued = null;
+    this.t = clock;
+    this.phase = this.airTime = this.landT = this.pitch = 0;
+    this.wasGrounded = true;
   }
 
   /** switch the base state of a layer: the other tracks of the layer fade out at the new state's blend rate */

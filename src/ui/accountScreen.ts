@@ -12,6 +12,7 @@ const LOGIN_ART = "/assets/ui/cross/brand/login-bg.png"; // pbx ui cross-brand: 
 // Rects in design px (1024 x 768) of the fields baked into the LOGIN box of the art [INFERIDO: measured on the texture, +-1 px]
 const ID_RECT = "left:387px;top:433px;width:249px;height:34px";
 const PW_RECT = "left:387px;top:500px;width:249px;height:36px";
+const localAdmin = () => import.meta.env.DEV && ["localhost", "127.0.0.1"].includes(location.hostname);
 
 function ensureStyles(): void {
   if (document.getElementById(STYLE_ID)) return;
@@ -59,10 +60,16 @@ export function showAccountScreen(): Promise<AccountSession> {
     stage.design.innerHTML = `
       <input class="pb-account-input" id="pb-acc-username" type="text" autocomplete="username" maxlength="16" style="${ID_RECT}" />
       <input class="pb-account-input" id="pb-acc-password" type="password" autocomplete="current-password" maxlength="64" style="${PW_RECT}" />
-      <button class="pb-account-btn active" id="pb-acc-submit" type="button" style="left:387px;top:552px;width:121px;height:24px">ENTRAR</button>
-      <button class="pb-account-btn" id="pb-acc-mode" type="button" style="left:515px;top:552px;width:121px;height:24px">CADASTRAR</button>
+      <button class="pb-account-btn active" id="pb-acc-submit" type="button" style="left:387px;top:552px;width:121px;height:24px">LOGIN</button>
+      <button class="pb-account-btn" id="pb-acc-mode" type="button" style="left:515px;top:552px;width:121px;height:24px">REGISTER</button>
       <div class="pb-account-error" id="pb-acc-error"></div>
+      ${import.meta.env.DEV ? `<button class="pb-account-btn" id="pb-acc-theater" type="button" style="left:16px;top:728px;width:121px;height:24px">THEATER</button>` : ""}
+      ${localAdmin() ? `<button class="pb-account-btn" id="pb-acc-admin" type="button" style="left:143px;top:728px;width:121px;height:24px">ADMIN</button>` : ""}
     `;
+    // [RECRIADO] movie theater (src/mvm): demos need the dev server that stores them, so the button is dev only
+    stage.design.querySelector("#pb-acc-theater")?.addEventListener("click", () => { location.search = "?theater"; });
+    // [RECRIADO] admin panel (server/src/web/admin.ts): served by the game server, which answers it only on this machine
+    stage.design.querySelector("#pb-acc-admin")?.addEventListener("click", () => { window.open(`http://${location.hostname}:8090/admin`, "_blank"); });
 
     let mode: "login" | "register" = "login";
     const modeBtn = stage.design.querySelector<HTMLButtonElement>("#pb-acc-mode")!;
@@ -74,8 +81,8 @@ export function showAccountScreen(): Promise<AccountSession> {
     // [RECRIADO] the original LOGIN box has no register mode: the submit button and the CADASTRAR / VOLTAR switch are ours
     function setMode(next: "login" | "register"): void {
       mode = next;
-      modeBtn.textContent = next === "login" ? "CADASTRAR" : "VOLTAR";
-      submitBtn.textContent = next === "login" ? "ENTRAR" : "CRIAR CONTA";
+      modeBtn.textContent = next === "login" ? "REGISTER" : "BACK";
+      submitBtn.textContent = next === "login" ? "LOGIN" : "CREATE ACCOUNT";
       passwordInput.autocomplete = next === "login" ? "current-password" : "new-password";
       hideError();
     }
@@ -97,16 +104,16 @@ export function showAccountScreen(): Promise<AccountSession> {
       const password = passwordInput.value;
 
       if (!/^[a-zA-Z0-9_]{4,16}$/.test(username)) {
-        showError("Usuário deve ter 4-16 caracteres (letras, números, _)");
+        showError("Username must be 4-16 characters (letters, numbers, _)");
         return;
       }
       if (password.length < 6) {
-        showError("Senha deve ter ao menos 6 caracteres");
+        showError("Password must be at least 6 characters");
         return;
       }
 
       submitBtn.disabled = true;
-      submitBtn.textContent = "AGUARDE...";
+      submitBtn.textContent = "PLEASE WAIT...";
       try {
         const result = mode === "login"
           ? await loginAccount(username, password)
@@ -116,10 +123,10 @@ export function showAccountScreen(): Promise<AccountSession> {
         overlay.remove();
         resolve({ token: tokenToBytes(result.token), username: result.nickname });
       } catch (err) {
-        const message = err instanceof AccountApiError ? err.message : "Falha de conexão com o servidor de contas";
+        const message = err instanceof AccountApiError ? err.message : "Could not connect to the account server";
         showError(message);
         submitBtn.disabled = false;
-        submitBtn.textContent = mode === "login" ? "ENTRAR" : "CRIAR CONTA";
+        submitBtn.textContent = mode === "login" ? "LOGIN" : "CREATE ACCOUNT";
       }
     }
 

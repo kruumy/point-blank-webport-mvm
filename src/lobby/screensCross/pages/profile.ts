@@ -21,31 +21,31 @@ import { LEVEL_ICON } from "../crossMap.ts";
 import { BASE, buildWindows, loadPack, nickCss, onClick, pageGui, setIcon, setTab, type PageCtx, type Texts } from "./common.ts";
 
 const TEXTS: Texts = {
-  Designation_Tree_Category_Key: ["STR_TBL_DESIGNATION_TREE", "Mapa dos Títulos"],
+  Designation_Tree_Category_Key: ["STR_TBL_DESIGNATION_TREE", "Title Map"],
   // the 4 badge rows of the picked title: set once at init (0xa6fa50..0xa6fade), never cleared
-  prDesigzationNeedKey0: ["STR_TBL_PROFILE_RIBBON_TEXT2", "Broche"], prDesigzationNeedKey1: ["STR_TBL_PROFILE_ENSIGN_TEXT2", "Insígnia"],
-  prDesigzationNeedKey2: ["STR_TBL_PROFILE_MEDALS_TEXT2", "Medalha"], prDesigzationNeedKey3: ["STR_TBL_PROFILE_MASTER_MEDALS_TEXT", "Ordem Azul"],
+  prDesigzationNeedKey0: ["STR_TBL_PROFILE_RIBBON_TEXT2", "Broche"], prDesigzationNeedKey1: ["STR_TBL_PROFILE_ENSIGN_TEXT2", "Insignia"],
+  prDesigzationNeedKey2: ["STR_TBL_PROFILE_MEDALS_TEXT2", "Medalha"], prDesigzationNeedKey3: ["STR_TBL_PROFILE_MASTER_MEDALS_TEXT", "Blue Order"],
   prDesigzationPlusEffectKey: ["STR_TBL_DESIGNATION_PLUS_EFFECT", "Efeito +:"], prDesigzationMinusEffectKey: ["STR_TBL_DESIGNATION_MINUS_EFFECT", "Efeito -:"],
-  prDesigzationAddEffectKey: ["STR_TBL_DESIGNATION_ADD_EFFECT", "Efeito extra:"], prDesigzationGetInfoNameKey: ["STR_TBL_DESIGNATION_GET_INFO", "Informações"],
-  prNeedDesigzationKey: ["STR_TBL_DESIGNATION_NEEDED_TEXT", "Título req.:"], prNeedRankKey: ["STR_TBL_DESIGNATION_NEEDED_GRADE_TEXT", "Nível req.:"],
-  prDesigzationMyInfoBG_Text: ["STR_TBL_DESIGNATION_MYINFO_TEXT", "My Info"], prDesigzationMyInfo_DesignationKey: ["STR_TBL_DESIGNATION_TEXT", "Título"],
+  prDesigzationAddEffectKey: ["STR_TBL_DESIGNATION_ADD_EFFECT", "Efeito extra:"], prDesigzationGetInfoNameKey: ["STR_TBL_DESIGNATION_GET_INFO", "Information"],
+  prNeedDesigzationKey: ["STR_TBL_DESIGNATION_NEEDED_TEXT", "Req. title:"], prNeedRankKey: ["STR_TBL_DESIGNATION_NEEDED_GRADE_TEXT", "Req. level:"],
+  prDesigzationMyInfoBG_Text: ["STR_TBL_DESIGNATION_MYINFO_TEXT", "My Info"], prDesigzationMyInfo_DesignationKey: ["STR_TBL_DESIGNATION_TEXT", "Title"],
   // Missão Pessoal (cross-ui-map.json, str:exe)
-  prCommonKey: ["STR_TBL_PROFILE_COMMON_CHALLENGE", "Missão em comum"], prCcBulletKey: ["STR_TBL_PROFILE_CHALLENGE_CARD_CONTENTS", "Conteúdo da missão"],
+  prCommonKey: ["STR_TBL_PROFILE_COMMON_CHALLENGE", "Common mission"], prCcBulletKey: ["STR_TBL_PROFILE_CHALLENGE_CARD_CONTENTS", "Mission content"],
   prCardBulletKey: ["STR_TBL_PROFILE_REWARD_TEXT", "Recompensa"], prCardKey: ["STBL_IDX_SHOP_FILTER_CARD", "Carta"],
-  prPrizeNameKey: ["STR_TBL_PROFILE_PRIZE_NAME", "Prêmio:"], prPrizeExpKey: ["STR_TBL_PROFILE_GET_EXP", "Experiência:"], prPrizePointKey: ["STR_TBL_PROFILE_GET_POINT", "Gold:"],
-  prCardInfo: ["STR_TBL_PROFILE_CARD_INFO", "Info+"], prCardBuyAll: ["STR_TBL_PROFILE_CARD_BUY", "Comprar"], prCardDeleteAll: ["STR_TBL_PROFILE_CARD_DELETE", "Excluir"],
-  prCardShopCaption: ["STR_TBL_PROFILE_NOTICE_TEXT", "Aviso"], prCardShopConfirm: ["STR_TBL_PROFILE_CARD_SHOP_CONFIRM", "Confirmar"],
-  prCardShopCancel: ["STR_TBL_PROFILE_CARD_SHOP_CANCEL", "Cancelar"], prCardShopCurrentKey: ["STR_TBL_PROFILE_HOLD_POINT", "Gold:"],
+  prPrizeNameKey: ["STR_TBL_PROFILE_PRIZE_NAME", "Prize:"], prPrizeExpKey: ["STR_TBL_PROFILE_GET_EXP", "Experience:"], prPrizePointKey: ["STR_TBL_PROFILE_GET_POINT", "Gold:"],
+  prCardInfo: ["STR_TBL_PROFILE_CARD_INFO", "Info+"], prCardBuyAll: ["STR_TBL_PROFILE_CARD_BUY", "Buy"], prCardDeleteAll: ["STR_TBL_PROFILE_CARD_DELETE", "Delete"],
+  prCardShopCaption: ["STR_TBL_PROFILE_NOTICE_TEXT", "Aviso"], prCardShopConfirm: ["STR_TBL_PROFILE_CARD_SHOP_CONFIRM", "Confirm"],
+  prCardShopCancel: ["STR_TBL_PROFILE_CARD_SHOP_CANCEL", "Cancel"], prCardShopCurrentKey: ["STR_TBL_PROFILE_HOLD_POINT", "Gold:"],
   prCardShopRemainderKey: ["STR_TBL_PROFILE_REMAIN_MONEY", "Dinheiro restante:"], prCardShopNotice: ["STR_TBL_PROFILE_CARD_BUY_EXPLAIN", ""],
-  prciCaption: ["STR_TBL_PROFILE_CHALLENGE_CARD_INFO", "Informação do cartão de missão"], prciConfirm: ["STR_TBL_PROFILE_CONFIRM", "Confirmar"],
-  prciCardInfoTitle: ["STR_TBL_PROFILE_CARD_INFO", "Info+"], prciCardInfoPriceKey: ["STR_TBL_PROFILE_CARD_PRICE", "Preço:"],
-  prciCardInfoPointKey: ["STR_TBL_PROFILE_TOTAL_GET_POINT", "Total de Gold adquirido:"], prciCardInfoExpKey: ["STR_TBL_PROFILE_TOTAL_GET_EXT", "Total de EXP adquirida:"],
-  prciSupplyMedalTitle: ["STR_TBL_PROFILE_SUPPLY_MEDAL", "Medalhas fornecidas"], prciFinalPrizePointExpTitle: ["STR_TBL_PROFILE_LAST_REWARD_POINT", "EXP/Gold de recompensa final:"],
-  prciFinalPrizePointTextKey: ["STR_TBL_PROFILE_CHALLENGE_PRIZE_POINT_TEXT", "Gold"], prciFinalPrizeExpTextKey: ["STR_TBL_PROFILE_CHALLENGE_PRIZE_EXP_TEXT", "Experiência"],
+  prciCaption: ["STR_TBL_PROFILE_CHALLENGE_CARD_INFO", "Mission card info"], prciConfirm: ["STR_TBL_PROFILE_CONFIRM", "Confirm"],
+  prciCardInfoTitle: ["STR_TBL_PROFILE_CARD_INFO", "Info+"], prciCardInfoPriceKey: ["STR_TBL_PROFILE_CARD_PRICE", "Price:"],
+  prciCardInfoPointKey: ["STR_TBL_PROFILE_TOTAL_GET_POINT", "Total Gold earned:"], prciCardInfoExpKey: ["STR_TBL_PROFILE_TOTAL_GET_EXT", "Total EXP earned:"],
+  prciSupplyMedalTitle: ["STR_TBL_PROFILE_SUPPLY_MEDAL", "Medalhas fornecidas"], prciFinalPrizePointExpTitle: ["STR_TBL_PROFILE_LAST_REWARD_POINT", "Final reward EXP/Gold:"],
+  prciFinalPrizePointTextKey: ["STR_TBL_PROFILE_CHALLENGE_PRIZE_POINT_TEXT", "Gold"], prciFinalPrizeExpTextKey: ["STR_TBL_PROFILE_CHALLENGE_PRIZE_EXP_TEXT", "Experience"],
   prciFinalPrizeItemTextKey: ["STBL_IDX_CHARA_SLOT_TITLE4", "Item"],
   prCardComplateCaption: ["STR_TBL_PROFILE_NOTICE_TEXT", "Aviso"],
   // the exe relabels the confirm (strAll: GET / RELEASE / USE / CONFIRM): Confirmar here [INFERIDO]
-  prCardComplateConfirm: ["STR_TBL_PROFILE_CONFIRM", "Confirmar"],
+  prCardComplateConfirm: ["STR_TBL_PROFILE_CONFIRM", "Confirm"],
 };
 
 /** design-time option / event slots, the change-title window (the controller asks in the message box), the who / target combos,
@@ -222,7 +222,7 @@ export class ProfilePage {
     gui.show("prCardInfoWin", mission && c.mission.popup?.kind === "detail");
     if (!on) return;
     // ChangeTab 0x869470: the challenge tab titles the frame, the designation tab leaves it empty
-    gui.setText("prProfileCaption", mission ? this.ctx.str("STR_TBL_PROFILE_CHALLENGE_CARD_TEXT1", "Missões") : "");
+    gui.setText("prProfileCaption", mission ? this.ctx.str("STR_TBL_PROFILE_CHALLENGE_CARD_TEXT1", "Missions") : "");
     setTab(gui, "prChallengeTab", mission);
     setTab(gui, "prDesignationTab", !mission);
     gui.show("prChallengeSect", mission);

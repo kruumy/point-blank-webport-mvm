@@ -77,114 +77,114 @@ export const CROSS_HIDDEN = [
 export const CROSS_TEXT: Record<string, [key: string, fallback: string]> = {
   // ---- confirmed: GAME_STRING -> SetText of the control in the exe (strVa of cross-ui-map.json) ----
   // channel list (CPhaseChannelList 0x822360..0x822673)
-  ssServerCaption: ["STR_TBL_GUI_SERVER_LIST", "Lista de servidores"],
-  ssPrevCaption: ["STR_TBL_GUI_SERVER_PREV_PAGE", "Voltar"],
+  ssServerCaption: ["STR_TBL_GUI_SERVER_LIST", "Server list"],
+  ssPrevCaption: ["STR_TBL_GUI_SERVER_PREV_PAGE", "Back"],
   ssRefreshCaption: ["STR_TBL_GUI_SERVER_REFRESH", "Atualizar"],
   ssEnterCaption: ["STR_TBL_GUI_SERVER_CONNECT", "Conectar"],
   // lobby (CPhaseLobby text init 0x82b5f0, headers 0x82c15e..0x82c26b, info keys 0x82c47f..0x82c5de)
-  lbRoomWinCaption: ["STR_TBL_GUI_LOBBY_ROOM_LIST_TEXT", "Lista de salas"],
-  lbInfoWinCaption: ["STR_TBL_GUI_LOBBY_GAME_INFO_TEXT", "Informações do jogo"],
-  lbUserListWinCaption: ["STR_TBL_GUI_LOBBY_USER_LIST", "Lista de espera"],
-  lbIdxCaption: ["STR_TBL_GUI_LOBBY_NUMBER_TEXT", "ID"], lbModeCaption: ["STR_TBL_GUI_LOBBY_GAME_MODE_TEXT", "Modo"],
-  lbMapCaption: ["STR_TBL_GUI_LOBBY_MAP_INFO_TEXT", "Mapa"], lbTitleCaption: ["STR_TBL_GUI_LOBBY_ROOMNAME_TEXT2", "Nome da sala"],
+  lbRoomWinCaption: ["STR_TBL_GUI_LOBBY_ROOM_LIST_TEXT", "Room list"],
+  lbInfoWinCaption: ["STR_TBL_GUI_LOBBY_GAME_INFO_TEXT", "Game info"],
+  lbUserListWinCaption: ["STR_TBL_GUI_LOBBY_USER_LIST", "Waiting list"],
+  lbIdxCaption: ["STR_TBL_GUI_LOBBY_NUMBER_TEXT", "ID"], lbModeCaption: ["STR_TBL_GUI_LOBBY_GAME_MODE_TEXT", "Mode"],
+  lbMapCaption: ["STR_TBL_GUI_LOBBY_MAP_INFO_TEXT", "Map"], lbTitleCaption: ["STR_TBL_GUI_LOBBY_ROOMNAME_TEXT2", "Room name"],
   lbStateCaption: ["STR_TBL_GUI_LOBBY_STATE_TEXT", "Status"], lbPersonCaption: ["STR_TBL_GUI_LOBBY_PEOPLE_COUNT_TEXT", "Users"],
   lbPingCaption: ["STR_TBL_GUI_LOBBY_PING_TEXT", "Ping"],
-  lbMapKey: ["STR_TBL_GUI_LOBBY_MAP_INFO_TEXT", "Mapa"], lbModeKey: ["STR_TBL_GUI_LOBBY_GAME_MODE_TEXT", "Modo"],
-  lbTypeKey: ["STR_TBL_GUI_LOBBY_GAME_SETTING_TEXT", "Configurações"], lbHostKey: ["STR_TBL_GUI_LOBBY_ROOM_MASTER_TEXT", "Dono da sala"],
-  lbStateKey: ["STR_TBL_GUI_LOBBY_PROGRESS_TEXT", "Progresso"], lbJoinLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_ENTER_TEXT", "Restrição de entrada"],
-  lbWeaponLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_WEAPON_TEXT", "Restrição de arma"], lbObserverLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_OBSERVER", "Observador"],
+  lbMapKey: ["STR_TBL_GUI_LOBBY_MAP_INFO_TEXT", "Map"], lbModeKey: ["STR_TBL_GUI_LOBBY_GAME_MODE_TEXT", "Mode"],
+  lbTypeKey: ["STR_TBL_GUI_LOBBY_GAME_SETTING_TEXT", "Settings"], lbHostKey: ["STR_TBL_GUI_LOBBY_ROOM_MASTER_TEXT", "Room owner"],
+  lbStateKey: ["STR_TBL_GUI_LOBBY_PROGRESS_TEXT", "Progresso"], lbJoinLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_ENTER_TEXT", "Entry restriction"],
+  lbWeaponLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_WEAPON_TEXT", "Weapon restriction"], lbObserverLimitKey: ["STR_TBL_GUI_LOBBY_LIMIT_OBSERVER", "Observador"],
   lbTeamBalanceKey: ["STR_TBL_GUI_LOBBY_TEAM_BALANCE_TEXT", "Times balanceados"],
   // chat tabs (shared chat box 0x7b8e80, switch on the phase 0x7b9241: tabs 1..4 = members 0x84..0x90). Ready room (case 1,
   // 0x7b9501..0x7b958d): Todos / Time / Clã / PM. Lobby (cases 0/2/3, 0x7b968f..0x7b96fb): Todos / Clã / PM, tab 4 hidden.
-  lbChatTab1: ["STR_TBL_CHAT_INGAME_POPUP_ALL", "Todos"], lbChatTab2: ["STR_TBL_CHAT_INGAME_POPUP_CLAN", "Clã"], lbChatTab3: ["STR_TBL_CHAT_INGAME_CHANNEL_WHISPER", "PM"],
-  rrChatTab1: ["STR_TBL_CHAT_INGAME_POPUP_ALL", "Todos"], rrChatTab2: ["STR_TBL_CHAT_INGAME_POPUP_TEAM", "Time"], rrChatTab3: ["STR_TBL_CHAT_INGAME_POPUP_CLAN", "Clã"],
+  lbChatTab1: ["STR_TBL_CHAT_INGAME_POPUP_ALL", "All"], lbChatTab2: ["STR_TBL_CHAT_INGAME_POPUP_CLAN", "Clan"], lbChatTab3: ["STR_TBL_CHAT_INGAME_CHANNEL_WHISPER", "PM"],
+  rrChatTab1: ["STR_TBL_CHAT_INGAME_POPUP_ALL", "All"], rrChatTab2: ["STR_TBL_CHAT_INGAME_POPUP_TEAM", "Time"], rrChatTab3: ["STR_TBL_CHAT_INGAME_POPUP_CLAN", "Clan"],
   rrChatTab4: ["STR_TBL_CHAT_INGAME_WHISPER_TEXT", "PM"],
   // create room
-  lbCreateWinCaption: ["STR_TBL_GUI_LOBBY_CREATE_ROOM_TEXT", "Criar sala"],
-  lbCreateTitleKey: ["STR_TBL_GUI_LOBBY_ROOMNAME_TEXT1", "Título da sala"], lbCreatePasswordKey: ["STR_TBL_GUI_LOBBY_PASSWORD_TEXT", "Senha"],
-  rrCreateModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Modo"], rrCreateTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
-  rrCreateTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME", "Tempo"],
-  rrCreateLimitKey: ["STR_TBL_GUI_READY_WEAPON_LIMIT", "Restrição de armas"],
-  rrCreateLimitPrimaryKey: ["STR_TBL_GUI_READY_PRIMARY_WEAPON", "Arma principal"], rrCreateLimitSecondaryKey: ["STR_TBL_GUI_READY_SECONDRY_WEAPON", "Arma secundária"],
-  rrCreateLimitMeleeKey: ["STR_TBL_GUI_READY_MELLE_WEAPON", "Arma branca"], rrCreateLimitThrowKey: ["STR_TBL_GUI_READY_THROW_WEAPON", "Granada"],
+  lbCreateWinCaption: ["STR_TBL_GUI_LOBBY_CREATE_ROOM_TEXT", "Create room"],
+  lbCreateTitleKey: ["STR_TBL_GUI_LOBBY_ROOMNAME_TEXT1", "Room title"], lbCreatePasswordKey: ["STR_TBL_GUI_LOBBY_PASSWORD_TEXT", "Password"],
+  rrCreateModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Mode"], rrCreateTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
+  rrCreateTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME", "Time"],
+  rrCreateLimitKey: ["STR_TBL_GUI_READY_WEAPON_LIMIT", "Weapon restrictions"],
+  rrCreateLimitPrimaryKey: ["STR_TBL_GUI_READY_PRIMARY_WEAPON", "Primary weapon"], rrCreateLimitSecondaryKey: ["STR_TBL_GUI_READY_SECONDRY_WEAPON", "Secondary weapon"],
+  rrCreateLimitMeleeKey: ["STR_TBL_GUI_READY_MELLE_WEAPON", "Melee weapon"], rrCreateLimitThrowKey: ["STR_TBL_GUI_READY_THROW_WEAPON", "Grenade"],
   rrCreateLimitRPG7Key: ["STR_TBL_GUI_READY_RPG7_WEAPON", "RPG7"],
   rrCreateLimitObserverKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT", "Observador"],
-  rrObserver1PV_OnlyKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT5", "Bloquear 3ª pessoa"], rrObserver3PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT1", "3ª pessoa livre"],
-  rrObserver1PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT2", "Câmera livre"], rrObserverEnemy_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT3", "Visualizar time adversário"],
-  rrObserverEnemyHP_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT4", "Ver HP do inimigo"],
-  rrCreateLimitJoinKey: ["STR_TBL_GUI_READY_LIMIT_JOINING", "Bloquear sala com partida em andamento?"],
-  rrCreateLimitJoinYesKey: ["STR_TBL_GUI_READY_BEING", "Sim"], rrCreateLimitJoinNoKey: ["STR_TBL_GUI_READY_NONE", "Não"],
+  rrObserver1PV_OnlyKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT5", "Block 3rd person"], rrObserver3PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT1", "Free 3rd person"],
+  rrObserver1PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT2", "Free camera"], rrObserverEnemy_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT3", "View enemy team"],
+  rrObserverEnemyHP_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT4", "View enemy HP"],
+  rrCreateLimitJoinKey: ["STR_TBL_GUI_READY_LIMIT_JOINING", "Lock room while a match is in progress?"],
+  rrCreateLimitJoinYesKey: ["STR_TBL_GUI_READY_BEING", "Yes"], rrCreateLimitJoinNoKey: ["STR_TBL_GUI_READY_NONE", "No"],
   rrCreateTeamBalanceKey: ["STR_TBL_GUI_READY_TEAM_BALANCE", "Balancear time"],
   rrCreateTeamBalanceNoKey: ["STR_TBL_GUI_READY_TEAM_BALANCE_OFF", "Desativar"], rrCreateTeamBalanceYesKey: ["STR_TBL_GUI_READY_TEAM_BALANCE_SKILLED", "Rank"],
   rrCreateTeamBalanceYesKey2: ["STR_TBL_GUI_READY_TEAM_BALANCE_PERSON", "Qtde"],
   // [INFERIDO] the exe never sets text on rrLobbyRandomMapButton (0x82acfc bind, 0x8387e0 / 0x838830 enable only): the
   // original shows a blank button; labelled with the popup's own key by user choice (2026-10-13)
-  rrLobbyRandomMapButton: ["STR_POPUP_RANDOMMAP", "Mapa aleatório"],
-  lbCreateConfirm: ["STR_TBL_GUI_LOBBY_CONFIRM_TEXT", "Confirmar"], lbCreateCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancelar"],
+  rrLobbyRandomMapButton: ["STR_POPUP_RANDOMMAP", "Random map"],
+  lbCreateConfirm: ["STR_TBL_GUI_LOBBY_CONFIRM_TEXT", "Confirm"], lbCreateCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancel"],
   // random map popup (CPopupRandomMap init 0x8b0cb8) [INFERIDO: the OK / Cancel keys; the exe shows "Confirmar" / "Cancelar"]
-  RandomMapCaption: ["STR_POPUP_RANDOMMAP_CONFIG", "Configurar o mapa"], RandomMapConfirm: ["STBL_IDX_BUTTON_OK", "Confirmar"],
-  RandomMapCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancelar"], CheckCountConfirm: ["STBL_IDX_BUTTON_OK", "Confirmar"],
-  CheckCountMessage: ["STR_POPUP_RANDOMMAP_CHECK_COUNT", "Selecione pelo menos um mapa."],
+  RandomMapCaption: ["STR_POPUP_RANDOMMAP_CONFIG", "Configurar o mapa"], RandomMapConfirm: ["STBL_IDX_BUTTON_OK", "Confirm"],
+  RandomMapCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancel"], CheckCountConfirm: ["STBL_IDX_BUTTON_OK", "Confirm"],
+  CheckCountMessage: ["STR_POPUP_RANDOMMAP_CHECK_COUNT", "Select at least one map."],
   // user info popup (UserInfoPopup 0x8aaca0, UI_Project_Popup; keys from cross-ui-map.json). Adicionar = ADD_FRIEND (0x8ab760)
-  UserInfoPopupCaption: ["STR_POPUP_DETAIL_INFO", "Informações"], UserInfoPopupNicknameKey: ["STR_POPUP_NICKNAME", "Apelido"],
-  UserInfoPopupSeasonRecordKey: ["STR_POPUP_SEASON_HISTORY", "Histórico da temporada"], UserInfoPopupTotalRecordKey: ["STR_POPUP_TOTAL_HISTORY", "Histórico"],
+  UserInfoPopupCaption: ["STR_POPUP_DETAIL_INFO", "Information"], UserInfoPopupNicknameKey: ["STR_POPUP_NICKNAME", "Apelido"],
+  UserInfoPopupSeasonRecordKey: ["STR_POPUP_SEASON_HISTORY", "Season history"], UserInfoPopupTotalRecordKey: ["STR_POPUP_TOTAL_HISTORY", "History"],
   UserInfoPopupPositionKey: ["STR_POPUP_CUR_POSITION", "Estado"], UserInfoPopupButton2: ["STR_POPUP_ADD_FRIEND", "Adicionar"],
-  UserInfoPopupClose: ["STR_POPUP_CLOSE", "Fechar"],
+  UserInfoPopupClose: ["STR_POPUP_CLOSE", "Close"],
   // join password (popup 0x8aded0)
   lbJoinCaption: ["STR_TBL_GUI_LOBBY_NOTICE_TEXT", "Aviso"],
-  lbSpecialWarCaption: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_CAPTION", "Seleção de modo"], lbSpecialWarCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancelar"],
-  lbJoinConfirm: ["STR_TBL_GUI_LOBBY_CONFIRM_TEXT", "Confirmar"], lbJoinCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancelar"],
+  lbSpecialWarCaption: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_CAPTION", "Mode selection"], lbSpecialWarCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancel"],
+  lbJoinConfirm: ["STR_TBL_GUI_LOBBY_CONFIRM_TEXT", "Confirm"], lbJoinCancel: ["STR_TBL_GUI_LOBBY_CANCEL_TEXT", "Cancel"],
   // message box (CMessageBox::Create 0x75435f / 0x75439d / 0x7543c5)
-  cxMsgCaption: ["STBL_IDX_COMMON_MSGBOX_CAPTION", "Aviso"], cxMsgConfirm: ["STBL_IDX_BUTTON_OK", "Confirmar"], cxMsgCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancelar"],
+  cxMsgCaption: ["STBL_IDX_COMMON_MSGBOX_CAPTION", "Aviso"], cxMsgConfirm: ["STBL_IDX_BUTTON_OK", "Confirm"], cxMsgCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancel"],
   // ready room (0x7d1f18..0x7d2b2f)
   editObserver: ["STR_TBL_GUI_OBSERVER", "Observador"], // the GM observer box caption (0x7d2d15)
-  rrTitleKey: ["STR_TBL_GUI_READY_ROOM_SUBJECT", "Título da sala"], rrPasswordKey: ["STR_TBL_GUI_READY_PASSWORD", "Senha"],
-  rrModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Modo"], rrTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
-  rrTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Limite de tempo"],
-  rrOptionKey: ["STR_TBL_GUI_READY_HIGHRANK_OPTION", "Opções avançadas"], rrOption: ["STR_TBL_GUI_READYROOM_OPTION", "Opções"],
+  rrTitleKey: ["STR_TBL_GUI_READY_ROOM_SUBJECT", "Room title"], rrPasswordKey: ["STR_TBL_GUI_READY_PASSWORD", "Password"],
+  rrModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Mode"], rrTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
+  rrTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Time limit"],
+  rrOptionKey: ["STR_TBL_GUI_READY_HIGHRANK_OPTION", "Advanced options"], rrOption: ["STR_TBL_GUI_READYROOM_OPTION", "Options"],
   // clan match band (CPhaseReadyRoom 0x7d5360 SetText keys 0xbe7d54 / 0xbe7d78 / 0xbe7da4): the same labels as the rows above
-  rrClanBattleModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Modo"], rrClanBattleTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
-  rrClanBattleTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Limite de tempo"],
+  rrClanBattleModeKey: ["STR_TBL_GUI_READY_GAME_MODE", "Mode"], rrClanBattleTypeKey: ["STR_TBL_GUI_READY_VICTORY_CONDITION", "Objetivo"],
+  rrClanBattleTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Time limit"],
   // Opções avançadas (rrAdvencedWin, UI_Project_ReadyRoom; texts of the exe, cross-ui-map.json)
-  rrAdvencedCaption: ["STR_TBL_GUI_READY_HIGHRANK_OPTION", "Opções avançadas"], rrAdvencedConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirmar"],
-  rrAdvencedCancel: ["STR_TBL_GUI_READY_CANCEL", "Cancelar"], rrLimitKey: ["STR_TBL_GUI_READY_WEAPON_LIMIT", "Restrição de armas"],
-  rrLimitPrimaryKey: ["STR_TBL_GUI_READY_PRIMARY_WEAPON", "Arma principal"], rrLimitSecondaryKey: ["STR_TBL_GUI_READY_SECONDRY_WEAPON", "Arma secundária"],
-  rrLimitMeleeKey: ["STR_TBL_GUI_READY_MELLE_WEAPON", "Arma branca"], rrLimitThrowKey: ["STR_TBL_GUI_READY_THROW_WEAPON", "Granada"],
+  rrAdvencedCaption: ["STR_TBL_GUI_READY_HIGHRANK_OPTION", "Advanced options"], rrAdvencedConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirm"],
+  rrAdvencedCancel: ["STR_TBL_GUI_READY_CANCEL", "Cancel"], rrLimitKey: ["STR_TBL_GUI_READY_WEAPON_LIMIT", "Weapon restrictions"],
+  rrLimitPrimaryKey: ["STR_TBL_GUI_READY_PRIMARY_WEAPON", "Primary weapon"], rrLimitSecondaryKey: ["STR_TBL_GUI_READY_SECONDRY_WEAPON", "Secondary weapon"],
+  rrLimitMeleeKey: ["STR_TBL_GUI_READY_MELLE_WEAPON", "Melee weapon"], rrLimitThrowKey: ["STR_TBL_GUI_READY_THROW_WEAPON", "Grenade"],
   rrLimitRPG7Key: ["STR_TBL_GUI_READY_RPG7_WEAPON", "RPG7"],
-  rrLimitJoinKey: ["STR_TBL_GUI_READY_LIMIT_JOINING", "Bloquear sala com partida em andamento?"],
-  rrLimitJoinYesKey: ["STR_TBL_GUI_READY_BEING", "Sim"], rrLimitJoinNoKey: ["STR_TBL_GUI_READY_NONE", "Não"],
+  rrLimitJoinKey: ["STR_TBL_GUI_READY_LIMIT_JOINING", "Lock room while a match is in progress?"],
+  rrLimitJoinYesKey: ["STR_TBL_GUI_READY_BEING", "Yes"], rrLimitJoinNoKey: ["STR_TBL_GUI_READY_NONE", "No"],
   rrTeamBalanceKey: ["STR_TBL_GUI_READY_TEAM_BALANCE", "Balancear time"],
   rrTeamBalanceYesKey2: ["STR_TBL_GUI_READY_TEAM_BALANCE_PERSON", "Qtde"], rrTeamBalanceYesKey: ["STR_TBL_GUI_READY_TEAM_BALANCE_SKILLED", "Rank"],
   rrTeamBalanceNoKey: ["STR_TBL_GUI_READY_TEAM_BALANCE_OFF", "Desativar"],
   rrLimitObserverKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT", "Observador"],
-  rrReadyObserver1PV_OnlyKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT5", "Bloquear 3ª pessoa"], rrReadyObserver3PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT1", "3ª pessoa livre"],
-  rrReadyObserver1PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT2", "Câmera livre"], rrReadyObserverEnemy_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT3", "Visualizar time adversário"],
-  rrReadyObserverEnemyHP_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT4", "Ver HP do inimigo"],
+  rrReadyObserver1PV_OnlyKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT5", "Block 3rd person"], rrReadyObserver3PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT1", "Free 3rd person"],
+  rrReadyObserver1PV_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT2", "Free camera"], rrReadyObserverEnemy_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT3", "View enemy team"],
+  rrReadyObserverEnemyHP_FreeKey: ["STR_TBL_GUI_READY_OBSERVER_LIMIT4", "View enemy HP"],
   // Convidar (rrInvite button, rrInviteWin)
   // rrInvite: "Convidar" is drawn in its sprite (template Invitate, states 0..2 at main_ui_source01 376,176/218/260): no text on top.
   // Its 4th image (376,302) is the "Ajuda" help button art, so the disabled look keeps state 0 (app.ts gui.button off 0)
-  rrInviteCaption: ["STR_TBL_GUI_READY_INVITE1", "Convidar"], rrInviteConfirm:["STR_TBL_GUI_READY_INVITE2", "Convidar"], rrInviteCancel: ["STR_TBL_GUI_READY_CANCEL", "Cancelar"],
+  rrInviteCaption: ["STR_TBL_GUI_READY_INVITE1", "Convidar"], rrInviteConfirm:["STR_TBL_GUI_READY_INVITE2", "Convidar"], rrInviteCancel: ["STR_TBL_GUI_READY_CANCEL", "Cancel"],
   // fim de missão na sala (rrCardComplateWin / rrFinalComplate*)
-  rrCardComplateCaption: ["STR_TBL_GUI_READY_MISSION_REWARD", "Recompensas de missão"], rrCardComplateConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirmar"],
-  rrFinalComplateCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplateConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirmar"],
-  rrFinalComplateDescription: ["STR_TBL_GUI_READY_NOTICE_REWARD_ITEM1", "{col:255,152,52,255}Parabéns!{/col}\n \nConfira o seu inventário para receber a recompensa. Todos cartões colecionados serão excluídos. (Se for um item que já possui, aumentará seu prazo restante)."],
-  rrFinalComplateExCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplateExConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirmar"],
-  rrFinalComplateExDescription: ["STR_TBL_GUI_READY_NOTICE_COMPLETE_MISSION", "{col:255,152,52,255}Parabéns!!{/col}\n \nCartões de missões concluídos serão excluídos. As medalhas adquiridas podem ser trocadas por um título."],
-  rrFinalComplatePrizeCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplatePrizeConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirmar"],
-  rrFinalComplatePrizeDescription: ["STR_TBL_GUI_READY_NOTICE_COMPLETE_MISSION", "{col:255,152,52,255}Parabéns!!{/col}\n \nCartões de missões concluídos serão excluídos. As medalhas adquiridas podem ser trocadas por um título."],
-  rrTrainingTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Limite de tempo"], rrTrainingEnemyKey: ["STR_TBL_GUI_READY_ENEMY_COUNT", "Inimigos"],
+  rrCardComplateCaption: ["STR_TBL_GUI_READY_MISSION_REWARD", "Mission rewards"], rrCardComplateConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirm"],
+  rrFinalComplateCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplateConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirm"],
+  rrFinalComplateDescription: ["STR_TBL_GUI_READY_NOTICE_REWARD_ITEM1", "{col:255,152,52,255}Congratulations!{/col}\n \nCheck your inventory to receive the reward. All collected cards will be deleted. (If you already own the item, its remaining time will be extended)."],
+  rrFinalComplateExCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplateExConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirm"],
+  rrFinalComplateExDescription: ["STR_TBL_GUI_READY_NOTICE_COMPLETE_MISSION", "{col:255,152,52,255}Congratulations!!{/col}\n \nCompleted mission cards will be deleted. The medals you earned can be exchanged for a title."],
+  rrFinalComplatePrizeCaption: ["STR_TBL_GUI_READY_NOTICE", "Aviso"], rrFinalComplatePrizeConfirm: ["STR_TBL_GUI_READY_CONFIRM", "Confirm"],
+  rrFinalComplatePrizeDescription: ["STR_TBL_GUI_READY_NOTICE_COMPLETE_MISSION", "{col:255,152,52,255}Congratulations!!{/col}\n \nCompleted mission cards will be deleted. The medals you earned can be exchanged for a title."],
+  rrTrainingTimeKey: ["STR_TBL_GUI_READY_LIMIT_TIME2", "Time limit"], rrTrainingEnemyKey: ["STR_TBL_GUI_READY_ENEMY_COUNT", "Inimigos"],
   rrTrainingDifficultyKey: ["STR_TBL_GUI_READY_DIFFICULTY", "Dificuldade"],
   // record window (CPhaseReadyRoom: rrRecordCaption toggled INFO1 / INFO2 at 0x7c9a40, the keys set once by the init)
-  rrRecordCaption: ["STR_TBL_GUI_READY_DETAIL_INFO1", "< Informações detalhadas >"],
-  rrSeasonKey: ["STR_TBL_GUI_READY_SEASON_BATTLE_HISTORY", "Histórico de combates do período"], rrTotalKey: ["STR_TBL_GUI_READY_TOTAL_BATTLE_HISTORY", "Histórico geral"],
-  rrClanKey: ["STR_TBL_GUI_READY_CLAN_BATTLE_HISTORY", "Histórico do clã"], rrClanNameKey: ["STR_TBL_GUI_READY_CLAN_NAME", "Nome do clã:"],
-  rrClanRankKey: ["STR_TBL_GUI_READY_CLAN_GRADE", "Nível do clã:"],
+  rrRecordCaption: ["STR_TBL_GUI_READY_DETAIL_INFO1", "< Detailed info >"],
+  rrSeasonKey: ["STR_TBL_GUI_READY_SEASON_BATTLE_HISTORY", "Period combat history"], rrTotalKey: ["STR_TBL_GUI_READY_TOTAL_BATTLE_HISTORY", "Overall history"],
+  rrClanKey: ["STR_TBL_GUI_READY_CLAN_BATTLE_HISTORY", "Clan history"], rrClanNameKey: ["STR_TBL_GUI_READY_CLAN_NAME", "Clan name:"],
+  rrClanRankKey: ["STR_TBL_GUI_READY_CLAN_GRADE", "Clan level:"],
   // menu bar (CMenuBar)
   mbPinoKey: ["STR_TBL_GUI_ETC_MENUBAR_POINT", "Gold    :"], mbNcCoinKey: ["STR_TBL_GUI_ETC_MENUBAR_MONEY", "Cash    :"],
 
   // ---- [INFERIDO]: linked by the exe but no GAME_STRING site found for them (cross-ui-map); text by name ----
-  lbServerCaption: ["STR_TBL_GUI_LOBBY_CHANGE_SERVER", "Servidores"], lbEnterCaption: ["STR_TBL_GUI_LOBBY_ENTER_ROOM_TEXT", "Entrar"],
-  lbRefreshCaption: ["STR_TBL_GUI_LOBBY_REFRESH_TEXT", "Atualizar"], lbCreateCaption: ["STR_TBL_GUI_LOBBY_CREATE_ROOM_TEXT", "Criar sala"],
+  lbServerCaption: ["STR_TBL_GUI_LOBBY_CHANGE_SERVER", "Servidores"], lbEnterCaption: ["STR_TBL_GUI_LOBBY_ENTER_ROOM_TEXT", "Enter"],
+  lbRefreshCaption: ["STR_TBL_GUI_LOBBY_REFRESH_TEXT", "Atualizar"], lbCreateCaption: ["STR_TBL_GUI_LOBBY_CREATE_ROOM_TEXT", "Create room"],
   lbJoinMessage: ["STBL_IDX_EP_LOBBY_WRONG_PW_Q", "Digite a senha"],
 };
 
@@ -199,27 +199,27 @@ export const CROSS_TEXT: Record<string, [key: string, fallback: string]> = {
 export const SPECIAL_WAR: { ctl: [btn: string, desc: string, title: string, arrow: string]; empty: string; desc: [string, string]; title: [string, string]; mode?: string; name?: [string, string] }[] = [
   // 0x8315a0(0): name TRAINING_ROOM_TITLE, setEnemyAiCount(8), setCurrentDifficultyLevel(1), SetEvent(113)
   { ctl: ["SpecialWarChallengeButton", "lbSpecialWarButtonChallengeDescription", "lbBtnChallengeTitleDesc", "lbArrowChallenge"], empty: "SpecialWarChallengeEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_AI_BUTTON_DESCRIPTION", "Jogue sozinho ou com amigos contra a IA \nem até 10 etapas emocionantes!"], title: ["STR_TBL_GUI_LOBBY_TRANING_TEXT", "Desafio"],
-    mode: "modeBots", name: ["STR_TBL_GUI_LOBBY_TRAINING_ROOM_TITLE", "Partida de treinamento"] },
+    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_AI_BUTTON_DESCRIPTION", "Play alone or with friends against the AI \nin up to 10 thrilling stages!"], title: ["STR_TBL_GUI_LOBBY_TRANING_TEXT", "Desafio"],
+    mode: "modeBots", name: ["STR_TBL_GUI_LOBBY_TRAINING_ROOM_TITLE", "Training match"] },
   // 0x8317e0: special flag 0x80 + lbCreateWin (0x8325a0)
   { ctl: ["SpecialWarShotgunButton", "lbSpecialWarButtonShotgunDescription", "lbBtnShotgunTitleDesc", "lbArrowShotgun"], empty: "SpecialWarShotgunEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_SHOTGUN_BUTTON_DESCRIPTION", "Um modo de combate usando apenas \narmas Shotgun como principais"], title: ["STR_TBL_GUI_LOBBY_SHOTGUNMODE_TITLE", "Shotgun"], mode: "modeShotgun" },
+    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_SHOTGUN_BUTTON_DESCRIPTION", "A combat mode using only \nShotguns as primary weapons"], title: ["STR_TBL_GUI_LOBBY_SHOTGUNMODE_TITLE", "Shotgun"], mode: "modeShotgun" },
   // 0x832580: special flag 4 + lbCreateWin
   { ctl: ["SpecialWarSniperButton", "lbSpecialWarButtonSniperDescription", "lbBtnSniperTitleDesc", "lbArrowSniper"], empty: "SpecialWarSniperEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_SNIPER_BUTTON_DESCRIPTION", "Um modo de combate usando apenas \narmas Sniper como principais"], title: ["STR_TBL_GUI_LOBBY_SNIPERMODE_TITLE", "Modo Sniper"], mode: "modeSniper" },
+    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_SNIPER_BUTTON_DESCRIPTION", "A combat mode using only \nSniper rifles as primary weapons"], title: ["STR_TBL_GUI_LOBBY_SNIPERMODE_TITLE", "Sniper Mode"], mode: "modeSniper" },
   // 0x831810: special flag 0x20 + lbCreateWin
   { ctl: ["SpecialWarHeadHunterButton", "lbSpecialWarButtonHeadHunterDescription", "lbBtnHeadHunterTitleDesc", "lbArrowHeadHunter"], empty: "SpecialWarHeadHunterEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_HEADHUNTER_BUTTON_DESCRIPTION", "Mire na cabeça do inimigo!"], title: ["STR_TBL_GUI_LOBBY_HEADHUNTERMODE_TITLE", "HeadHunter"], mode: "modeHeadHunter" },
+    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_HEADHUNTER_BUTTON_DESCRIPTION", "Aim for the enemy's head!"], title: ["STR_TBL_GUI_LOBBY_HEADHUNTERMODE_TITLE", "HeadHunter"], mode: "modeHeadHunter" },
   // 0x831860: name KNUCKLEMODE_ROOM_TITLE, SetEvent(113)
   { ctl: ["SpecialWarKnuckleButton", "lbSpecialWarButtonKnuckleDescription", "lbBtnKnuckleTitleDesc", "lbArrowKnuckle"], empty: "SpecialWarKnuckleEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_KNUCKLE_BUTTON_DESCRIPTION", "Venha participar do verdadeiro clube da luta."], title: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_TITLE", "Modo Porrada"],
-    mode: "modeKnife", name: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_ROOM_TITLE", "Clube da Luta"] },
+    desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_KNUCKLE_BUTTON_DESCRIPTION", "Join the real fight club."], title: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_TITLE", "Brawl Mode"],
+    mode: "modeKnife", name: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_ROOM_TITLE", "Fight Club"] },
   { ctl: ["SpecialWarTutorialButton", "lbSpecialWarButtonTutorialDescription", "lbBtnTutorialTitleDesc", "lbArrowTutorial"], empty: "SpecialWarTutorialEmpty",
     desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_TUTORIAL_BUTTON_DESCRIPTION", "Guia Iniciante"], title: ["STR_TBL_GUI_LOBBY_TUTORIALMODE_TITLE", "Tutorial"] },
   { ctl: ["lbSpecialWarButtonMadness", "lbSpecialWarButtonMadnessDescription", "lbBtnMadnessTitleDesc", "lbArrowMadness"], empty: "SpecialWarMadneeEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_MADNESS_DESCRIPTION", "Partida contra os Infectados"], title: ["STR_TBL_GUI_LOBBY_MADNESS_TEXT", "Modo Zumbi"] },
+    desc: ["STR_TBL_GUI_LOBBY_MADNESS_DESCRIPTION", "Match against the Infected"], title: ["STR_TBL_GUI_LOBBY_MADNESS_TEXT", "Zombie Mode"] },
   { ctl: ["lbSpecialWarButtonDieHard", "lbSpecialWarButtonDieHardDescription", "lbBtnDiehardTitleDesc", "lbArrowDieHard"], empty: "SpecialWarDiehardEmpty",
-    desc: ["STR_TBL_GUI_LOBBY_TRANING2_DESCRIPTION", "Partida contra IA"], title: ["STR_TBL_GUI_LOBBY_TRANING2_TEXT", "Duro de Matar"] },
+    desc: ["STR_TBL_GUI_LOBBY_TRANING2_DESCRIPTION", "Match against AI"], title: ["STR_TBL_GUI_LOBBY_TRANING2_TEXT", "Die Hard"] },
   { ctl: ["SpecialWarChaosButton", "lbSpecialWarButtonChaosDescription", "lbBtnChaosTitleDesc", "lbArrowChaos"], empty: "SpecialWarChaosEmpty",
     desc: ["STR_TBL_GUI_LOBBY_SPECIAL_WAR_CHAOS_BUTTON_DESCRIPTION", "Dificuldade Extrema!"], title: ["STR_TBL_GUI_LOBBY_CHAOS_TITLE", "Caos"], mode: "modeChaos" },
 ];
@@ -416,11 +416,11 @@ export function expBar(exp: number, rank: number): { text: string; note: [string
  * Key = text of the web room.
  */
 export const LIST_MODE: Record<string, [string, string]> = {
-  deathmatch: ["STR_HEADER_MODE_TEAM_DEATH_MATCH", "Deathmatch"], modeBomb: ["STR_HEADER_MODE_EXPLOSION", "Destruição"],
-  modeDestroy: ["STR_HEADER_MODE_DESTROY", "Sabotagem"], modeDefence: ["STR_HEADER_MODE_DEFENCE", "Defesa"],
-  modeBots: ["STR_TBL_GUI_LOBBY_TRANING_TEXT", "Desafio"], modeSniper: ["STR_TBL_GUI_LOBBY_SNIPERMODE_TITLE", "Modo Sniper"],
-  modeShotgun: ["STR_TBL_GUI_LOBBY_SHOTGUNMODE_TITLE", "Shotgun"], modeKnife: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_TITLE", "Modo Porrada"],
-  modeAnnihilation: ["STR_HEADER_MODE_ANNIHILATION", "Supressão"], modeAce: ["STR_HEADER_DO_TCH_DN_ACE_ATTACKER", "Ace Attacker"], // Ace [INFERIDO]
+  deathmatch: ["STR_HEADER_MODE_TEAM_DEATH_MATCH", "Deathmatch"], modeBomb: ["STR_HEADER_MODE_EXPLOSION", "Destruction"],
+  modeDestroy: ["STR_HEADER_MODE_DESTROY", "Sabotage"], modeDefence: ["STR_HEADER_MODE_DEFENCE", "Defesa"],
+  modeBots: ["STR_TBL_GUI_LOBBY_TRANING_TEXT", "Desafio"], modeSniper: ["STR_TBL_GUI_LOBBY_SNIPERMODE_TITLE", "Sniper Mode"],
+  modeShotgun: ["STR_TBL_GUI_LOBBY_SHOTGUNMODE_TITLE", "Shotgun"], modeKnife: ["STR_TBL_GUI_LOBBY_KNUCKLEMODE_TITLE", "Brawl Mode"],
+  modeAnnihilation: ["STR_HEADER_MODE_ANNIHILATION", "Suppression"], modeAce: ["STR_HEADER_DO_TCH_DN_ACE_ATTACKER", "Ace Attacker"], // Ace [INFERIDO]
 };
 
 /**
@@ -446,22 +446,22 @@ export const SERVER_CARDS = 24, SERVER_CARD_COLS = 4;
 export const SERVER_TABS = ["all", "normal", "begin", "clan", "expert", "combination", "championship", "nation"] as const;
 export type ServerTab = (typeof SERVER_TABS)[number];
 export const SERVER_TAB_TEXT: Record<ServerTab, [string, string]> = {
-  all: ["STR_TBL_NETWORK_SERVER_TAB_ALL", "Todos"], normal: ["STR_TBL_NETWORK_SERVER_TAB_NORMAL", "Normal"],
-  begin: ["STR_TBL_NETWORK_SERVER_TAB_BEGIN", "Iniciante"], clan: ["STR_TBL_NETWORK_SERVER_TAB_CLAN", "Clã"],
-  expert: ["STR_TBL_NETWORK_SERVER_TAB_EXPERT", "Veterano"], combination: ["STR_TBL_NETWORK_SERVER_TAB_COMBINATION", "Combinação"],
-  championship: ["STR_TBL_NETWORK_SERVER_TAB_CHAMPIONSHIP", "Campeonato"], nation: ["STR_TBL_NETWORK_SERVER_TAB_NATIONAL", "País"],
+  all: ["STR_TBL_NETWORK_SERVER_TAB_ALL", "All"], normal: ["STR_TBL_NETWORK_SERVER_TAB_NORMAL", "Normal"],
+  begin: ["STR_TBL_NETWORK_SERVER_TAB_BEGIN", "Iniciante"], clan: ["STR_TBL_NETWORK_SERVER_TAB_CLAN", "Clan"],
+  expert: ["STR_TBL_NETWORK_SERVER_TAB_EXPERT", "Veterano"], combination: ["STR_TBL_NETWORK_SERVER_TAB_COMBINATION", "Combined"],
+  championship: ["STR_TBL_NETWORK_SERVER_TAB_CHAMPIONSHIP", "Campeonato"], nation: ["STR_TBL_NETWORK_SERVER_TAB_NATIONAL", "Country"],
 };
 /** 2017 SChannelType -> Cross kind (tab) and card name */
 export const SERVER_KIND: Record<number, { tab: ServerTab; name: [string, string] }> = {
-  0: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Servidor Normal"] },
-  1: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Servidor Normal"] },
-  2: { tab: "begin", name: ["STR_TBL_NETWORK_SERVER_BEGIN", "Servidor Iniciante"] },
-  3: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Servidor Normal"] },
-  4: { tab: "expert", name: ["STR_TBL_NETWORK_SERVER_EXPERT", "Servidor Veterano"] },
-  5: { tab: "clan", name: ["STR_TBL_NETWORK_SERVER_CLAN", "Servidor de Clãs"] },
-  6: { tab: "combination", name: ["STR_TBL_NETWORK_SERVER_COMBINATION", "Servidor de Campeonato"] },
-  7: { tab: "championship", name: ["STR_TBL_NETWORK_SERVER_CHAMPIONSHIP", "Servidor Combinado"] },
-  8: { tab: "nation", name: ["STR_TBL_NETWORK_SERVER_NATIONAL", "Servidor nacional"] },
+  0: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Normal Server"] },
+  1: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Normal Server"] },
+  2: { tab: "begin", name: ["STR_TBL_NETWORK_SERVER_BEGIN", "Beginner Server"] },
+  3: { tab: "normal", name: ["STR_TBL_NETWORK_SERVER_NORMAL", "Normal Server"] },
+  4: { tab: "expert", name: ["STR_TBL_NETWORK_SERVER_EXPERT", "Veteran Server"] },
+  5: { tab: "clan", name: ["STR_TBL_NETWORK_SERVER_CLAN", "Clan Server"] },
+  6: { tab: "combination", name: ["STR_TBL_NETWORK_SERVER_COMBINATION", "Tournament Server"] },
+  7: { tab: "championship", name: ["STR_TBL_NETWORK_SERVER_CHAMPIONSHIP", "Combined Server"] },
+  8: { tab: "nation", name: ["STR_TBL_NETWORK_SERVER_NATIONAL", "National server"] },
 };
 /** card text colours of 0x81efb0 (GUI colour table 0x791000 entries 0 / 15 / 21) */
 export const SERVER_CARD_COLOR = { normal: "#adadad", full: "#d20000", closed: "#646464" } as const;

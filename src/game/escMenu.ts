@@ -15,11 +15,11 @@ const CROSS_BASE = `${UI_BASE}/cross`;
 const WINDOW = "Esc_PopupBG";
 /** button -> [STR key, fallback], in the order the Cross exe sets them (0x71992d..0x719a6d) */
 const TEXT: Record<string, [key: string, fallback: string]> = {
-  Esc_Popup_Option: ["STR_TBL_BATTLEGUI_OPTION_TEXT", "Configuração"],
+  Esc_Popup_Option: ["STR_TBL_BATTLEGUI_OPTION_TEXT", "Settings"],
   Esc_Popup_Report: ["STR_TBL_BATTLEGUI_REPORT", "Reportar"],
   Esc_Popup_ForciblyRemove: ["STR_EXIT_POPUP_FORCIBLYREMOVE", "Expulso"],
-  Esc_Popup_Exit: ["STR_TBL_BATTLEGUI_EXIT_TEXT", "Sair"],
-  Esc_Popup_Cancel: ["STR_TBL_BATTLEGUI_CANCEL_TEXT", "Cancelar"],
+  Esc_Popup_Exit: ["STR_TBL_BATTLEGUI_EXIT_TEXT", "Exit"],
+  Esc_Popup_Cancel: ["STR_TBL_BATTLEGUI_CANCEL_TEXT", "Cancel"],
 };
 /** rows top to bottom (the file's own y: 50 + 32 per row) */
 const ROWS = ["Esc_Popup_Option", "Esc_Popup_Report", "Esc_Popup_ForciblyRemove", "Esc_Popup_Exit", "Esc_Popup_Cancel"];

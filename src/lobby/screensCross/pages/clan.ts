@@ -21,7 +21,7 @@ import { BATTLE_TEXTS, ClanBattle } from "./clanBattle.ts";
 /** Settings.ini (MinCreateRank / MinCreateGold), the create rule of socialHandlers.ts:644 */
 const MIN_CREATE_RANK = 15, MIN_CREATE_GOLD = 25000;
 /** [INFERIDO] text of clanCreateGuideValue: the exe's guide text is not decoded; the numbers are the server's rule */
-const CREATE_GUIDE = `Para criar um clã é preciso ter nível ${MIN_CREATE_RANK} ou mais e ${MIN_CREATE_GOLD.toLocaleString("pt-BR")} de gold.`;
+const CREATE_GUIDE = `To create a clan you need level ${MIN_CREATE_RANK} or higher and ${MIN_CREATE_GOLD.toLocaleString("en-US")} gold.`;
 const WINDOWS = ["ClanNonMemberWin", "ClanMemberWin"];
 const POPUPS = ["clanCreatePopup", "clanInputInfoPopup", "clanSubscriptionPopup", "clanSubscriberInfoPopup"];
 /** the panels of the two windows (children of the full-design root): the ones that take the pointer */
@@ -33,68 +33,68 @@ type Sub = "writing" | "member" | "subscription" | "others";
 const TEXTS: Texts = {
   ...BATTLE_TEXTS,
   // ClanMemberWin: my clan (clanMyClanWin)
-  clanMyClanCaption: ["STBL_IDX_CLAN_MY_CLAN", "Meu clã"],
-  clanMyClanNameStatic: ["STBL_IDX_CLAN_NAME", "Nome do clã :"], clanMyClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Membros :"],
-  clanMyClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"], clanMyClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Líder"],
-  clanMyClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experiência:"], clanMyClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Nível :"],
-  clanMyClanAddressStatic: ["STBL_IDX_CLAN_AZIT", "Fórum :"], clanMyClanPointStatic: ["STBL_IDX_CLAN_POINT", "Pts. de Clã :"],
+  clanMyClanCaption: ["STBL_IDX_CLAN_MY_CLAN", "My clan"],
+  clanMyClanNameStatic: ["STBL_IDX_CLAN_NAME", "Clan name :"], clanMyClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Members :"],
+  clanMyClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"], clanMyClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Leader"],
+  clanMyClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experience:"], clanMyClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Level :"],
+  clanMyClanAddressStatic: ["STBL_IDX_CLAN_AZIT", "Forum :"], clanMyClanPointStatic: ["STBL_IDX_CLAN_POINT", "Clan Pts. :"],
   // ClanMemberWin: management window (clanManagementWin)
-  clanManagementCaption: ["STBL_IDX_CLAN_INFORMATION", "Informações do Clã"],
-  clanInfoMember: ["STBL_IDX_CLAN_MEMBER", "Membros do clã"], clanInfoSecession: ["STBL_IDX_CLAN_SECESSION", "Abandonar clã"],
-  clanMemberListStatic: ["STBL_IDX_CLAN_MEMBER_LIST", "Lista de membros do clã"],
-  clanMemberListHeadClass: ["STBL_IDX_CLAN_MEMBER_LEVEL", "Nível"], clanMemberListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"],
+  clanManagementCaption: ["STBL_IDX_CLAN_INFORMATION", "Clan info"],
+  clanInfoMember: ["STBL_IDX_CLAN_MEMBER", "Clan members"], clanInfoSecession: ["STBL_IDX_CLAN_SECESSION", "Leave clan"],
+  clanMemberListStatic: ["STBL_IDX_CLAN_MEMBER_LIST", "Clan member list"],
+  clanMemberListHeadClass: ["STBL_IDX_CLAN_MEMBER_LEVEL", "Level"], clanMemberListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"],
   clanMemberListHeadState: ["STBL_IDX_CLAN_MEMBER_STATE", "Estado"],
   clanManagementWritingBoard: ["STBL_IDX_CLAN_MANAGEMENT_WRITING_BOARD", "Administrar posts"],
-  clanManagementMember: ["STBL_IDX_CLAN_MANAGEMENT_MEMBER", "Administrar membros do clã"],
+  clanManagementMember: ["STBL_IDX_CLAN_MANAGEMENT_MEMBER", "Manage clan members"],
   clanManagementSubscription: ["STBL_IDX_CLAN_MANAGEMENT_SUBSCRIPTION", "Administrar alistamentos"],
   clanManagementOthers: ["STBL_IDX_CLAN_MANAGEMENT_OTHERS", "Administrar outros"],
-  clanManagementWritingBoardNoticeStatic: ["STBL_IDX_CLAN_MODIFY_NOTICE", "Alterar notícia"],
-  clanManagementWritingBoardGuideStatic: ["STBL_IDX_CLAN_MODIFY_GUIDE", "Alterar informação do clã"],
+  clanManagementWritingBoardNoticeStatic: ["STBL_IDX_CLAN_MODIFY_NOTICE", "Change notice"],
+  clanManagementWritingBoardGuideStatic: ["STBL_IDX_CLAN_MODIFY_GUIDE", "Change clan info"],
   clanManagementWritingBoardNoticeModify: ["STBL_IDX_CLAN_MODIFY_OK", "Alterar"], clanManagementWritingBoardGuideModify: ["STBL_IDX_CLAN_MODIFY_OK", "Alterar"],
-  clanManagementMemberStatic: ["STBL_IDX_CLAN_MEMBER_LIST", "Lista de membros do clã"],
-  clanManagementListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"], clanManagementListHeadClass: ["STBL_IDX_CLAN_MEMBER_LEVEL", "Nível"],
-  clanManagementListHeadDay: ["STBL_IDX_CLAN_MEMBER_JOIN_DATE", "Data de cadastro"],
-  clanManagementInstructionStatic: ["STBL_IDX_CLAN_SELECTED_MEMBER", "Membros selecionados"], clanManagementInstructionCombo: ["STBL_IDX_CLAN_CHOOSING", "Selecionar"],
-  clanManagementSubscriptionStatic: ["STBL_IDX_CLAN_SUBSCRIBER_LIST", "Aplicações"],
-  clanSubscriptionListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"], clanSubscriptionListHeadDay: ["STBL_IDX_CLAN_MEMBER_REQUEST_DATE", "Data de pedido"],
-  clanSubscriptionInstructionStatic: ["STBL_IDX_CLAN_SELECTED_USER", "Selecionado"], clanSubscriptionInstructionCombo: ["STBL_IDX_CLAN_CHOOSING", "Selecionar"],
-  clanManagementOthersDissolutionStatic: ["STBL_IDX_CLAN_DISSOLUTION_STATIC", "Terminar clã"],
-  clanManagementOthersChangeClanMarkStatic: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Trocar emblema"],
-  clanManagementOthersChangeClanMarkButton: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Trocar emblema"],
-  clanManagementOthersDissolutionButton: ["STBL_IDX_CLAN_DISSOLUTION", "Excluir todo o clã"],
+  clanManagementMemberStatic: ["STBL_IDX_CLAN_MEMBER_LIST", "Clan member list"],
+  clanManagementListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"], clanManagementListHeadClass: ["STBL_IDX_CLAN_MEMBER_LEVEL", "Level"],
+  clanManagementListHeadDay: ["STBL_IDX_CLAN_MEMBER_JOIN_DATE", "Join date"],
+  clanManagementInstructionStatic: ["STBL_IDX_CLAN_SELECTED_MEMBER", "Selected members"], clanManagementInstructionCombo: ["STBL_IDX_CLAN_CHOOSING", "Select"],
+  clanManagementSubscriptionStatic: ["STBL_IDX_CLAN_SUBSCRIBER_LIST", "Applications"],
+  clanSubscriptionListHeadNick: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"], clanSubscriptionListHeadDay: ["STBL_IDX_CLAN_MEMBER_REQUEST_DATE", "Request date"],
+  clanSubscriptionInstructionStatic: ["STBL_IDX_CLAN_SELECTED_USER", "Selecionado"], clanSubscriptionInstructionCombo: ["STBL_IDX_CLAN_CHOOSING", "Select"],
+  clanManagementOthersDissolutionStatic: ["STBL_IDX_CLAN_DISSOLUTION_STATIC", "Disband clan"],
+  clanManagementOthersChangeClanMarkStatic: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Change mark"],
+  clanManagementOthersChangeClanMarkButton: ["STBL_IDX_CLAN_CHANGE_CLAN_MARK", "Change mark"],
+  clanManagementOthersDissolutionButton: ["STBL_IDX_CLAN_DISSOLUTION", "Delete entire clan"],
   // search (member tab) and no-clan window: the same rows, the search's own control names
-  clanSearchClanSearchStatic: ["STBL_IDX_CLAN_BATTLE_SEARCHING", "Procurar clã"],
-  clanSearchClanNameStatic: ["STBL_IDX_CLAN_NAME", "Nome do clã :"], clanSearchClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Membros :"],
-  clanSearchClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Líder"], clanSearchClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"],
-  clanSearchClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experiência:"], clanSearchClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Nível :"],
-  clanSearchAddressStatic: ["STBL_IDX_CLAN_AZIT", "Fórum :"],
+  clanSearchClanSearchStatic: ["STBL_IDX_CLAN_BATTLE_SEARCHING", "Search clan"],
+  clanSearchClanNameStatic: ["STBL_IDX_CLAN_NAME", "Clan name :"], clanSearchClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Members :"],
+  clanSearchClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Leader"], clanSearchClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"],
+  clanSearchClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experience:"], clanSearchClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Level :"],
+  clanSearchAddressStatic: ["STBL_IDX_CLAN_AZIT", "Forum :"],
   clanSearchClanListViewAll: ["STBL_IDX_CLAN_VIEW_ALL", "Ver todos"],
-  clanSearchClanListHeadRank: ["STBL_IDX_CLAN_HEADER_RANK", "Nível"], clanSearchClanListHeadName: ["STBL_IDX_CLAN_HEADER_NAME", "Nome do clã"],
-  clanSearchClanListHeadDate: ["STBL_IDX_CLAN_HEADER_ENTRY", "Data de criação"], clanSearchClanListHeadMember: ["STBL_IDX_CLAN_HEADER_PERSON", "Membros"],
-  clanNonMemberCaption: ["STBL_IDX_CLAN_FINDING", "Procurar clã"], clanNonMemberSearchStatic: ["STBL_IDX_CLAN_SEARCHING", "Procurar clã por nome"],
-  clanNonMemberClanSubscription: ["STBL_IDX_CLAN_JOINING", "Aliste-se"], clanNonMemberClanCreate: ["STBL_IDX_CLAN_CREATING", "Criar clã"],
-  clanNonMemberClanNameStatic: ["STBL_IDX_CLAN_NAME", "Nome do clã :"], clanNonMemberClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Membros :"],
-  clanNonMemberClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Líder"], clanNonMemberClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"],
-  clanNonMemberClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experiência:"], clanNonMemberClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Nível :"],
-  clanNonMemberAddressStatic: ["STBL_IDX_CLAN_AZIT", "Fórum :"],
-  clanClanListCaption: ["STBL_IDX_CLAN_CLAN", "Clã"], clanClanListViewAll: ["STBL_IDX_CLAN_VIEW_ALL", "Ver todos"],
-  clanClanListHeadRank: ["STBL_IDX_CLAN_HEADER_RANK", "Nível"], clanClanListHeadClanName: ["STBL_IDX_CLAN_HEADER_NAME", "Nome do clã"],
-  clanClanListHeadEntryDay: ["STBL_IDX_CLAN_HEADER_ENTRY", "Data de criação"], clanClanListHeadEntryMember: ["STBL_IDX_CLAN_HEADER_PERSON", "Membros"],
-  clanUserListHeadTitle: ["STBL_IDX_CLAN_HEADER_USER_LIST", "Lista de usuários conectados"],
+  clanSearchClanListHeadRank: ["STBL_IDX_CLAN_HEADER_RANK", "Level"], clanSearchClanListHeadName: ["STBL_IDX_CLAN_HEADER_NAME", "Clan name"],
+  clanSearchClanListHeadDate: ["STBL_IDX_CLAN_HEADER_ENTRY", "Created on"], clanSearchClanListHeadMember: ["STBL_IDX_CLAN_HEADER_PERSON", "Members"],
+  clanNonMemberCaption: ["STBL_IDX_CLAN_FINDING", "Search clan"], clanNonMemberSearchStatic: ["STBL_IDX_CLAN_SEARCHING", "Search clan by name"],
+  clanNonMemberClanSubscription: ["STBL_IDX_CLAN_JOINING", "Aliste-se"], clanNonMemberClanCreate: ["STBL_IDX_CLAN_CREATING", "Create clan"],
+  clanNonMemberClanNameStatic: ["STBL_IDX_CLAN_NAME", "Clan name :"], clanNonMemberClanStaffStatic: ["STBL_IDX_CLAN_PERSON", "Members :"],
+  clanNonMemberClanMasterStatic: ["STBL_IDX_CLAN_MASTER", "Leader"], clanNonMemberClanRankStatic: ["STBL_IDX_CLAN_RANK", "Classe :"],
+  clanNonMemberClanExpStatic: ["STBL_IDX_CLAN_EXP", "Experience:"], clanNonMemberClanOrderStatic: ["STBL_IDX_CLAN_ORDER", "Level :"],
+  clanNonMemberAddressStatic: ["STBL_IDX_CLAN_AZIT", "Forum :"],
+  clanClanListCaption: ["STBL_IDX_CLAN_CLAN", "Clan"], clanClanListViewAll: ["STBL_IDX_CLAN_VIEW_ALL", "Ver todos"],
+  clanClanListHeadRank: ["STBL_IDX_CLAN_HEADER_RANK", "Level"], clanClanListHeadClanName: ["STBL_IDX_CLAN_HEADER_NAME", "Clan name"],
+  clanClanListHeadEntryDay: ["STBL_IDX_CLAN_HEADER_ENTRY", "Created on"], clanClanListHeadEntryMember: ["STBL_IDX_CLAN_HEADER_PERSON", "Members"],
+  clanUserListHeadTitle: ["STBL_IDX_CLAN_HEADER_USER_LIST", "Online users"],
 };
 
 /** popups (UI_Project_Popup): caption / label / button texts */
 const POP_TEXTS: Texts = {
-  clanCreateCaption: ["STBL_IDX_CLAN_CREATING", "Criar clã"], clanCreateOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"], clanCreateCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"],
-  clanInputInfoCaption: ["STBL_IDX_CLAN_CAPTION_INPUT_INFO", "Registração do Clã"], clanInputInfoOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"],
-  clanInputInfoCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"], clanInputInfoClanNameStatic: ["STBL_IDX_CLAN_HEADER_NAME", "Nome do clã"],
-  clanInputInfoClanNameGuideStatic: ["STBL_IDX_CLAN_INPUT_NAME_CONDITION", "(16 dígitos em Português)"],
-  clanInputInfoClanIntroduceStatic: ["STBL_IDX_CLAN_INPUT_GUIDE_CONDITION", "Apresentação do clã."],
-  clanSubscriptionPopupCaption: ["STBL_IDX_CLAN_CAPTION_SUBSCRIBER_NOTE", "Mensagem de cadastro do clã"], clanSubscriptionPopupOk: ["STBL_IDX_CLAN_SEND", "Enviar"],
-  clanSubscriptionPopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"], clanSubscriptionPopupMessageStatic: ["STBL_IDX_CLAN_SUBSCRIBER_NOTE_CONDITION", "Mensagem de pedido de cadastro"],
-  clanSubscriberInfoPopupCaption: ["STBL_IDX_CLAN_SUBSCRIBER_INFO", "Informações do pedido de cadastro"], clanSubscriberInfoPopupPrev: ["STBL_IDX_CLAN_PREV", "Anterior"],
-  clanSubscriberInfoPopupNext: ["STBL_IDX_CLAN_NEXT", "Próximo"], clanSubscriberInfoPopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"],
-  clanSubscriberInfoPopupMessageStatic: ["STBL_IDX_CLAN_SUBSCRIBER_NOTE", "Aplicações de Mensagem"], clanSubscriberInfoPopupNickStatic: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"],
+  clanCreateCaption: ["STBL_IDX_CLAN_CREATING", "Create clan"], clanCreateOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"], clanCreateCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"],
+  clanInputInfoCaption: ["STBL_IDX_CLAN_CAPTION_INPUT_INFO", "Clan registration"], clanInputInfoOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"],
+  clanInputInfoCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"], clanInputInfoClanNameStatic: ["STBL_IDX_CLAN_HEADER_NAME", "Clan name"],
+  clanInputInfoClanNameGuideStatic: ["STBL_IDX_CLAN_INPUT_NAME_CONDITION", "(16 characters max)"],
+  clanInputInfoClanIntroduceStatic: ["STBL_IDX_CLAN_INPUT_GUIDE_CONDITION", "Clan introduction."],
+  clanSubscriptionPopupCaption: ["STBL_IDX_CLAN_CAPTION_SUBSCRIBER_NOTE", "Clan application message"], clanSubscriptionPopupOk: ["STBL_IDX_CLAN_SEND", "Send"],
+  clanSubscriptionPopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"], clanSubscriptionPopupMessageStatic: ["STBL_IDX_CLAN_SUBSCRIBER_NOTE_CONDITION", "Application message"],
+  clanSubscriberInfoPopupCaption: ["STBL_IDX_CLAN_SUBSCRIBER_INFO", "Application info"], clanSubscriberInfoPopupPrev: ["STBL_IDX_CLAN_PREV", "Anterior"],
+  clanSubscriberInfoPopupNext: ["STBL_IDX_CLAN_NEXT", "Next"], clanSubscriberInfoPopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"],
+  clanSubscriberInfoPopupMessageStatic: ["STBL_IDX_CLAN_SUBSCRIBER_NOTE", "Application messages"], clanSubscriberInfoPopupNickStatic: ["STBL_IDX_CLAN_MEMBER_NAME", "Nick"],
 };
 
 /** window controls with no web equivalent: chat, emblem, rename, forum address, rules, history, battle, bars */
@@ -212,7 +212,7 @@ export class ClanPage {
     // no clan: create / join; the user tab is not ready (the exe's)
     this.button(g, "clanNonMemberClanCreate", () => this.openPopup("guide"));
     this.button(g, "clanNonMemberClanSubscription", () => this.joinButton());
-    this.button(g, "clanUserListTab", () => this.say(this.str("STBL_IDX_CLAN_PREPARE_PLAN", "Em preparação")));
+    this.button(g, "clanUserListTab", () => this.say(this.str("STBL_IDX_CLAN_PREPARE_PLAN", "Coming soon")));
     // member: tabs
     this.button(g, "clanInfoTab", () => this.setTab("info"));
     this.button(g, "clanBattleTab", () => this.setTab("battle"));
@@ -279,7 +279,7 @@ export class ClanPage {
     // (deferred: say() and the back click redraw, and a redraw inside paint would come back here; visible keeps it to one back click)
     if (!this.api()) {
       this.visible = true;
-      queueMicrotask(() => { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_WAIT", "Aguarde um momento.")); this.close(); });
+      queueMicrotask(() => { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_WAIT", "Please wait.")); this.close(); });
       return;
     }
     this.visible = true;
@@ -407,7 +407,7 @@ export class ClanPage {
       return;
     }
     const id = this.outside.pickedId;
-    if (!id) { this.say(this.str("STBL_IDX_CLAN_CHOOSE_CLAN", "Por favor, escolha um clã para entrar.")); return; }
+    if (!id) { this.say(this.str("STBL_IDX_CLAN_CHOOSE_CLAN", "Please choose a clan to join.")); return; }
     this.memo = id;
     this.openPopup("memo");
   }
@@ -418,7 +418,7 @@ export class ClanPage {
     this.busy = true;
     try {
       const r = await c.cancelJoin();
-      if (r.ok) { this.pending = 0; this.say(this.str("STBL_IDX_CLAN_CAPTION_CANCEL_REQUEST_SUCCESS", "Cancelamento de pedido de cadastro realizado.")); }
+      if (r.ok) { this.pending = 0; this.say(this.str("STBL_IDX_CLAN_CAPTION_CANCEL_REQUEST_SUCCESS", "Application cancelled.")); }
       else this.say(this.str(...failText("cancelJoin", r.err)));
     } catch (e) { console.warn("[cross] clan cancel", e); this.say(this.str(...failText("cancelJoin", 0))); }
     finally { this.busy = false; this.draw(); }
@@ -435,7 +435,7 @@ export class ClanPage {
       if (r.ok) {
         this.pending = this.memo;
         this.openPopup(null);
-        this.say(this.str("STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_SUCCESS", "O cadastro do clã foi realizado com sucesso."));
+        this.say(this.str("STBL_IDX_CLAN_CAPTION_SUBSCRIPTION_SUCCESS", "Clan registration successful."));
       } else this.say(this.str(...failText("join", r.err)));
     } catch (e) { console.warn("[cross] clan join", e); this.say(this.str(...failText("join", 0))); }
     finally { this.busy = false; this.draw(); }
@@ -443,7 +443,7 @@ export class ClanPage {
 
   /** name popup OK: the name is checked here, then the emblem picker; its OK sends the create (806) */
   private nameNext(): void {
-    if (!(this.nameBox?.value ?? "").trim()) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_INPUT_NAME", "Digite o nome do clã.")); return; }
+    if (!(this.nameBox?.value ?? "").trim()) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_INPUT_NAME", "Enter the clan name.")); return; }
     this.openPopup(null);
     void clanMarkPicker(this.ctx).then((p) => p.show("create", null, this.markHooks((logo) => void this.create(logo))));
   }
@@ -470,7 +470,7 @@ export class ClanPage {
     const s = this.ctx.ctl.session;
     if (!s) return;
     const item = clanMarkItem(s);
-    if (!item) { this.say(this.str("STBL_IDX_CLAN_CHANGE_CLAN_MARK_NEED_ITEM", "Você precisa do item de troca de emblema.")); return; }
+    if (!item) { this.say(this.str("STBL_IDX_CLAN_CHANGE_CLAN_MARK_NEED_ITEM", "You need the clan mark change item.")); return; }
     const err = await applyClanMark(s, item, logo);
     if (err) { this.say(err); return; }
     if (this.detail) this.detail.logo = logo;
@@ -486,7 +486,7 @@ export class ClanPage {
     const c = this.api();
     if (!c || this.busy) return;
     const name = (this.nameBox?.value ?? "").trim(), intro = this.introBox?.value ?? "";
-    if (!name) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_INPUT_NAME", "Digite o nome do clã.")); return; }
+    if (!name) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_PLEASE_INPUT_NAME", "Enter the clan name.")); return; }
     this.busy = true;
     try {
       const r = await c.create(name, intro, logo);
@@ -497,7 +497,7 @@ export class ClanPage {
       this.outside.reset();
       this.syncProfile(r.data.id, CLAN_ACCESS.LEADER, r.data.name);
       await this.loadMine(c);
-      this.say(this.str("STBL_IDX_CLAN_CAPTION_COMPLETE_CREATING", "Clã criado!"));
+      this.say(this.str("STBL_IDX_CLAN_CAPTION_COMPLETE_CREATING", "Clan created!"));
     } catch (e) {
       // timeout / socket error (a duplicate name gets 807 0x8000105a: failText above)
       console.warn("[cross] clan create", e);
@@ -508,7 +508,7 @@ export class ClanPage {
   // ---- member window ----
 
   private setTab(t: Tab): void {
-    if (t === "management" && !canManage(this.access)) { this.say(this.str("STBL_IDX_CLAN_REQUIRE_MASTER_OR_STAFF", "Necessita de autoridade do Líder ou Auxiliar.")); return; }
+    if (t === "management" && !canManage(this.access)) { this.say(this.str("STBL_IDX_CLAN_REQUIRE_MASTER_OR_STAFF", "Requires Leader or Staff permission.")); return; }
     this.tab = t;
     if (t === "search") { this.search.reset(); void this.search.loadNext(); }
     if (t === "battle") this.battle.enter();
@@ -516,7 +516,7 @@ export class ClanPage {
   }
 
   private setSub(s: Sub): void {
-    if (s === "others" && !isLeader(this.access)) { this.say(this.str("STBL_IDX_CLAN_REQUIRE_MASTER", "Apenas o Líder pode alterar.")); return; }
+    if (s === "others" && !isLeader(this.access)) { this.say(this.str("STBL_IDX_CLAN_REQUIRE_MASTER", "Only the leader can change this.")); return; }
     this.sub = s;
     this.tab = "management";
     if (s === "writing" && this.detail) {
@@ -542,7 +542,7 @@ export class ClanPage {
 
   private askSecede(): void {
     if (!this.clanId) return;
-    this.confirm(this.str("STBL_IDX_CLAN_MESSAGE_SECESSION_Q", "Deseja sair do clã?"), () => void this.secede());
+    this.confirm(this.str("STBL_IDX_CLAN_MESSAGE_SECESSION_Q", "Leave the clan?"), () => void this.secede());
   }
 
   /** 828: a member leaves; the owner cannot (the server answers 0x8000105e) */
@@ -552,7 +552,7 @@ export class ClanPage {
     this.busy = true;
     try {
       const r = await c.secede();
-      if (r.ok) { this.clanLost(); this.say(this.str("STBL_IDX_CLAN_CAPTION_SECESSION_SUCCESS", "Sucesso ao sair do clã.")); void this.refresh(); }
+      if (r.ok) { this.clanLost(); this.say(this.str("STBL_IDX_CLAN_CAPTION_SECESSION_SUCCESS", "You left the clan.")); void this.refresh(); }
       else this.say(this.str(...failText("secede", r.err)));
     } catch (e) { console.warn("[cross] clan secede", e); this.say(this.str(...failText("secede", 0))); }
     finally { this.busy = false; this.draw(); }
@@ -560,7 +560,7 @@ export class ClanPage {
 
   private askDissolve(): void {
     if (!isLeader(this.access)) return;
-    this.confirm(this.str("STBL_IDX_CLAN_MESSAGE_DISSOLUTION_Q", "Tem certeza que deseja excluir o clã?"), () => void this.dissolve());
+    this.confirm(this.str("STBL_IDX_CLAN_MESSAGE_DISSOLUTION_Q", "Are you sure you want to delete the clan?"), () => void this.dissolve());
   }
 
   /** 808: the owner deletes the clan */
@@ -570,7 +570,7 @@ export class ClanPage {
     this.busy = true;
     try {
       const r = await c.close();
-      if (r.ok) { this.clanLost(); this.say(this.str("STBL_IDX_CLAN_CAPTION_DISSOLUTION_SUCCESS", "O clã foi desfeito.")); void this.refresh(); }
+      if (r.ok) { this.clanLost(); this.say(this.str("STBL_IDX_CLAN_CAPTION_DISSOLUTION_SUCCESS", "The clan has been disbanded.")); void this.refresh(); }
       else this.say(this.str(...failText("close", r.err)));
     } catch (e) { console.warn("[cross] clan close", e); this.say(this.str(...failText("close", 0))); }
     finally { this.busy = false; this.draw(); }
@@ -584,7 +584,7 @@ export class ClanPage {
     this.busy = true;
     try {
       const r = which === "notice" ? await c.replaceNotice(text) : await c.replaceIntro(text);
-      if (r.ok) { await this.loadMine(c); this.say(this.str("STBL_IDX_CLAN_CAPTION_MODIFY_SUCCESS", "Alteração realizada.")); }
+      if (r.ok) { await this.loadMine(c); this.say(this.str("STBL_IDX_CLAN_CAPTION_MODIFY_SUCCESS", "Changes saved.")); }
       else this.say(this.str(...failText(which, r.err)));
     } catch (e) { console.warn("[cross] clan text", e); this.say(this.str(...failText(which, 0))); }
     finally { this.busy = false; this.draw(); }
@@ -600,14 +600,14 @@ export class ClanPage {
     const c = this.api();
     if (!c || this.busy) return;
     const picked = this.members.filter((m) => this.checked.has(m.playerId.toString()) && m.access !== CLAN_ACCESS.LEADER && (a.id === "deport" || m.access === a.target));
-    if (!picked.length) { this.say(this.str("STBL_IDX_CLAN_SELECTED_MEMBER", "Selecione um membro.")); return; }
-    if (a.id === "master" && picked.length !== 1) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_COMMISSION_MASTER_ONLY", "Apenas o líder pode passar a liderança.")); return; }
+    if (!picked.length) { this.say(this.str("STBL_IDX_CLAN_SELECTED_MEMBER", "Select a member.")); return; }
+    if (a.id === "master" && picked.length !== 1) { this.say(this.str("STBL_IDX_CLAN_MESSAGE_COMMISSION_MASTER_ONLY", "Only the leader can hand over leadership.")); return; }
     const ids = picked.map((m) => m.playerId);
     this.busy = true;
     try {
       if (a.id === "master") {
         const r = await c.commissionMaster(ids[0]);
-        if (r.ok) { this.say(this.str("STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_SUCCESS", "A troca de dono do clã foi realizada com sucesso.")); await this.refresh(); }
+        if (r.ok) { this.say(this.str("STBL_IDX_CLAN_CAPTION_COMMISION_MASTER_SUCCESS", "Clan owner changed successfully.")); await this.refresh(); }
         else this.say(this.str(...failText("master", r.err)));
       } else {
         const r = a.id === "deport" ? await c.deport(ids) : a.id === "staff" ? await c.commissionStaff(ids) : await c.commissionRegular(ids);
@@ -623,7 +623,7 @@ export class ClanPage {
     const c = this.api();
     if (!c || this.busy) return;
     const ids = this.requests.filter((q) => this.reqChecked.has(q.playerId.toString())).map((q) => q.playerId);
-    if (!ids.length) { this.say(this.str("STBL_IDX_CLAN_SELECTED_USER", "Selecione um pedido.")); return; }
+    if (!ids.length) { this.say(this.str("STBL_IDX_CLAN_SELECTED_USER", "Select a request.")); return; }
     const op: ClanOp = accept ? "accept" : "deny";
     this.busy = true;
     try {
@@ -637,7 +637,7 @@ export class ClanPage {
   /** the request detail popup: Informações (the picked request), Prev / Next walk the list */
   private openRequest(): void {
     if (this.reqSel < 0) this.reqSel = this.requests.findIndex((q) => this.reqChecked.has(q.playerId.toString()));
-    if (this.reqSel < 0 || !this.requests[this.reqSel]) { this.say(this.str("STBL_IDX_CLAN_SELECTED_USER", "Selecione um pedido.")); return; }
+    if (this.reqSel < 0 || !this.requests[this.reqSel]) { this.say(this.str("STBL_IDX_CLAN_SELECTED_USER", "Select a request.")); return; }
     this.openPopup("request");
   }
 
@@ -694,7 +694,7 @@ export class ClanPage {
     g.show("clanClanListPhase", true);
     g.show("clanUserListPhase", false);
     this.outside.paint();
-    if (!this.outside.detail) g.setText("clanNonMemberClanIntroduceValue", this.str("STBL_IDX_CLAN_CHOOSE_CLAN_IN_LIST", "Selecione o clã da lista."));
+    if (!this.outside.detail) g.setText("clanNonMemberClanIntroduceValue", this.str("STBL_IDX_CLAN_CHOOSE_CLAN_IN_LIST", "Select a clan from the list."));
   }
 
   private paintMember(): void {
@@ -800,7 +800,7 @@ export class ClanPage {
       : [
         [this.str("STBL_IDX_CLAN_SUBSCRIBER_INTROMISSION", "Aceitar"), () => void this.requestAction(true)],
         [this.str("STBL_IDX_CLAN_SUBSCRIBER_REJECTION", "Rejeitar"), () => void this.requestAction(false)],
-        [this.str("STBL_IDX_CLAN_SUBSCRIBER_INFO", "Informações do pedido de cadastro"), () => this.openRequest()],
+        [this.str("STBL_IDX_CLAN_SUBSCRIBER_INFO", "Application info"), () => this.openRequest()],
       ];
     const el = box.el;
     el.innerHTML = "";

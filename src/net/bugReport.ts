@@ -68,8 +68,8 @@ export function buildBugMeta(extra?: BugContext): string {
 }
 
 const MESSAGES: Record<number, string> = {
-  [ERR_BUG_LIMIT]: "Limite de relatórios atingido (3 por hora). Tente mais tarde.",
-  [ERR_BUG_FAIL]: "Não foi possível enviar o relatório.",
+  [ERR_BUG_LIMIT]: "Report limit reached (3 per hour). Try again later.",
+  [ERR_BUG_FAIL]: "Could not send the report.",
 };
 
 export async function sendBugReport(text: string, extra?: BugContext): Promise<BugResult> {
@@ -83,7 +83,7 @@ export async function sendBugReport(text: string, extra?: BugContext): Promise<B
     conn.send(BUG_REQ, new PacketWriter(16 + (t.length + meta.length) * 2).writeH(t.length).writeU(t, t.length * 2).writeH(meta.length).writeU(meta, meta.length * 2));
     const r = await p;
     const err = r.readD() >>> 0, id = r.remaining >= 4 ? r.readD() : 0;
-    return err === 0 ? { ok: true, err, id, message: `Relatório #${id} enviado. Obrigado!` } : { ok: false, err, id: 0, message: MESSAGES[err] ?? MESSAGES[ERR_BUG_FAIL] };
+    return err === 0 ? { ok: true, err, id, message: `Report #${id} sent. Thank you!` } : { ok: false, err, id: 0, message: MESSAGES[err] ?? MESSAGES[ERR_BUG_FAIL] };
   } catch {
     return { ok: false, err: ERR_BUG_FAIL, id: 0, message: MESSAGES[ERR_BUG_FAIL] };
   }

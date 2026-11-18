@@ -677,7 +677,7 @@ export class RoomClient {
       r = await this.request(RoomOp.ROOM_CREATE_REQ, w, RoomOp.ROOM_CREATE_ACK, 2000).catch(() => null);
       if (!r && attempt < 2) await new Promise((res) => setTimeout(res, 2500));
     }
-    if (!r) throw new Error("CREATE_ROOM: sem resposta (servidor ignora < 4s após entrar/último create, já em sala ou sem nick)");
+    if (!r) throw new Error("CREATE_ROOM: no response (server ignores < 4s after joining/last create, already in a room or no nick)");
     const idOrErr = r.readD();
     if (r.remaining < 246) throw new GameError("CREATE_ROOM", idOrErr);
     this.room = parseRoomInfoBlock(r);
@@ -755,7 +755,7 @@ export class RoomClient {
    * mode, START_GAME follows when it ends); rejects on READYBATTLE_ACK error. */
   async start(timeoutMs = 15000): Promise<"game" | "countdown"> {
     return new Promise<"game" | "countdown">((resolve, reject) => {
-      const t = setTimeout(() => { off(); reject(new Error("READYBATTLE: partida não iniciou (sem START_GAME)")); }, timeoutMs);
+      const t = setTimeout(() => { off(); reject(new Error("READYBATTLE: match did not start (no START_GAME)")); }, timeoutMs);
       const off = this.game.conn.on((op, r) => {
         if (op === RoomOp.BATTLE_START_GAME_ACK || op === RoomOp.BATTLE_START_COUNTDOWN_ACK) {
           clearTimeout(t);
@@ -818,7 +818,7 @@ export class RoomClient {
     const w = new PacketWriter().writeC(room.mapId).writeC(room.rule).writeC(room.stage).writeC(room.roomType);
     // The leader also gets a 5130 for every guest's PRESTART (same layout, guest's slot): wait for ours.
     const r = await new Promise<PacketReader>((resolve, reject) => {
-      const t = setTimeout(() => { off(); reject(new Error("PRESTARTBATTLE: sem resposta")); }, 8000);
+      const t = setTimeout(() => { off(); reject(new Error("PRESTARTBATTLE: no response")); }, 8000);
       const off = this.game.conn.on((op, pr) => {
         if (op !== RoomOp.BATTLE_PRESTARTBATTLE_ACK) return;
         const at = pr.pos;
@@ -832,7 +832,7 @@ export class RoomClient {
       this.game.conn.send(RoomOp.BATTLE_PRESTARTBATTLE_REQ, w);
     });
     const ok = r.readD();
-    if (ok !== 1) throw new Error("PRESTARTBATTLE recusado (mapa/regra não conferem ou líder ainda não fez LOADING_START)");
+    if (ok !== 1) throw new Error("PRESTARTBATTLE refused (map/rule mismatch or leader has not sent LOADING_START yet)");
     const slot = r.readD();
     const udpType = r.readC();
     const ip = [...r.readB(4)].join(".");
@@ -857,7 +857,7 @@ export class RoomClient {
   async respawn(weaponsFlag = this.room?.weaponsFlag ?? 0x1ff, equip?: EquipPair[]): Promise<number> {
     const w = equip ? buildRespawnBody(equip, weaponsFlag) : new PacketWriter(160).zeros(7 * 8 + 8 + 10 * 8).writeH(weaponsFlag & 0xf).zeros(8);
     const ack = new Promise<number>((resolve, reject) => {
-      const t = setTimeout(() => { off(); reject(new Error("RESPAWN: sem RESPAWN_ACK")); }, 5000);
+      const t = setTimeout(() => { off(); reject(new Error("RESPAWN: no RESPAWN_ACK")); }, 5000);
       const off = this.game.conn.on((op, r) => {
         if (op !== RoomOp.BATTLE_RESPAWN_ACK) return;
         const slot = r.readD();

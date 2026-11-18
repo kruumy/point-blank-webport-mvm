@@ -92,7 +92,7 @@ export class MetaSession {
   }
 
   private need(): PbConnection {
-    if (!this.conn || !this.conn.isOpen) throw new MetaError("Sem conexão com o servidor de jogo.");
+    if (!this.conn || !this.conn.isOpen) throw new MetaError("No connection to the game server.");
     return this.conn;
   }
 
@@ -199,7 +199,7 @@ export class MetaSession {
     if (slot === null) return;
     return this.serial(async () => {
       const st = this.player.state;
-      if (!st.loadout) throw new MetaError("Loadout (3082) ainda não recebido.");
+      if (!st.loadout) throw new MetaError("Loadout (3082) not received yet.");
       // a TR/CT character always goes to its own team: the server sets chara_red/blue_side from the slot it is sent in
       if (slot === EquipSlot.Chara) return this.sendEquip(this.charaRequest(item.itemId, charaTeamOf(item.itemId) ?? side));
       await this.sendEquip(equipRequestFromLoadout(st.loadout, { [slot]: { itemId: item.itemId, objectId: item.objectId } }, st.charaInfo ?? undefined));
@@ -212,10 +212,10 @@ export class MetaSession {
    * valid for weapon slots (0-4) or Chara (8): the original always keeps one item equipped there.
    */
   unequip(slot: number): Promise<void> {
-    if (slot < EquipSlot.Head || slot > EquipSlot.Beret) throw new MetaError("Slot não pode ser desequipado.");
+    if (slot < EquipSlot.Head || slot > EquipSlot.Beret) throw new MetaError("Slot cannot be unequipped.");
     return this.serial(async () => {
       const st = this.player.state;
-      if (!st.loadout) throw new MetaError("Loadout (3082) ainda não recebido.");
+      if (!st.loadout) throw new MetaError("Loadout (3082) not received yet.");
       await this.sendEquip(equipRequestFromLoadout(st.loadout, { [slot]: { itemId: 0, objectId: 0 } }, st.charaInfo ?? undefined));
     });
   }
@@ -305,8 +305,8 @@ export class MetaSession {
 export function buyErrorText(code: number, currency: "gold" | "cash" = "gold"): string {
   switch (code >>> 0) {
     case 0x80001018: return currency === "cash" ? "Cash insuficiente." : "Gold insuficiente."; // STBL_IDX_COUPON_USE_FAIL_REASON_LIMIT_MONEY / STBL_IDX_CLAN_NO_POINT
-    case 0x80001017: return "Não é possível comprar este item "; // STR_SHOP_CANNOT_ITEM_BUYING
-    case 0x800010b9: return "Falha na compra (inventário cheio)"; // STBL_IDX_EP_SHOP_BUY_FAIL_CAPTION_E + [RECRIADO] reason
-    default: return `Falha na compra (0x${(code >>> 0).toString(16)})`; // STBL_IDX_EP_SHOP_BUY_FAIL_CAPTION_E
+    case 0x80001017: return "This item cannot be purchased "; // STR_SHOP_CANNOT_ITEM_BUYING
+    case 0x800010b9: return "Purchase failed (inventory full)"; // STBL_IDX_EP_SHOP_BUY_FAIL_CAPTION_E + [RECRIADO] reason
+    default: return `Purchase failed (0x${(code >>> 0).toString(16)})`; // STBL_IDX_EP_SHOP_BUY_FAIL_CAPTION_E
   }
 }

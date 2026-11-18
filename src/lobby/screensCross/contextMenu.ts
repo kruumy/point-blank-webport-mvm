@@ -27,15 +27,15 @@ export const CMC = {
 /** STR key + texto de reserva por comando (strings.json). */
 export const CMC_TEXT: Record<number, [key: string, fallback: string]> = {
   0: ["STR_TBL_GUI_ETC_CONTEXT_GIVE_MASTER", "Novo dono"],
-  1: ["STR_TBL_GUI_ETC_CONTEXT_FORCE_GET_AWAY", "Forçar saída"],
-  2: ["STR_TBL_GUI_ETC_CONTEXT_PERSONAL_INFO", "Informações pessoais"],
+  1: ["STR_TBL_GUI_ETC_CONTEXT_FORCE_GET_AWAY", "Force exit"],
+  2: ["STR_TBL_GUI_ETC_CONTEXT_PERSONAL_INFO", "Personal info"],
   3: ["STR_TBL_GUI_ETC_CONTEXT_WHISPER", "PM"],
   4: ["STR_TBL_GUI_ETC_CONTEXT_INVITE", "Convidar"],
   5: ["STR_TBL_GUI_ETC_CONTEXT_FIND_OUT", "Buscar"],
   6: ["STR_TBL_GUI_ETC_CONTEXT_ADD_FRIEND", "Adicionar amigo"],
   7: ["STR_TBL_GUI_ETC_CONTEXT_CUT_OFF", "Bloquear"],
-  8: ["STR_TBL_GUI_ETC_CONTEXT_CLAN_INVITE", "Convite do Clã"],
-  9: ["STR_TBL_GUI_ETC_CONTEXT_DETAIL_INFO", "Informações"],
+  8: ["STR_TBL_GUI_ETC_CONTEXT_CLAN_INVITE", "Clan invite"],
+  9: ["STR_TBL_GUI_ETC_CONTEXT_DETAIL_INFO", "Information"],
   10: ["STR_TBL_GUI_ETC_CONTEXT_VIEW_ITEM_INFO", "Espionar"],
 };
 

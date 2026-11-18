@@ -13,7 +13,7 @@
 //   server) and PB_VITE_HMR=0, which makes vite.config.ts set hmr:false + watch:null so editing src/
 //   does not full-reload the browser either. Restart-on-crash stays on. Reload = F5 / re-run.
 import { execFileSync, spawn } from 'node:child_process';
-import { watch } from 'node:fs';
+import { existsSync, rmSync, watch, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -77,7 +77,56 @@ async function waitPgReady(timeoutMs = 90000) {
   }
 }
 
+// PB_PG_BIN (a Postgres 16 bin folder) runs Postgres locally instead of Docker; data lives in PB_PG_DATA.
+const PG_BIN = process.env.PB_PG_BIN;
+const PG_DATA = resolve(process.env.PB_PG_DATA || resolve(root, 'db/pgdata'));
+const pgExe = (name) => resolve(PG_BIN, `${name}.exe`);
+
+async function startLocalPostgres() {
+  const user = process.env.PB_DB_USER || 'postgres';
+  const pass = process.env.PB_DB_PASS || 'postgres';
+  const name = process.env.PB_DB_NAME || 'pb';
+  const env = { ...process.env, PGPASSWORD: pass };
+  const fresh = !existsSync(resolve(PG_DATA, 'PG_VERSION'));
+  // there from initdb until 001_init.sql is in: a first load that failed is redone on the next start
+  const pending = resolve(PG_DATA, 'pb-init-pending');
+  if (fresh) {
+    console.log(color('sup', `[sup] initdb ${PG_DATA}`));
+    const pwFile = resolve(dirname(PG_DATA), '.pgpw');
+    writeFileSync(pwFile, pass);
+    try {
+      execFileSync(pgExe('initdb'), ['-D', PG_DATA, '-U', user, '--pwfile', pwFile, '-A', 'scram-sha-256', '-E', 'UTF8', '--locale=C'], { stdio: 'inherit' });
+    } finally { rmSync(pwFile, { force: true }); }
+    writeFileSync(pending, '');
+  }
+  // outside PGDATA: a crash recovery fsyncs the whole data folder and the open log file stalled it (sharing violation)
+  const log = resolve(dirname(PG_DATA), 'postgres.log');
+  if (pidOnPort(POSTGRES_PORT) === null) {
+    console.log(color('sup', `[sup] starting local postgres on 127.0.0.1:${POSTGRES_PORT} (log: ${log})...`));
+    // a windowless console of its own (windowsHide + no inherited stdio = CREATE_NO_WINDOW): in ours, closing the window
+    // also killed postgres' backends, which it takes for a crash (recovery mode on the next start)
+    execFileSync(pgExe('pg_ctl'), ['start', '-w', '-t', '300', '-D', PG_DATA, '-l', log, '-o', `-p ${POSTGRES_PORT} -h 127.0.0.1`], { stdio: 'ignore', windowsHide: true });
+  }
+  // already running (a recovery after a crash can take a while): the server must not connect before it accepts connections
+  for (let i = 0; ; i++) {
+    try { execFileSync(pgExe('pg_isready'), ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', user, '-d', 'postgres'], { stdio: 'ignore' }); break; } catch { /* not ready */ }
+    if (i === 0) console.log(color('sup', '[sup] waiting for postgres to accept connections...'));
+    if (i >= 300) { console.error(color('sup', `[sup] postgres not ready after 5 min; see ${log}`)); process.exit(1); }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (existsSync(pending)) {
+    const conn = ['-h', '127.0.0.1', '-p', String(POSTGRES_PORT), '-U', user];
+    execFileSync(pgExe('dropdb'), [...conn, '--if-exists', name], { stdio: 'inherit', env });
+    execFileSync(pgExe('createdb'), [...conn, name], { stdio: 'inherit', env });
+    console.log(color('sup', '[sup] loading db/init/001_init.sql...'));
+    execFileSync(pgExe('psql'), [...conn, '-d', name, '-q', '-v', 'ON_ERROR_STOP=1', '-f', resolve(dbDir, 'init/001_init.sql')], { stdio: 'inherit', env });
+    rmSync(pending, { force: true });
+  }
+  console.log(color('sup', '[sup] postgres up'));
+}
+
 async function startPostgres() {
+  if (PG_BIN) return startLocalPostgres();
   console.log(color('sup', '[sup] starting postgres (docker compose -p pbwebport up -d postgres)...'));
   try {
     execFileSync('docker', ['compose', '-p', 'pbwebport', '-f', 'docker-compose.yml', 'up', '-d', 'postgres'], {
@@ -148,6 +197,9 @@ async function main() {
     state.set(svc.name, { intentionalRestart: false });
     child.on('exit', (code, signal) => {
       if (shuttingDown) return;
+      // 0xC000013A: the console sent it Ctrl+C / close. Windows delivers that to each process in turn, so the children
+      // can die before our own SIGHUP arrives: restarting them here looped forever once the window was closed
+      if (code === 0xC000013A) { shutdown('SIGHUP'); return; }
       const st = state.get(svc.name);
       if (st.intentionalRestart) {
         console.log(color('sup', `[sup] ${svc.name} restarting (src change)`));
@@ -179,15 +231,24 @@ async function main() {
     }
   }
 
-  function shutdown() {
+  async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(color('sup', '\n[sup] shutting down...'));
-    for (const child of procs.values()) if (child.pid) killTree(child.pid);
+    // SIGHUP = the console window was closed: it has no screen left to write to
+    if (signal !== 'SIGHUP') {
+      console.log(color('sup', '\n[sup] shutting down...'));
+      for (const child of procs.values()) if (child.pid) killTree(child.pid);
+      if (PG_BIN) try { execFileSync(pgExe('pg_ctl'), ['stop', '-D', PG_DATA, '-m', 'fast'], { stdio: 'inherit' }); } catch {}
+      process.exit(0);
+    }
+    setTimeout(() => process.exit(0), 10000); // never outlive a stuck helper
+    // console programs started inside the closing console hang there: taskkill and pg_ctl get their own hidden one
+    const run = (cmd, args) => new Promise((done) => spawn(cmd, args, { detached: true, windowsHide: true, stdio: 'ignore' }).on('exit', done).on('error', done));
+    await Promise.all([...procs.values()].filter((c) => c.pid).map((c) => run('taskkill', ['/PID', String(c.pid), '/T', '/F'])));
+    if (PG_BIN) await run(pgExe('pg_ctl'), ['stop', '-D', PG_DATA, '-m', 'fast']);
     process.exit(0);
   }
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, shutdown);
 }
 
 main();

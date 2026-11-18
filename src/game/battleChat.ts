@@ -70,7 +70,7 @@ const HOLD_S = 0.3;
 
 /** header tabs in order: Todos / Time / Clã / PM (STR_TBL_CHAT_CHANNEL_TYPE_*; TAB_MODES in battleChatModel.ts) */
 const TAB_KEYS = ["ALL", "TEAM", "CLAN", "WHISPER"] as const;
-const TAB_FALLBACK = ["Todos", "Time", "Clã", "PM"];
+const TAB_FALLBACK = ["All", "Time", "Clan", "PM"];
 
 export interface BattleChatDeps {
   host: HTMLElement;
@@ -301,8 +301,8 @@ export class BattleChat {
       // exe 0x8c2970 calls 0x5222c0(0): the cursor shows so the arrows, the thumb and the tabs can be clicked
       if (document.pointerLockElement) document.exitPointerLock();
       const key = CHAT_KEYS.history[0].replace("Key", "");
-      this.system(`{col:${CHAT_COLORS.history.join(",")},255}${tOr("STBL_IDX_CHATMESSAGE_HISTORY_ENABLE1", "Histórico de conversa ativado.")}{/col}`);
-      this.system(`{col:${CHAT_COLORS.history.join(",")},255}'${key}'${tOr("STBL_IDX_CHATMESSAGE_HISTORY_ENABLE2", "Ativa e desativa histórico de conversa.")}{/col}`);
+      this.system(`{col:${CHAT_COLORS.history.join(",")},255}${tOr("STBL_IDX_CHATMESSAGE_HISTORY_ENABLE1", "Chat history enabled.")}{/col}`);
+      this.system(`{col:${CHAT_COLORS.history.join(",")},255}'${key}'${tOr("STBL_IDX_CHATMESSAGE_HISTORY_ENABLE2", "Toggles chat history.")}{/col}`);
     } else if (!this.openFlag) this.relock();
     this.dirty = true;
   }
@@ -344,21 +344,21 @@ export class BattleChat {
   private setMode(m: ChatMode): void {
     if (m === "clan" && !this.d.inClan()) {
       // 0xa4f7b8: no clan chat for a player outside a clan: the notice and back to general
-      this.system(tOr("STR_TBL_CHAT_INGAME_NOTICE_NO_JOIN_CLAN", "<Não está cadastrado em Clã>"));
+      this.system(tOr("STR_TBL_CHAT_INGAME_NOTICE_NO_JOIN_CLAN", "<Not registered in a clan>"));
       m = "all";
     }
     if (m === "whisper" && !this.d.chat.lastWhisper) {
       // no PM target yet (the last /pm or whisper received): the exe's notice, the channel stays
-      this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Não é possível enviar mensagem pessoal ao usuário."));
+      this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Cannot send a private message to this user."));
       return;
     }
     this.mode = m;
     this.field.style.color = modeColor(m);
     // combo text: STBL_IDX_CHAT_TARGET_ALL / _TEAM in the mode colour (0xa508e0); PM shows its target [INFERIDO: the exe's PM label]
     const label = m === "team" ? tOr("STBL_IDX_CHAT_TARGET_TEAM", "Equipe")
-      : m === "clan" ? tOr("STBL_IDX_CHAT_TARGET_CLAN", "Clã")
+      : m === "clan" ? tOr("STBL_IDX_CHAT_TARGET_CLAN", "Clan")
       : m === "whisper" ? this.d.chat.lastWhisper
-        : tOr("STBL_IDX_CHAT_TARGET_ALL", "Todos");
+        : tOr("STBL_IDX_CHAT_TARGET_ALL", "All");
     this.comboLabel.textContent = label;
     this.comboLabel.style.color = modeColor(m);
   }
@@ -388,11 +388,11 @@ export class BattleChat {
       case "clear": this.lines = []; this.aging.clear(); this.dirty = true; return;
       case "team": if (c.text) chat.send(ChatType.TEAM, c.text); else this.setMode("team"); return;
       case "reply":
-        if (!chat.lastWhisper) { this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Não é possível enviar mensagem pessoal ao usuário.")); return; }
+        if (!chat.lastWhisper) { this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Cannot send a private message to this user.")); return; }
         if (c.text) chat.whisper(chat.lastWhisper, c.text);
         return;
       case "whisper":
-        if (!c.nick || !c.text) { this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Não é possível enviar mensagem pessoal ao usuário.")); return; }
+        if (!c.nick || !c.text) { this.system(tOr("STR_TBL_CHAT_NOTICE_WARNING_WHISPER", "Cannot send a private message to this user.")); return; }
         chat.whisper(c.nick, c.text);
         return;
     }

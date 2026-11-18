@@ -14,6 +14,7 @@ import { registerAccount, loginAccount, AccountApiError } from "./accounts/accou
 import { isRateLimited } from "./accounts/rateLimit.ts";
 import { WsSocket } from "./wsSocket.ts";
 import { IpCap } from "./guard.ts";
+import { handleAdmin } from "./admin.ts";
 
 /** target name ("auth", "game1".."game3") -> session acceptor of that server */
 export type Acceptors = Record<string, (sock: net.Socket) => void>;
@@ -57,7 +58,7 @@ function setApiCors(req: http.IncomingMessage, res: http.ServerResponse): void {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
-async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
+export async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
@@ -73,7 +74,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   }
 }
 
-function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+export function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
 }
@@ -116,6 +117,7 @@ export async function startWebServer(acceptors: Acceptors, host = config.webHost
       res.end(JSON.stringify({ ok: true, targets: Object.keys(acceptors), live, signal: signalStats() }));
       return;
     }
+    if (handleAdmin(req, res, url)) return;
     if (url.pathname.startsWith("/api/")) {
       setApiCors(req, res);
       if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }

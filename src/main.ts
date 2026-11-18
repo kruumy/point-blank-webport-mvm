@@ -19,12 +19,17 @@ import { preloadMatch, type MatchSet } from "./game/matchPreload";
 import { warmScene } from "./render/warmup";
 import { TEST_EQUIPPED } from "./game/testLoadout";
 import { BOT_WEAPON } from "./game/weaponAdapter";
+import { DemoRecorder } from "./mvm/demo";
+import type { DemoNet } from "./mvm/demoNet";
+import { Theater } from "./mvm/theater";
 
 export interface StartGameOptions extends Pick<GameDeps, "net" | "localTeam" | "localName" | "localRank" | "match" | "onMatchEnd" | "respawnInventory" | "localChara" | "itemEffects" | "botCount" | "botSkill" | "botAllies" | "missions" | "missionPanel" | "clanMatch" | "stageType" | "room"> {
   /** Client map to load (default: ?map= / nstation). */
   map?: MapId;
   /** Net mode: "Sair da partida" button on the pause overlay. */
   onLeave?: (reason?: "away") => void;
+  /** [RECRIADO] movie theater: play this demo instead of a match (onLeave = the theater's Exit) */
+  theater?: DemoNet;
 }
 
 export interface GameHandle {
@@ -112,7 +117,7 @@ async function prepare(map: MapId | undefined, set: MatchSet): Promise<Prepared>
   await RAPIER.init();
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111318); // [NÃO CONFIRMADO] DX clear colour; the i3World sky scene is not exported yet
+  scene.background = new THREE.Color(0x111318); // [NÃO CONFIRMADO] DX clear colour; behind the sky (realLevel loadSky), and all there is on indoor maps
 
   const camera = new THREE.PerspectiveCamera(
     75,
@@ -244,24 +249,27 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
   const unsubBrightness = onSettings((s) => { renderer.domElement.style.filter = s.brightness === 50 ? "" : `brightness(${brightnessFactor(s)})`; });
 
   window.addEventListener("resize", () => {
+    if (theater?.busyRendering) return; // it puts the window's size back when done
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   }, { signal });
 
   const row = (k: string, t: string) => `<div class="ov-row"><span class="ov-key">${k}</span><span>${t}</span></div>`;
-  const kn = (a: keyof typeof PB_KEYS) => PB_KEYS[a][0].replace(/^(Key|Digit)/, "").replace(/(Left|Right)$/, "").replace("Control", "Ctrl").replace("Space", "Espaço");
+  const kn = (a: keyof typeof PB_KEYS) => PB_KEYS[a][0].replace(/^(Key|Digit)/, "").replace(/(Left|Right)$/, "").replace("Control", "Ctrl");
   blocker.innerHTML =
     `<div class="ov-panel"><div class="ov-logo"><img src="/assets/ui/cross/brand/logo.png" alt="Project Blackout" draggable="false"></div>` +
-    `<div class="ov-meta"><span>${MAP_LABELS[map]}</span><span class="ov-sep">·</span><span>${opts.match?.mode === "BOMB" ? "Bomba" : "Mata-mata"}</span></div>` +
-    `<button class="ov-play" type="button">Clique para jogar</button><div class="ov-controls">` +
-    `<div class="ov-group"><h3>Movimento</h3>${row("WASD", "Mover")}${row(kn("walk"), "Andar (silencioso)")}${row(kn("crouch"), "Agachar")}${row(kn("jump"), "Pular")}</div>` +
-    `<div class="ov-group"><h3>Combate</h3>${row("Bot. esq.", "Atirar")}${row("Bot. dir.", "Mirar")}${row(kn("reload"), "Recarregar")}${row(kn("drop"), "Largar arma")}</div>` +
-    `<div class="ov-group"><h3>Armas</h3>${row("1-5", "Selecionar")}${row("Roda", "Trocar")}${row(kn("lastWeapon"), "Última arma")}${row(kn("extension"), "Extensão (laser)")}</div>` +
-    `<div class="ov-group"><h3>Interface</h3>${row("Tab", "Placar")}${row("Esc", "Menu")}${row("Enter", "Chat")}${row(PB_KEYS.radio.map((c) => c.slice(3)).join(" "), "Rádio")}</div></div>` +
-    (opts.onLeave ? `<button id="pbleave" class="ov-leave" type="button">Sair da partida</button>` : "") + `</div>`;
-  blocker.classList.remove("hidden");
+    `<div class="ov-meta"><span>${MAP_LABELS[map]}</span><span class="ov-sep">·</span><span>${opts.match?.mode === "BOMB" ? "Bomb Mission" : "Deathmatch"}</span></div>` +
+    `<button class="ov-play" type="button">Click to play</button><div class="ov-controls">` +
+    `<div class="ov-group"><h3>Movement</h3>${row("WASD", "Move")}${row(kn("walk"), "Walk (silent)")}${row(kn("crouch"), "Crouch")}${row(kn("jump"), "Jump")}</div>` +
+    `<div class="ov-group"><h3>Combat</h3>${row("L. mouse", "Fire")}${row("R. mouse", "Aim")}${row(kn("reload"), "Reload")}${row(kn("drop"), "Drop weapon")}</div>` +
+    `<div class="ov-group"><h3>Weapons</h3>${row("1-5", "Select")}${row("Wheel", "Switch")}${row(kn("lastWeapon"), "Last weapon")}${row(kn("extension"), "Extension (laser)")}</div>` +
+    `<div class="ov-group"><h3>Interface</h3>${row("Tab", "Scoreboard")}${row("Esc", "Menu")}${row("Enter", "Chat")}${row(PB_KEYS.radio.map((c) => c.slice(3)).join(" "), "Radio")}</div></div>` +
+    (opts.onLeave ? `<button id="pbleave" class="ov-leave" type="button">Leave match</button>` : "") + `</div>`;
+  blocker.classList.toggle("hidden", !!opts.theater);
 
+  // [RECRIADO] every match is recorded for the theater (dev server only: it stores the file, scripts/mvm-server.ts)
+  const recorder = import.meta.env.DEV && !opts.theater ? new DemoRecorder({ map, mode: opts.match?.mode ?? "DM", pov: opts.net?.localId ?? "local" }) : undefined;
   const input = new Input(document.body);
   const game = await Game.create({
     scene,
@@ -272,11 +280,14 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
     levelName,
     levelSpawn: level.spawn,
     collisionJsonUrl: AssetPaths.collisionJson,
-    net: opts.net,
+    net: opts.theater ?? opts.net,
+    recorder,
+    theater: !!opts.theater,
     localTeam: opts.localTeam,
     localName: opts.localName,
     localRank: opts.localRank,
-    match: opts.match,
+    // the theater's clock is the demo's: no kill / time limit ends it
+    match: opts.theater ? { killLimit: 0, timeLimit: 1e9, endScreen: Infinity } : opts.match,
     onMatchEnd: opts.onMatchEnd,
     onLeave: opts.onLeave,
     respawnInventory: opts.respawnInventory,
@@ -310,7 +321,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
       opts.onLeave?.();
       return;
     }
-    if (game.finalOn) return; // end-of-match screen: the mouse stays free for the leave button
+    if (game.finalOn || opts.theater) return; // end-of-match screen: the mouse stays free for the leave button; the theater never locks
     if (document.pointerLockElement !== document.body) void lockPointer();
   }, { signal });
 
@@ -323,10 +334,22 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
   let raf = 0;
   let lastStep = performance.now(); // last simulated frame (rAF or the hidden-tab timer below)
   let lastCpu = 0; // ms of JS this frame (update + step + render submit), read by dynTick on the next frame
+  const theater = opts.theater ? new Theater(opts.theater, {
+    game, renderer, camera,
+    simulate(dt) {
+      world.timestep = dt;
+      game.update(dt, dt);
+      if (dt > 0) world.step(); // paused: ragdolls hold their pose
+    },
+    render: () => renderer.render(scene, camera),
+    exit: () => opts.onLeave?.(),
+  }) : null;
+
   function animate() {
     raf = requestAnimationFrame(animate);
     lastStep = performance.now();
     const raw = clock.getDelta();
+    if (theater) { theater.frame(raw); return; }
     const dt = Math.min(raw, 0.05);
     dynTick(raw, lastCpu);
 
@@ -354,7 +377,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
     game.update(dt, raw);
     world.step();
   };
-  const bg = setInterval(() => { if (document.hidden && performance.now() - lastStep > 400) { lastStep = performance.now(); stepOnly(); } }, 250);
+  const bg = setInterval(() => { if (!theater && document.hidden && performance.now() - lastStep > 400) { lastStep = performance.now(); stepOnly(); } }, 250);
 
   let stopped = false;
   let successor: GameHandle | null = null; // set by __pbRestart: the caller's (boot.ts) handle then stops the new match too
@@ -365,6 +388,8 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
       if (stopped) { successor?.stop(); return; }
       stopped = true;
       cancelAnimationFrame(raf);
+      theater?.dispose();
+      recorder?.save().catch((e) => console.warn("[mvm] demo not saved", e));
       clearInterval(bg);
       unsubRes();
       unsubBrightness();

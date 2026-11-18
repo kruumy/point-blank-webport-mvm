@@ -28,10 +28,10 @@ const hex = (code: number): string => `0x${(code >>> 0).toString(16)}`;
 
 // ---- PB Inspector (1600085): a room slot picked in a dialog, then the slot's equipment in the message box [RECRIADO]
 
-const SLOT_LABELS: [keyof Omit<InspectorEquip, "blocks">, string][] = [["accessory", "Acessório"], ["dino", "Dino"], ["spray", "Spray"], ["nameCard", "Cartão de nome"]];
+const SLOT_LABELS: [keyof Omit<InspectorEquip, "blocks">, string][] = [["accessory", "Accessory"], ["dino", "Dino"], ["spray", "Spray"], ["nameCard", "Name card"]];
 const BLOCK_LABELS: [number, string][] = [
-  [0, "Arma primária"], [1, "Arma secundária"], [2, "Faca"], [3, "Granada"], [4, "Arma especial"], [8, "Personagem"],
-  [9, "Cabeça"], [10, "Rosto"], [11, "Jaqueta"], [12, "Bolso"], [13, "Luva"], [14, "Cinto"], [15, "Coldre"], [16, "Pele"], [17, "Boina"],
+  [0, "Primary weapon"], [1, "Secondary weapon"], [2, "Knife"], [3, "Grenade"], [4, "Special weapon"], [8, "Personagem"],
+  [9, "Head"], [10, "Rosto"], [11, "Jaqueta"], [12, "Bolso"], [13, "Luva"], [14, "Cinto"], [15, "Coldre"], [16, "Pele"], [17, "Boina"],
 ];
 
 export function inspectorText(e: InspectorEquip, nick: string): string {
@@ -76,8 +76,8 @@ function pickSlot(ctx: PageCtx, title: string, rows: { slot: number; label: stri
       return b;
     };
     row.append(
-      mk(ctx.str("STBL_IDX_CLAN_BUTTON_OK", "Confirmar"), () => close(Number(sel.value))),
-      mk(ctx.str("STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"), () => close(null)),
+      mk(ctx.str("STBL_IDX_CLAN_BUTTON_OK", "Confirm"), () => close(Number(sel.value))),
+      mk(ctx.str("STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"), () => close(null)),
     );
     panel.append(head, sel, row);
     back.appendChild(panel);
@@ -89,13 +89,13 @@ async function useInspectorItem(ctx: PageCtx, item: InventoryItem): Promise<void
   const c = ctx.ctl, s = c.session;
   if (!s) return;
   const room = c.roomScreen?.room;
-  if (!room) { c.say("O inspetor só funciona dentro da sala.", true); return; } // [RECRIADO] text
+  if (!room) { c.say("The inspector only works inside a room.", true); return; } // [RECRIADO] text
   const rows = room.slots.filter((x) => x.nick && x.state !== 1).map((x) => ({ slot: x.slot, label: `${x.slot + 1} - ${x.nick}`, nick: x.nick }));
-  if (rows.length === 0) { c.say("Não há jogadores na sala.", true); return; } // [RECRIADO] text
+  if (rows.length === 0) { c.say("There are no players in the room.", true); return; } // [RECRIADO] text
   const slot = await pickSlot(ctx, itemName(item.itemId).name, rows);
   if (slot === null) return;
   const r = await s.inspect(item, slot);
-  if (r.code !== 1 || !r.equip) { c.say(`Não foi possível usar o inspetor (${hex(r.code)}).`, true); return; }
+  if (r.code !== 1 || !r.equip) { c.say(`Could not use the inspector (${hex(r.code)}).`, true); return; }
   c.msg = { text: inspectorText(r.equip, rows.find((x) => x.slot === slot)?.nick ?? ""), onOk: () => {}, onCancel: () => {} };
   c.draw();
 }
@@ -112,9 +112,9 @@ export async function useEffectItem(ctx: PageCtx, item: InventoryItem, kind: Eff
       const idx = await openCrosshairColorPopup(document.body, crosshairIndex());
       if (idx === null) return;
       const code = await s.useItemByte(item, idx);
-      if (code !== 1) { c.say(`Não foi possível trocar a cor da mira (${hex(code)}).`, true); return; }
+      if (code !== 1) { c.say(`Could not change the crosshair color (${hex(code)}).`, true); return; }
       setCrosshairIndex(idx); // the battle HUD follows the setting (hud.ts onCrosshair)
-      c.say("Cor da mira alterada.", true); // [RECRIADO] text
+      c.say("Crosshair color changed.", true); // [RECRIADO] text
       return;
     }
     case "inspector":
@@ -126,9 +126,9 @@ export async function useEffectItem(ctx: PageCtx, item: InventoryItem, kind: Eff
       // 1600205 reads 1 byte; 1600005 / 1600187 read a u32 (server handleUseItem)
       const send = (index: number) => (kind === "border" ? s.useItemByte(item, index) : s.useItemU32(item, index));
       const title: Record<"border" | "clanColor" | "muzzle", [string, string]> = {
-        border: ["STR_HEADER_COLOR_NICK_BORDER", "Borda do apelido"],
-        clanColor: ["STR_HEADER_COLOR_CLAN_NAME", "Cor do nome do clã"],
-        muzzle: ["STR_HEADER_COLOR_MUZZLE", "Cor da chama do cano"],
+        border: ["STR_HEADER_COLOR_NICK_BORDER", "Nickname border"],
+        clanColor: ["STR_HEADER_COLOR_CLAN_NAME", "Clan name color"],
+        muzzle: ["STR_HEADER_COLOR_MUZZLE", "Muzzle flash color"],
       };
       const p = await nickColorPopup(ctx);
       // 0x8a5050 (clan name colour): opens on my clan's colour (basic info +0x5f), ApplyValue = my clan name (+0x48, 0x8a5112);
@@ -136,11 +136,11 @@ export async function useEffectItem(ctx: PageCtx, item: InventoryItem, kind: Eff
       const pr = s.player.state.profile, clan = kind === "clanColor";
       p.show(name, clan ? pr?.clanNameColor ?? 0 : 0, {
         ok: (index) => void send(index).then((code) => {
-          if (code !== 1) { c.say(`Não foi possível trocar a cor (${hex(code)}).`, true); return; }
+          if (code !== 1) { c.say(`Could not change the color (${hex(code)}).`, true); return; }
           p.close();
           c.say("Cor alterada.", true); // [RECRIADO] text
-        }, () => c.say("Não foi possível trocar a cor.", true)),
-      }, title[kind], clan ? { label: ["STR_POPUP_APPLIED_CLAN_NAME", "Nome do clã aplicado:"], name: pr?.clanName ?? "" } : null);
+        }, () => c.say("Could not change the color.", true)),
+      }, title[kind], clan ? { label: ["STR_POPUP_APPLIED_CLAN_NAME", "Clan name applied:"], name: pr?.clanName ?? "" } : null);
       return;
     }
   }

@@ -171,7 +171,7 @@ export class ShopStore extends Observable<ShopKey> {
     const off = conn.on((op, r) => cat.onPacket(op, r));
     try {
       conn.send(1029, buildShopGetSailList(shopDatHash));
-      await Promise.race([cat.ready, new Promise((_, rej) => setTimeout(() => rej(new Error("1030 SAILLIST: sem resposta")), timeoutMs))]);
+      await Promise.race([cat.ready, new Promise((_, rej) => setTimeout(() => rej(new Error("1030 SAILLIST: no response")), timeoutMs))]);
       const d = await cat.decode();
       if (d.goods.length) {
         sessionData.set(conn, d);

@@ -22,28 +22,28 @@ type Currency = "gold" | "cash";
 /** control -> STR of cross-ui-map.json (shopWin / shopBuyPopup, confidence str:exe); the have / remain labels are in
  * MONEY_LABELS */
 const TEXTS: Texts = {
-  shopWinCaption: ["STBL_IDX_SHOP_CAPTION", "Loja"],
-  shopAllWeapon: ["STBL_IDX_SHOP_FILTER_ALL", "Ver todos"], shopPrimaryWeapon: ["STBL_IDX_SHOP_FILTER_PRIMARY", "Arma primária"], shopSecondaryWeapon: ["STBL_IDX_SHOP_FILTER_SECONDARY", "Arma secundária"],
-  shopMeleeWeapon: ["STBL_IDX_SHOP_FILTER_MELEE", "Arma branca"], shopThrowingWeapon: ["STBL_IDX_SHOP_FILTER_THROWING", "Granada"], shopItemWeapon: ["STBL_IDX_SHOP_FILTER_SPECIAL", "Arma especial"],
-  shopAllCharacter: ["STBL_IDX_SHOP_FILTER_ALL", "Ver todos"], shopTypeCharacter: ["STBL_IDX_SHOP_FILTER_CHARA", "Personagem"], shopHairCharacter: ["STBL_IDX_SHOP_FILTER_HEAD", "Cabeça"],
+  shopWinCaption: ["STBL_IDX_SHOP_CAPTION", "Shop"],
+  shopAllWeapon: ["STBL_IDX_SHOP_FILTER_ALL", "Ver todos"], shopPrimaryWeapon: ["STBL_IDX_SHOP_FILTER_PRIMARY", "Primary weapon"], shopSecondaryWeapon: ["STBL_IDX_SHOP_FILTER_SECONDARY", "Secondary weapon"],
+  shopMeleeWeapon: ["STBL_IDX_SHOP_FILTER_MELEE", "Melee weapon"], shopThrowingWeapon: ["STBL_IDX_SHOP_FILTER_THROWING", "Grenade"], shopItemWeapon: ["STBL_IDX_SHOP_FILTER_SPECIAL", "Special weapon"],
+  shopAllCharacter: ["STBL_IDX_SHOP_FILTER_ALL", "Ver todos"], shopTypeCharacter: ["STBL_IDX_SHOP_FILTER_CHARA", "Personagem"], shopHairCharacter: ["STBL_IDX_SHOP_FILTER_HEAD", "Head"],
   shopItemAllGroup: ["STBL_IDX_SHOP_FILTER_ALL", "Ver todos"],
-  shopItemGroupMaintenance: ["STR_INVEN_MAINTENANCE_ITEM", "Durab."], shopItemGroupExpendable: ["STR_INVEN_EXPENDABLES", "Consumível"],
-  shopWeaponGoodsBuy: ["STBL_IDX_SHOP_BUY", "Comprar"], shopCharacterGoodsBuy: ["STBL_IDX_SHOP_BUY", "Comprar"], shopItemGoodsBuy: ["STBL_IDX_SHOP_BUY", "Comprar"],
+  shopItemGroupMaintenance: ["STR_INVEN_MAINTENANCE_ITEM", "Durab."], shopItemGroupExpendable: ["STR_INVEN_EXPENDABLES", "Consumable"],
+  shopWeaponGoodsBuy: ["STBL_IDX_SHOP_BUY", "Buy"], shopCharacterGoodsBuy: ["STBL_IDX_SHOP_BUY", "Buy"], shopItemGoodsBuy: ["STBL_IDX_SHOP_BUY", "Buy"],
   shopWeaponGoodsCombo1: ["STBL_IDX_SHOP_INFO_BUYTYPE_POINT", "Gold"], shopWeaponGoodsCombo2: ["STBL_IDX_SHOP_INFO_BUYTYPE_CASH", "Cash"],
-  shopCharacterTermKey: ["STBL_IDX_SHOP_USE_TERM", "Tempo restante"],
-  shopCharacterPointInfoStatic: ["STBL_IDX_SHOP_INFO_POINT", "Preço"], shopItemPointInfoStatic: ["STBL_IDX_SHOP_INFO_POINT", "Preço"],
+  shopCharacterTermKey: ["STBL_IDX_SHOP_USE_TERM", "Time left"],
+  shopCharacterPointInfoStatic: ["STBL_IDX_SHOP_INFO_POINT", "Price"], shopItemPointInfoStatic: ["STBL_IDX_SHOP_INFO_POINT", "Price"],
   ...statTexts("shop", "STBL_IDX_SHOP_WEAPON_BULLET", "STBL_IDX_SHOP_WEAPON_RANGE"),
   // the shop's own keys: 0xa65c48..0xa65d1f SetText(STBL_IDX_SHOP_WEAPON_*) on the stat rows (members 0x238..0x274)
-  shopDamageKey: ["STBL_IDX_SHOP_WEAPON_DAMAGE", "Dano"], shopRapidKey: ["STBL_IDX_SHOP_WEAPON_RAPID", "Taxa de disparo"],
-  shopHitRateKey: ["STBL_IDX_SHOP_WEAPON_HIT_RATE", "Precisão"], shopVertRecoilKey: ["STBL_IDX_SHOP_WEAPON_VERT_RECOIL", "Recuo v."],
+  shopDamageKey: ["STBL_IDX_SHOP_WEAPON_DAMAGE", "Dano"], shopRapidKey: ["STBL_IDX_SHOP_WEAPON_RAPID", "Fire rate"],
+  shopHitRateKey: ["STBL_IDX_SHOP_WEAPON_HIT_RATE", "Accuracy"], shopVertRecoilKey: ["STBL_IDX_SHOP_WEAPON_VERT_RECOIL", "Recuo v."],
   shopHorzRecoilKey: ["STBL_IDX_SHOP_WEAPON_HORZ_RECOIL", "Recuo h."], shopSpeedKey: ["STBL_IDX_SHOP_WEAPON_SPEED", "Peso"],
-  shopBuyCaption: ["STBL_IDX_EP_SHOP_BUY_SUCCESS_CAPTION", "Confirmar"], shopBuyOk: ["STBL_IDX_BUTTON_OK", "Confirmar"], shopBuyCancel: ["STR_POPUP_LEAVE", "Sair"],
-  shopGiftCaption: ["STBL_IDX_EP_SHOP_GIFT_CAPTION", "Enviar presente"], shopGiftReceiverNameStatic: ["STBL_IDX_SHOP_RECEIVER", "Destinatário"],
-  shopGiftOk: ["STBL_IDX_BUTTON_OK", "Confirmar"], shopGiftCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancelar"],
+  shopBuyCaption: ["STBL_IDX_EP_SHOP_BUY_SUCCESS_CAPTION", "Confirm"], shopBuyOk: ["STBL_IDX_BUTTON_OK", "Confirm"], shopBuyCancel: ["STR_POPUP_LEAVE", "Exit"],
+  shopGiftCaption: ["STBL_IDX_EP_SHOP_GIFT_CAPTION", "Send gift"], shopGiftReceiverNameStatic: ["STBL_IDX_SHOP_RECEIVER", "Recipient"],
+  shopGiftOk: ["STBL_IDX_BUTTON_OK", "Confirm"], shopGiftCancel: ["STBL_IDX_BUTTON_CANCEL", "Cancel"],
   shopWeaponInfoDetail: ["STBL_IDX_SHOP_DETAIL", "Detalhes"],
   // repair frames: Reparo / Custo de reparo are the exe's (str:exe)
   ...Object.fromEntries(["shopWeapon", "shopChara"].flatMap((r) => [
-    [`${r}DoRepair`, ["STR_SHOP_DO_REPAIR", "Reparo"]], [`${r}RepairText`, ["STR_POPUP_REPAIR_PRICE", "Custo de reparo"]]])),
+    [`${r}DoRepair`, ["STR_SHOP_DO_REPAIR", "Reparo"]], [`${r}RepairText`, ["STR_POPUP_REPAIR_PRICE", "Repair cost"]]])),
 };
 
 /** have / remain money labels: sprintf("%s :", STBL_IDX_SHOP_HAVE_MONEY / REMAIN_MONEY), SetTextAlign(2, 1) (right / middle).
@@ -196,11 +196,11 @@ export class ShopPage {
     const c = this.ctx.ctl, o = this.offer(), b = c.buy;
     if (!o || !b || b.busy || !c.session) return;
     const nick = (this.nick?.value ?? "").trim();
-    if (!nick) { c.say(this.ctx.str("STR_POPUP_MESSAGE_PLEASE_NAME", "Escreva o apelido"), true); return; }
+    if (!nick) { c.say(this.ctx.str("STR_POPUP_MESSAGE_PLEASE_NAME", "Enter the nickname"), true); return; }
     const { currency, option } = this.choice(o), opt = o.options[option];
     if (!opt || priceIn(opt, currency) <= 0) return;
     const goodId = opt.goodId;
-    c.msg = { text: `Deseja enviar o presente para ${nick}?`, onOk: () => void this.giftSend(goodId, currency, nick), onCancel: () => {} };
+    c.msg = { text: `Send the gift to ${nick}?`, onOk: () => void this.giftSend(goodId, currency, nick), onCancel: () => {} };
     c.draw();
   }
 
@@ -219,7 +219,7 @@ export class ShopPage {
       this.gift = false;
       b.busy = false;
       c.click("buy", "SBN_Cancel");
-      c.say(this.ctx.str("STR_POPUP_MESSAGE_SUCCESS_GIFT", "O presente foi enviado para [%s]\ncom sucesso.").replace("%s", nick), true);
+      c.say(this.ctx.str("STR_POPUP_MESSAGE_SUCCESS_GIFT", "The gift was sent to [%s]\nsuccessfully.").replace("%s", nick), true);
     } catch (e) {
       b.busy = false;
       this.gift = true;
@@ -285,7 +285,7 @@ export class ShopPage {
       gui.setText(parts.value, o ? itemName(o.itemId).name : "");
       const have = o && inv.find((it) => it.itemId === o.itemId);
       if (!o) gui.setText(parts.term, "");
-      else if (!have) { gui.setText(parts.term, str("STBL_IDX_ITEM_NO_HAVE", "Não possui")); gui.setColor(parts.term, COLOR.noHave); }
+      else if (!have) { gui.setText(parts.term, str("STBL_IDX_ITEM_NO_HAVE", "Not owned")); gui.setColor(parts.term, COLOR.noHave); }
       else if (tab === "item") {
         // item 0xa60159: "%s : {col:255,255,255,255}%d%s{/col}" (HAVE_TERM / HAVE_COUNT, the amount in white)
         const t = itemTerm(have), key = t.kind === "count" ? "STBL_IDX_ITEM_HAVE_COUNT" : "STBL_IDX_ITEM_HAVE_TERM";

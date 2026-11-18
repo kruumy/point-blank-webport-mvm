@@ -165,6 +165,35 @@ async function loadCollisionSet(loader: GLTFLoader, url: string): Promise<Collis
   return set;
 }
 
+/**
+ * [RECRIADO] the i3World sky scene: unlit, at its exported position, drawn first behind everything. Each vertex is put on the
+ * far plane instead of past it, so Stage.pef CamFar never cuts the ~150 m box. Indoor maps have none (null).
+ */
+export async function loadSky(url: string): Promise<THREE.Object3D | null> {
+  const gltf = await new GLTFLoader().loadAsync(url).catch(() => null);
+  if (!gltf) return null;
+  gltf.scene.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const m = new THREE.MeshBasicMaterial({ map: (o.material as THREE.MeshStandardMaterial).map, fog: false, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+    m.onBeforeCompile = (s) => { s.vertexShader = s.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n\tgl_Position.z = gl_Position.w * 0.9999;"); };
+    (o.material as THREE.Material).dispose();
+    o.material = m;
+    o.renderOrder = -1;
+    o.frustumCulled = false;
+  });
+  gltf.scene.name = "pbSky"; // the theater looks find it by name (src/mvm/looks.ts)
+  return gltf.scene;
+}
+
+export function disposeTree(root: THREE.Object3D): void {
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    o.geometry.dispose();
+    (o.material as THREE.MeshBasicMaterial).map?.dispose();
+    (o.material as THREE.Material).dispose();
+  });
+}
+
 /** one material for every F4 wireframe mesh (was one per shape: 328 in provence) */
 const DEBUG_WIRE = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
 
@@ -177,11 +206,12 @@ export async function buildRealLevel(
   registerCompressedTextures(loader, AssetPaths.visualGlb.replace(/[^/]*$/, "")); // tex/<name>.dds next to visual.glb
   levelCacheScope(CurrentMap); // another map frees the previous one's geometry / textures
 
-  const [, visualShared, collision, collisionJsonRes] = await Promise.all([
+  const [, visualShared, collision, collisionJsonRes, sky] = await Promise.all([
     loadPbLighting(AssetPaths.lightingJson), // per-map engine lighting (pb-extract-tools export-lighting.mjs)
     hasVisual ? loadGltfShared(loader, AssetPaths.visualGlb) : Promise.resolve(null),
     cachedOnce(`collision:${AssetPaths.collisionGlb}`, () => loadCollisionSet(loader, AssetPaths.collisionGlb), (c) => c.meshes.forEach((m) => m.geom.dispose())),
     jsonOnce<CollisionJson>(AssetPaths.collisionJson).catch(() => ({})), // shared with spawns.ts loadMapMeta (one parse)
+    hasVisual ? cachedOnce(`sky:${AssetPaths.skyGlb}`, () => loadSky(AssetPaths.skyGlb), (s) => s && disposeTree(s)) : Promise.resolve(null),
   ]);
 
   const visualGroup = new THREE.Group();
@@ -199,6 +229,7 @@ export async function buildRealLevel(
     }))
     : null;
   if (visualGltf) visualGroup.add(visualGltf.scene);
+  if (sky) visualGroup.add(sky.clone()); // shares the cached geometry / materials
 
   const collisionJsonEarly = (collisionJsonRes || {}) as CollisionJson;
 

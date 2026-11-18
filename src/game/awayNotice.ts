@@ -22,7 +22,7 @@ export class AwayNotice {
     this.box.show(sec !== null);
     if (sec === null) return;
     // the exe formats the string with sprintf: "%dsegundos" stays glued, as in the BR table
-    const text = tOr("STBL_IDX_EP_GAME_AWAY_INPUT_BATTLE", "Como muito tempo não teve movimento será movido para sala %dsegundos depois.");
+    const text = tOr("STBL_IDX_EP_GAME_AWAY_INPUT_BATTLE", "No movement for a long time; you will be moved to the room in %d seconds.");
     this.box.setMessage(text.replace("%d", String(sec)));
   }
 

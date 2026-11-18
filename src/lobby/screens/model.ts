@@ -115,14 +115,23 @@ function loadoutPanel(p: PlayerStore, tab: ItemTab): { titles: string[]; items: 
   return { titles: [S.primary, S.secondary, S.melee, S.throwing, S.special], items: [0, 1, 2, 3, 4].map((i) => eq[i].itemId) };
 }
 
+// a page paint asks for the list once per grid slot (~40 times): with every item unlocked (~1900) that froze the UI.
+// Kept for one synchronous paint only, since the shown-item and name tables load in the background
+let invMemo: { p: PlayerStore; s: object; key: string; list: InventoryItem[] } | null = null;
+
 export function inventoryItems(p: PlayerStore, ui: MenuUi): InventoryItem[] {
-  const q = ui.search.trim().toLowerCase();
+  const key = `${ui.tab}/${ui.filter}/${ui.search}`;
+  if (invMemo && invMemo.p === p && invMemo.s === p.state && invMemo.key === key) return invMemo.list;
+  const q = ui.search.trim().toLowerCase(), eq = p.equippedObjectIds();
   // kept even when incomplete in 2017: basics, equipped items and activated (Temporary) Item-tab goods
-  return p.items().filter((it) => isItemShown(it.itemId, isStockObjectId(it.objectId) || p.isEquipped(it) || (it.equip === ItemEquipType.Temporary && tabOf(it.itemId) === "item")) &&
+  const list = p.items().filter((it) => isItemShown(it.itemId, isStockObjectId(it.objectId) || eq.has(it.objectId) || (it.equip === ItemEquipType.Temporary && tabOf(it.itemId) === "item")) &&
     matchesFilter(it.itemId, ui.tab, ui.filter) && (!q || itemName(it.itemId).name.toLowerCase().includes(q)))
     // grouped by slot (primary, secondary, melee, throw, special; chara and parts after), equipped first inside a group, the
     // server's order kept otherwise (Array.sort is stable). It came in raw server order: knives between rifles.
-    .sort((x, y) => (equipSlotOf(x.itemId) ?? 99) - (equipSlotOf(y.itemId) ?? 99) || Number(p.isEquipped(y)) - Number(p.isEquipped(x)));
+    .sort((x, y) => (equipSlotOf(x.itemId) ?? 99) - (equipSlotOf(y.itemId) ?? 99) || Number(eq.has(y.objectId)) - Number(eq.has(x.objectId)));
+  invMemo = { p, s: p.state, key, list };
+  queueMicrotask(() => { invMemo = null; });
+  return list;
 }
 
 /** Head..Beret (9-17): cosmetic slots the original lets stay empty. Weapon slots (0-4) and Chara (8) always keep one item equipped. */

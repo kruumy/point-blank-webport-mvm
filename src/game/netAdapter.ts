@@ -57,6 +57,8 @@ export interface PlayerState {
   chara?: number;
   /** AI slot: simulated by the match host (net/battle.ts FLAG_BOT, action bit 5) and replicated like a player */
   bot?: boolean;
+  /** [RECRIADO] demo playback only (mvm/demoNet.ts): the death clip pick of this death, the same on every replay; a clip name = edited in the theater */
+  deathPick?: number | string;
   t: number; // sender clock, ms
 }
 
@@ -82,6 +84,8 @@ export interface KillEvent {
   victimId: string;
   weapon: string;
   headshot: boolean;
+  /** [RECRIADO] demo playback only (mvm/demoNet.ts): the victim's death clip pick, same as on its dead states */
+  deathPick?: number | string;
   t: number;
 }
 

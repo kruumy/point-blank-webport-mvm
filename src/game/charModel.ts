@@ -100,6 +100,7 @@ interface CharEntry {
   team?: string;
   itemId?: number | null;
   itemIds?: number[] | null;
+  itemName?: string;
   model?: string;
   hitboxes?: HitboxDef[];
   arms1pv?: { model: string };
@@ -239,6 +240,12 @@ export function preloadCharacters(): Promise<void> {
 /** chars/<skel>/anim3pv library of an equipped itemId's character (same rule as CharVisual.animSkel); needs preloadCharacters. */
 export function animSkelFor(itemId: number | null | undefined, team: Team): string {
   return resolveChara(entries, itemId, team).entry?.family === "female" ? "swat_female" : "swat_male";
+}
+
+/** [RECRIADO] theater model swap: every character with a model and its own itemId (chars/index.json) */
+export async function charaChoices(): Promise<{ itemId: number; label: string }[]> {
+  await preloadCharacters();
+  return entries.filter((e) => e.itemId && e.model).map((e) => ({ itemId: e.itemId!, label: (e.itemName ?? e.name).replace(/_/g, " ") }));
 }
 
 /** Loads the character of an equipped itemId (resolveChara) so createCharVisual(team, { itemId }) can use it. */
@@ -545,8 +552,12 @@ export class CharVisual {
 
   /** The shot / blast that may kill this character (game.ts, every hit it sees): the death push and the clip direction. */
   noteHit(h: DeathHit): void {
-    this.lastHit = { ...h, at: performance.now() };
+    this.lastHit = { ...h, at: this.clock };
   }
+  /** seconds of this character's own updates: the hit window follows game time (a paused or slow-rendered demo keeps it) */
+  private clock = 0;
+  /** [RECRIADO] the death clip pick of the next death (RemoteActor, from the demo); null = random, a clip name = that clip */
+  deathPick: number | string | null = null;
   private lastHit: (DeathHit & { at: number }) | null = null;
   private ragdollData: Awaited<ReturnType<typeof loadRagdoll>> = null;
   private ragdoll: Ragdoll | null = null;
@@ -561,7 +572,7 @@ export class CharVisual {
     this.wasAlive = false;
     if (!this.anim) return;
     // the noted hit is the killing one when it is recent [INFERIDO window: the death state follows the hit by a few frames]
-    const hit = this.lastHit && performance.now() - this.lastHit.at < 1500 ? this.lastHit : null;
+    const hit = this.lastHit && this.clock - this.lastHit.at < 1.5 ? this.lastHit : null;
     this.lastHit = null;
     shotDir ??= hit?.dir;
     let dir: "Front" | "Back" | "Left" | "Right" = "Front";
@@ -572,7 +583,8 @@ export class CharVisual {
       // bullet travelling along our forward = hit in the back
       dir = Math.abs(f) >= Math.abs(r) ? (f > 0 ? "Back" : "Front") : r > 0 ? "Left" : "Right";
     }
-    this.anim.die(dir, crouch);
+    this.anim.die(dir, crouch, this.deathPick ?? undefined);
+    this.deathPick = null;
     if (ragdolls && this.ragdollData && this.model && getSettings().ragdoll) {
       ragdolls.release(this.ragdoll);
       this.ragdoll = ragdolls.spawn(this.model, this.ragdollData, hit);
@@ -589,6 +601,13 @@ export class CharVisual {
     this.anim?.respawn();
   }
 
+  /** [RECRIADO] theater seek: alive, no ragdoll, no pending hit; the animator restarts at `clock` */
+  resetAnim(clock: number): void {
+    this.respawn();
+    this.lastHit = null;
+    this.anim?.reset(clock);
+  }
+
   /** World position of a skeleton bone by its GLB node name (Neck, Spine3, IK...); null when the model has no such bone. */
   boneWorld(name: string, out: THREE.Vector3): THREE.Vector3 | null {
     const b = this.model?.getObjectByName(name);
@@ -603,6 +622,7 @@ export class CharVisual {
   }
 
   update(dt: number, s: CharDriveState): void {
+    this.clock += dt;
     const r = this.root;
     if (this.equipActor) {
       const eq = actorEquip(this.equipActor);

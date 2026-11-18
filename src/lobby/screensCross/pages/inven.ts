@@ -25,17 +25,17 @@ import {
  * equipment row keys are set by 0x8431d0 (STR_INVEN_PRIMARY..SPECIAL_WEAPON on this+0xac..0xdc) */
 const TEXTS: Texts = {
   ivEquipmentCaption: ["STR_INVEN_USED_EQUIP", "Equipamento usado"], ivCharacterCaption: ["STR_INVEN_USED_CHARA", "Personagem em uso"],
-  ivRedTypeKey: ["STR_INVEN_RED_CHARA", "Personagem rebelde"], ivBlueTypeKey: ["STR_INVEN_BLUE_CHARA", "Personagem da OTP"],
-  ivHeadKey: ["STR_INVEN_HEAD", "Cabeça"], ivBeretKey: ["STR_INVEN_BERET", "Boina"],
-  ivInvenCaption: ["STR_INVEN_INVENTORY", "Inventário"],
-  ivAllWeapon: ["STR_INVEN_VIEW_ALL", "Ver tudo"], ivPrimaryWeapon: ["STR_INVEN_PRIMARY_WEAPON", "Arma primária"], ivSecondaryWeapon: ["STR_INVEN_SECONDARY_WEAPON", "Arma secundária"],
-  ivMeleeWeapon: ["STR_INVEN_MELEE_WEAPON", "Arma branca"], ivThrowingWeapon: ["STR_INVEN_THROWING_WEAPON", "Granada"], ivItemWeapon: ["STR_INVEN_SPECIAL_WEAPON", "Arma especial"],
-  ivPrimaryKey: ["STR_INVEN_PRIMARY_WEAPON", "Arma primária"], ivSecondaryKey: ["STR_INVEN_SECONDARY_WEAPON", "Arma secundária"], ivMeleeKey: ["STR_INVEN_MELEE_WEAPON", "Arma branca"],
-  ivThrowingKey: ["STR_INVEN_THROWING_WEAPON", "Granada"], ivItemKey: ["STR_INVEN_SPECIAL_WEAPON", "Arma especial"],
-  ivAllCharacter: ["STR_INVEN_VIEW_ALL", "Ver tudo"], ivTypeCharacter: ["STR_INVEN_CHRACTER", "Personagem"], ivHeadCharacter: ["STR_INVEN_HEAD", "Cabeça"], ivBeretCharacter: ["STR_INVEN_BERET", "Boina"],
-  ivItemGroupAll: ["STR_INVEN_VIEW_ALL", "Ver tudo"],
-  ivItemGroupMaintenance: ["STR_INVEN_MAINTENANCE_ITEM", "Durab."], ivItemGroupExpendable: ["STR_INVEN_EXPENDABLES", "Consumível"],
-  ivCharacterTermKey: ["STR_INVEN_REMAIN_TERM", "Tempo restante"], ivItemDetailTermKey: ["STR_INVEN_REMAIN_TERM", "Tempo restante"],
+  ivRedTypeKey: ["STR_INVEN_RED_CHARA", "Rebel character"], ivBlueTypeKey: ["STR_INVEN_BLUE_CHARA", "OTP character"],
+  ivHeadKey: ["STR_INVEN_HEAD", "Head"], ivBeretKey: ["STR_INVEN_BERET", "Beret"],
+  ivInvenCaption: ["STR_INVEN_INVENTORY", "Inventory"],
+  ivAllWeapon: ["STR_INVEN_VIEW_ALL", "View all"], ivPrimaryWeapon: ["STR_INVEN_PRIMARY_WEAPON", "Primary weapon"], ivSecondaryWeapon: ["STR_INVEN_SECONDARY_WEAPON", "Secondary weapon"],
+  ivMeleeWeapon: ["STR_INVEN_MELEE_WEAPON", "Melee weapon"], ivThrowingWeapon: ["STR_INVEN_THROWING_WEAPON", "Grenade"], ivItemWeapon: ["STR_INVEN_SPECIAL_WEAPON", "Special weapon"],
+  ivPrimaryKey: ["STR_INVEN_PRIMARY_WEAPON", "Primary weapon"], ivSecondaryKey: ["STR_INVEN_SECONDARY_WEAPON", "Secondary weapon"], ivMeleeKey: ["STR_INVEN_MELEE_WEAPON", "Melee weapon"],
+  ivThrowingKey: ["STR_INVEN_THROWING_WEAPON", "Grenade"], ivItemKey: ["STR_INVEN_SPECIAL_WEAPON", "Special weapon"],
+  ivAllCharacter: ["STR_INVEN_VIEW_ALL", "View all"], ivTypeCharacter: ["STR_INVEN_CHRACTER", "Character"], ivHeadCharacter: ["STR_INVEN_HEAD", "Head"], ivBeretCharacter: ["STR_INVEN_BERET", "Beret"],
+  ivItemGroupAll: ["STR_INVEN_VIEW_ALL", "View all"],
+  ivItemGroupMaintenance: ["STR_INVEN_MAINTENANCE_ITEM", "Durab."], ivItemGroupExpendable: ["STR_INVEN_EXPENDABLES", "Consumable"],
+  ivCharacterTermKey: ["STR_INVEN_REMAIN_TERM", "Time left"], ivItemDetailTermKey: ["STR_INVEN_REMAIN_TERM", "Time left"],
   ...statTexts("iv", "STR_INVEN_BULLETS", "STR_INVEN_WEAPON_RANGE"),
   ivInvenWeaponInfoDetail: ["STR_INVEN_DETAIL_INFO", "Detalhes"], ivCharacterDetail: ["STR_INVEN_DETAIL_INFO", "Detalhes"],
   // ivInvenWeaponRepair's map entry carries several STR (the exe relabels it): Reparar is the one the chara button uses
@@ -209,9 +209,9 @@ export class InvenPage {
    * asks STR_INVEN_MESSAGE_DELETE_ITEM, then deleteItem. The popup's {col} markup is dropped (the message box is plain text) */
   private askDelete(it: InventoryItem): void {
     const c = this.ctx.ctl, str = this.ctx.str;
-    const warning = str("STR_POPUP_Q_MESSAGE_WARNING_DELETE_ITEM", "Itens excluídos não poderão ser recuperados!").replace(/\{[^}]*\}/g, "");
+    const warning = str("STR_POPUP_Q_MESSAGE_WARNING_DELETE_ITEM", "Deleted items cannot be recovered!").replace(/\{[^}]*\}/g, "");
     c.msg = {
-      text: `${str("STR_POPUP_DELETE_ITEM", "Excluir Item")}: ${itemName(it.itemId).name}\n${str("STR_POPUP_TERM_DELETE_ITEM", "Restante")}: ${termText(itemTerm(it))}\n\n${str("STR_POPUP_Q_MESSAGE_WANT_DELETE_ITEM", "Tem certeza que deseja excluir?")}\n${warning}`,
+      text: `${str("STR_POPUP_DELETE_ITEM", "Delete Item")}: ${itemName(it.itemId).name}\n${str("STR_POPUP_TERM_DELETE_ITEM", "Remaining")}: ${termText(itemTerm(it))}\n\n${str("STR_POPUP_Q_MESSAGE_WANT_DELETE_ITEM", "Are you sure you want to delete?")}\n${warning}`,
       onOk: () => {
         c.msg = { text: str("STR_INVEN_MESSAGE_DELETE_ITEM", "Deseja excluir o item?"), onOk: () => void this.deleteItem(it.objectId), onCancel: () => {} };
         c.draw();
@@ -225,16 +225,16 @@ export class InvenPage {
    * listener drops the item from the store on the ack. Result text: STR_INVEN_DELETE_ITEM_SUCCESS / _FAIL */
   private async deleteItem(objectId: number): Promise<void> {
     const c = this.ctx.ctl, str = this.ctx.str, conn = c.session?.connection;
-    if (!conn || !conn.isOpen) { c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Falha ao excluir o item\npor problemas na rede."), true); return; }
+    if (!conn || !conn.isOpen) { c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Failed to delete the item\ndue to network problems."), true); return; }
     c.busy = true; c.draw();
     try {
       const ack = conn.waitFor(GameMetaOp.SHOP_DELETE_ITEM_ACK, 5000);
       conn.send(1055, new PacketWriter(4).writeD(objectId >>> 0));
       const d = parseDeleteItem(await ack);
       if (d.ok) { c.menu.selected = null; c.say(str("STR_INVEN_DELETE_ITEM_SUCCESS", "Os itens foram removidos.")); }
-      else c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Falha ao excluir o item\npor problemas na rede."), true);
+      else c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Failed to delete the item\ndue to network problems."), true);
     } catch {
-      c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Falha ao excluir o item\npor problemas na rede."), true);
+      c.say(str("STR_INVEN_DELETE_ITEM_FAIL", "Failed to delete the item\ndue to network problems."), true);
     } finally {
       c.busy = false; c.draw();
     }

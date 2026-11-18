@@ -20,7 +20,8 @@
     "assets:ogg": "node scripts/pbx.mjs sound convert && node scripts/pbx.mjs sound verify",
     "assets:snapshot": "node scripts/pbx.mjs snapshot",
     "assets:verify": "node scripts/pbx.mjs verify assets",
-    "pbx": "node scripts/pbx.mjs"
+    "pbx": "node scripts/pbx.mjs",
+    "locale:en": "node scripts/locale-en-art.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
@@ -29,9 +30,11 @@
   "devDependencies": {
     "@types/node": "^22.20.4",
     "@types/three": "^0.169.0",
-    "ffmpeg-static": "^5.3.0",
     "node-datachannel": "^0.33.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.8"
+  },
+  "allowScripts": {
+    "esbuild@0.21.5": true
   }
 }

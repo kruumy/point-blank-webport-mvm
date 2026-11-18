@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { assetResolver, cssUrls, type AssetMap } from "./src/assetMap.ts";
+import { mvmServer } from "./scripts/mvm-server.ts";
 
 // PB_VITE_HMR=0 kills the dev-reload path completely: hmr:false stops the client from connecting to the HMR
 // websocket, watch:null stops chokidar from invalidating the module graph. Set by scripts/dev-all.mjs --no-watch,
@@ -90,7 +91,7 @@ function noStaticTurn(): Plugin {
 export default defineConfig(({ mode }) => ({
   root: ".",
   publicDir: mode === "prod" ? false : "public",
-  plugins: mode === "prod" ? [noStaticTurn(), publicWithoutAssets(), hashedAssets()] : [noStaticTurn(), hashedAssets(), missingAssets404()],
+  plugins: mode === "prod" ? [noStaticTurn(), publicWithoutAssets(), hashedAssets()] : [noStaticTurn(), hashedAssets(), missingAssets404(), mvmServer()],
   server: {
     host: "0.0.0.0",
     port: 8000,

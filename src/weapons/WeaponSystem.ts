@@ -447,6 +447,8 @@ export class WeaponSystem {
   private obsNextFire = 0;
   /** the watched player's bolt rifle is cycling: his scope drops until the next round is chambered */
   private obsBoltUntil = 0;
+  /** the watched player's bolt cycle is over (zoom may come back) */
+  private get obsBoltDone(): boolean { return this.time >= this.obsBoltUntil; }
 
   observedFireMode(): string | null {
     return this.obsDef ? this.obsDef.fireMode : null;
@@ -508,7 +510,7 @@ export class WeaponSystem {
     // a stab / throw is not a shot: the knife swings (light / heavy as the remote's fire event says), no kick, no muzzle flash
     if (def.family === "KNIFE") { vm.meleeSwing(heavy, heavy ? def.params.melee?.delayB ?? def.fireDelay : def.fireDelay, !!def.params.melee?.timeA2); return; }
     if (def.family === "GRENADE") { this.observeThrow(def); return; }
-    if (def.fireMode === "bolt" && this.scoped) this.obsBoltUntil = this.time + Math.max(def.fireDelay, def.params.loadBulletTime ?? 0);
+    if (def.fireMode === "bolt" && this.aiming) this.obsBoltUntil = this.time + Math.max(def.fireDelay, def.params.loadBulletTime ?? 0);
     vm.fireKick(def.family === "SR" || def.family === "SG" ? 6 : def.family === "HG" ? 3.5 : 2.2, false);
     this.effects.setWeapon(def.id, def.family);
     this.effects.muzzleFlash(vm.muzzleNode, vm.muzzleWorld(), def.family === "SG" || def.family === "SR" ? 1.5 : 1, undefined, tint);
@@ -820,8 +822,9 @@ export class WeaponSystem {
     const gun = vdef && vdef.family !== "KNIFE" && vdef.family !== "GRENADE" && !isMissionWeapon(vdef.id);
     if (vdef) this.scope.setWeapon(vdef.id);
     if (od) {
-      this.aiming = !!(gun && this.obs!.aiming && this.obs!.reloadT < 0);
-      this.scoped = this.aiming && !!od.params.scope && this.time >= this.obsBoltUntil;
+      // his shot drops zoom for the bolt cycle like our own (setZoom(false) after a LoadBullet shot); his replicated zoom lags it
+      this.aiming = !!(gun && this.obs!.aiming && this.obs!.reloadT < 0) && this.obsBoltDone;
+      this.scoped = this.aiming && !!od.params.scope;
     } else {
       const aimPress = !!input.aim && !this.aimWasDown;
       this.aimWasDown = !!input.aim;
@@ -883,7 +886,7 @@ export class WeaponSystem {
       this.viewmodel.silencerWanted = !!s?.silencer;
       this.viewmodel.reloadT = this.obs ? this.obs.reloadT : this.reloading ? 1 - this.reloadTimer / Math.max(0.001, this.reloadDuration) : -1;
       // no Zoom-stance pose under the overlay: it would still be blending out (weapon centred) on the first unscoped frames
-      this.viewmodel.update(dt, cam, speed, grounded, (this.obs ? this.obs.aiming : this.aiming) && !this.scoped);
+      this.viewmodel.update(dt, cam, speed, grounded, (this.obs ? this.obs.aiming && this.obsBoltDone : this.aiming) && !this.scoped);
     }
     this.updateMines();
     this.grenades.update(dt);

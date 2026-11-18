@@ -30,7 +30,7 @@ const plain = (s: string) => s.replace(/\{\/?col[^}]*\}/g, "");
 export function kickReasonText(reason: number): string {
   switch (reason) {
     case 0: return plain(tOr("STR_HUD_FORCIBLYREMOVE_REASON_NOMANNER", "Chingamento"));
-    case 1: return plain(tOr("STR_HUD_FORCIBLYREMOVE_REASON_ILLEGALPROGRAM", "Uso de Hack"));
+    case 1: return plain(tOr("STR_HUD_FORCIBLYREMOVE_REASON_ILLEGALPROGRAM", "Hacking"));
     case 2: return plain(tOr("STR_HUD_FORCIBLYREMOVE_REASON_ABUSE", "Abuso"));
     default: return plain(tOr("STR_HUD_FORCIBLYREMOVE_REASON_ETC", "Outros"));
   }
@@ -101,18 +101,18 @@ export class VoteHud {
 
     if (which === "vote") {
       const r = this.vote;
-      this.text(r, "i3UIStaticText_Subject", leader ? "Votação de líder" : plain(tOr("STR_HUD_FORCIBLYREMOVE_SUBJECT", "Vote Kick"))); // leader [RECRIADO]
+      this.text(r, "i3UIStaticText_Subject", leader ? "Leader vote" : plain(tOr("STR_HUD_FORCIBLYREMOVE_SUBJECT", "Vote Kick"))); // leader [RECRIADO]
       this.text(r, "i3UIStaticText_AppNick", `[${plain(tOr("STBL_IDX_GUI_APPLICANT", "Feito por"))}: ${creator}]`);
       this.text(r, "i3UIStaticText_Nick", target);
       this.text(r, "i3UIStaticText_Whos", plain(tOr("STR_HUD_FORCIBLYREMOVE_WHOS", "'s")));
-      this.text(r, "i3UIStaticText_Reason", leader ? "Troca de líder" : kickReasonText(v.reason)); // leader [RECRIADO]
+      this.text(r, "i3UIStaticText_Reason", leader ? "Leader change" : kickReasonText(v.reason)); // leader [RECRIADO]
       const voted = phase === "voted";
       this.text(r, "i3UIStaticText_AgreeKey", plain(voted ? tOr("STR_HUD_FORCIBLYREMOVE_AGREE", "Aprovar") : tOr("STR_HUD_FORCIBLYREMOVE_KEY_AGREE", "Aceitar (Key - 9)")));
       this.text(r, "i3UIStaticText_Colon", ":");
       this.text(r, "i3UIStaticText_DisagreeKey", plain(voted ? tOr("STR_HUD_FORCIBLYREMOVE_REVERSE", "Negar") : tOr("STR_HUD_FORCIBLYREMOVE_KEY_REVERSE", "Negar (Key - 0)")));
       this.text(r, "i3UIStaticText_NumAgree", String(v.accept));
       this.text(r, "i3UIStaticText_NumDisagree", String(v.deny));
-      this.text(r, "i3UIStaticText_RTSubject", fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_REMAIN_TIME_SUBJECT", "Tempo restante: %d s")), v.secondsLeft));
+      this.text(r, "i3UIStaticText_RTSubject", fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_REMAIN_TIME_SUBJECT", "Time left: %d s")), v.secondsLeft));
       return;
     }
     const res = v.result;
@@ -120,19 +120,19 @@ export class VoteHud {
     const score = fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_SCORE", "%d contra %d\n")), res.accept, res.deny);
     let msg: string;
     if (leader) { // [RECRIADO]
-      msg = score + (res.passed ? `${target} é o novo líder da sala` : res.why === "cancel" ? "Votação de líder cancelada" : "Troca de líder não aprovada");
+      msg = score + (res.passed ? `${target} is the new room leader` : res.why === "cancel" ? "Leader vote cancelled" : "Leader change not approved");
     } else if (res.passed) {
       msg = score + fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_SUCCESS", "Motivo: %s\n")), kickReasonText(v.reason))
-        + fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_KICKED", "%s foi kikado da sala")), target);
+        + fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_KICKED", "%s was kicked from the room")), target);
     } else if (res.why === "cancel") {
-      msg = fmt(plain(tOr("STR_ACK_FORCIBLYREMOVE_CANCEL_VOTE", "%s quer cancelar a votação.")), creator);
+      msg = fmt(plain(tOr("STR_ACK_FORCIBLYREMOVE_CANCEL_VOTE", "%s wants to cancel the vote.")), creator);
     } else {
-      const why = res.why === "noally" ? tOr("STR_HUD_FORCIBLYREMOVE_RESULT_NOALLY", "Motivo da não aprovação : Não recebeu votos dos amigos\n")
-        : res.why === "noenemy" ? tOr("STR_HUD_FORCIBLYREMOVE_RESULT_NOENEMY", "Motivo da não aprovação : Não recebeu votos dos adversários\n")
-          : tOr("STR_HUD_FORCIBLYREMOVE_RESULT_SHORTAGES", "Motivo da não aprovação : Maioria dos votos\n");
-      msg = score + plain(why) + fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_REJECT", "%s Decidiu não expulsar da sala")), target);
+      const why = res.why === "noally" ? tOr("STR_HUD_FORCIBLYREMOVE_RESULT_NOALLY", "Reason not approved: no votes from teammates\n")
+        : res.why === "noenemy" ? tOr("STR_HUD_FORCIBLYREMOVE_RESULT_NOENEMY", "Reason not approved: no votes from opponents\n")
+          : tOr("STR_HUD_FORCIBLYREMOVE_RESULT_SHORTAGES", "Reason not approved: majority vote\n");
+      msg = score + plain(why) + fmt(plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_REJECT", "%s decided not to kick from the room")), target);
     }
-    this.text(this.result, "i3UIStaticText_Subject", plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_TITLE", "Notificação de Voto")));
+    this.text(this.result, "i3UIStaticText_Subject", plain(tOr("STR_HUD_FORCIBLYREMOVE_RESULT_TITLE", "Vote notification")));
     this.text(this.result, "i3UIStaticText_Content", msg.trim());
     // the content box wraps (i3UIStaticText multi-line): the caption span is single-line by default
     const cap = this.result.get("i3UIStaticText_Content")?.querySelector<HTMLElement>(".pbui-caption");

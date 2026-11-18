@@ -33,20 +33,20 @@ const COLOR_WIN = "useItemChangeColorPopup";
 const COLOR_BOXES = 10;
 
 const NAME_TEXTS: Texts = {
-  useItemChangeNamePopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"],
-  useItemChangeNamePopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"],
+  useItemChangeNamePopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"],
+  useItemChangeNamePopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"],
   useItemChangeNamePopupCheck: ["STR_POPUP_CONFIRM_OVERLAPPING", "Verificar"],
 };
 const COLOR_TEXTS: Texts = {
-  useItemChangeColorPopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirmar"],
-  useItemChangeColorPopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancelar"],
+  useItemChangeColorPopupOk: ["STBL_IDX_CLAN_BUTTON_OK", "Confirm"],
+  useItemChangeColorPopupCancel: ["STBL_IDX_CLAN_BUTTON_CANCEL", "Cancel"],
 };
 
 /** per name kind: caption, "before" label, input label and the nick check (fake nick and clan have none: the server does not check them) */
 const NAME_MODE: Record<Exclude<NameKind, "color">, { caption: [string, string]; input: [string, string]; check: boolean }> = {
-  nick: { caption: ["STR_HEADER_ITEM_CHANGE_NICK", "Troca de apelido"], input: ["STR_POPUP_MODIFIED_NICK", "Novo apelido:"], check: true },
-  fake: { caption: ["STR_HEADER_DISGUISE_NICK", "Apelido provisório"], input: ["STR_POPUP_DISGUISED_NICK", "Apelido temporário:"], check: false },
-  clan: { caption: ["STBL_IDX_CLAN_CHANGE_CLAN_NAME", "Alteração do nome do clã"], input: ["STR_POPUP_MODIFIED_CLAN_NAME", "Novo nome:"], check: false },
+  nick: { caption: ["STR_HEADER_ITEM_CHANGE_NICK", "Nickname change"], input: ["STR_POPUP_MODIFIED_NICK", "New nickname:"], check: true },
+  fake: { caption: ["STR_HEADER_DISGUISE_NICK", "Temporary nickname"], input: ["STR_POPUP_DISGUISED_NICK", "Temporary nickname:"], check: false },
+  clan: { caption: ["STBL_IDX_CLAN_CHANGE_CLAN_NAME", "Clan name change"], input: ["STR_POPUP_MODIFIED_CLAN_NAME", "Novo nome:"], check: false },
 };
 
 export interface NameHooks {
@@ -102,7 +102,7 @@ export class NameItemPopup {
   private async check(): Promise<void> {
     const check = this.hooks?.check, text = this.box?.value.trim() ?? "";
     if (!check) return;
-    this.answer = text ? await check(text) : this.str("STR_POPUP_MESSAGE_INPUT_NAME", "Digite o apelido.");
+    this.answer = text ? await check(text) : this.str("STR_POPUP_MESSAGE_INPUT_NAME", "Enter the nickname.");
     this.paint();
   }
 
@@ -218,12 +218,12 @@ export function nickColorPopup(ctx: PageCtx): Promise<NickColorPopup> {
 /** the nick check of Verificar: findUser (friend search, USER_DETAIL_ACK result 0) answers true when the account exists = taken [INFERIDO] */
 async function nickFree(s: MetaSession, nick: string): Promise<string> {
   const conn = s.connection;
-  if (!conn || !conn.isOpen) return "Sem conexão com o servidor.";
+  if (!conn || !conn.isOpen) return "No connection to the server.";
   try {
-    return (await findUser(conn, nick)) ? "Apelido já está em uso ou não é permitido." : "O apelido está disponível";
+    return (await findUser(conn, nick)) ? "Nickname is already taken or not allowed." : "The nickname is available";
   } catch (e) {
     console.warn("[cross] nick check", e);
-    return "Sem resposta do servidor.";
+    return "No response from the server.";
   }
 }
 
@@ -243,10 +243,10 @@ export async function useNameItem(ctx: PageCtx, item: InventoryItem, kind: NameK
     p.show(name, current, {
       ok: (index) => {
         void s.changeNickColor(item, index).then((code) => {
-          if (code !== 1) { c.say(`Não foi possível trocar a cor (0x${(code >>> 0).toString(16)}).`, true); return; }
+          if (code !== 1) { c.say(`Could not change the color (0x${(code >>> 0).toString(16)}).`, true); return; }
           p.close();
-          c.say("Cor do apelido alterada.", true); // [RECRIADO] text
-        }, () => c.say("Não foi possível trocar a cor.", true));
+          c.say("Nickname color changed.", true); // [RECRIADO] text
+        }, () => c.say("Could not change the color.", true));
       },
     }, undefined, { label: ["STR_POPUP_APPLIED_NICK_NAME", "Apelido aplicado:"], name: s.player.state.profile?.nickname ?? "" });
     return;
@@ -257,14 +257,14 @@ export async function useNameItem(ctx: PageCtx, item: InventoryItem, kind: NameK
   const beforeColor = kind === "clan" ? null : s.player.state.invItem?.nickColor ?? 0;
   p.show(kind, name, before, {
     ok: (text) => {
-      if (!text) { c.say(str("STR_POPUP_MESSAGE_INPUT_NAME", "Digite o apelido."), true); return; }
+      if (!text) { c.say(str("STR_POPUP_MESSAGE_INPUT_NAME", "Enter the nickname."), true); return; }
       void s.useItemText(item, text).then((code) => {
-        if (code !== 1) { c.say(`Não foi possível trocar o nome (0x${(code >>> 0).toString(16)}).`, true); return; }
+        if (code !== 1) { c.say(`Could not change the name (0x${(code >>> 0).toString(16)}).`, true); return; }
         p.close();
         c.say(kind === "clan"
-          ? str("STR_TBL_CLAN_NAMECHANGE_SUCCESS", "Nome do clã trocado.")
+          ? str("STR_TBL_CLAN_NAMECHANGE_SUCCESS", "Clan name changed.")
           : `${str("STR_POPUP_APPLIED_NICK_NAME", "Apelido aplicado:")} ${text}`, true);
-      }, () => c.say("Não foi possível trocar o nome.", true));
+      }, () => c.say("Could not change the name.", true));
     },
     check: kind === "nick" ? (text) => nickFree(s, text) : undefined,
   }, beforeColor);

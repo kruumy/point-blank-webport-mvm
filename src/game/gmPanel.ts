@@ -63,17 +63,17 @@ export class GmPanel extends Modal {
     if (d.stealth) {
       const st = d.stealth;
       const chk = el("div", "pbm-chk");
-      chk.append(el("b", "", "✓"), el("span", "", "Entrar nas salas invisível (observador GM)"));
+      chk.append(el("b", "", "✓"), el("span", "", "Enter rooms invisibly (GM observer)"));
       const paint = () => chk.classList.toggle("on", st.get());
       chk.addEventListener("click", () => { st.set(!st.get()); paint(); });
       paint();
       this.section("Entrada", chk);
-      this.body.appendChild(el("div", "pbm-n", "Nenhum jogador vê você na sala nem na partida, e você não ocupa vaga. Vale para as próximas salas em que entrar."));
+      this.body.appendChild(el("div", "pbm-n", "No player sees you in the room or the match, and you don't take a slot. Applies to the next rooms you enter."));
       this.paintStealth = paint;
     }
-    this.nick = field("Apelido do jogador", "text", 32);
-    this.section("Jogador", this.nick, this.list);
-    this.amount = field("Minutos / dias", "number", 6);
+    this.nick = field("Player nickname", "text", 32);
+    this.section("Player", this.nick, this.list);
+    this.amount = field("Minutes / days", "number", 6);
     this.amount.value = "30";
     const acts = el("div", "pbg-row");
     const act = (label: string, run: () => string | null, danger = false) => {
@@ -89,9 +89,9 @@ export class GmPanel extends Modal {
     act("Expulsar", () => (this.needNick() ? `:player kick ${qn(this.nick.value.trim())}` : null), true);
     act("Silenciar", () => this.needNick() && this.num() !== null ? `:mute ${q(this.nick.value.trim())} ${this.num()}` : null);
     act("Liberar chat", () => this.needNick() ? `:mute ${q(this.nick.value.trim())} 0` : null);
-    act("Banir (dias)", () => this.needNick() && this.num() !== null ? `:player ban normal ${this.num()} ${qn(this.nick.value.trim())}` : null, true);
-    act("Denúncias", () => this.nick.value.trim() ? `:reports ${q(this.nick.value.trim())}` : ":reports");
-    this.section("Ação (valor = minutos de silêncio ou dias de ban)", this.amount, acts);
+    act("Ban (days)", () => this.needNick() && this.num() !== null ? `:player ban normal ${this.num()} ${qn(this.nick.value.trim())}` : null, true);
+    act("Reports", () => this.nick.value.trim() ? `:reports ${q(this.nick.value.trim())}` : ":reports");
+    this.section("Action (value = minutes of mute or days of ban)", this.amount, acts);
 
     const seg = el("div", "pbm-seg");
     for (const k of ["gold", "cash", "tags"] as const) {
@@ -101,10 +101,10 @@ export class GmPanel extends Modal {
       seg.appendChild(b);
     }
     this.gift = field("Quantidade", "number", 9);
-    const giftGo = el("div", "pbm-btn", "Enviar");
+    const giftGo = el("div", "pbm-btn", "Send");
     giftGo.addEventListener("click", () => {
       const n = Math.trunc(Number(this.gift.value));
-      if (!this.needNick() || !Number.isFinite(n) || n === 0) { this.say("Informe o jogador e uma quantidade."); return; }
+      if (!this.needNick() || !Number.isFinite(n) || n === 0) { this.say("Enter the player and an amount."); return; }
       this.run(`:player gift ${this.giftKind} ${n} ${qn(this.nick.value.trim())}`);
     });
     const giftRow = el("div", "pbg-two");
@@ -113,14 +113,14 @@ export class GmPanel extends Modal {
     this.section("Presentear", seg, giftRow);
     this.paintGift();
 
-    this.text = field("Texto (até 44 letras)", "text", CHAT_MAX - ":sendmsg player ".length);
+    this.text = field("Text (up to 44 letters)", "text", CHAT_MAX - ":sendmsg player ".length);
     const msg = el("div", "pbg-row");
-    for (const [label, where] of [["Para a sala", "room"], ["Para o canal", "channel"], ["Para todos", "player"]] as const) {
+    for (const [label, where] of [["To the room", "room"], ["Para o canal", "channel"], ["Para todos", "player"]] as const) {
       const b = el("div", "pbm-btn", label);
       b.addEventListener("click", () => { const t = this.text.value.trim(); if (!t) { this.say("Escreva a mensagem."); return; } this.run(`:sendmsg ${where} ${t}`); });
       msg.appendChild(b);
     }
-    this.section("Mensagem do servidor", this.text, msg);
+    this.section("Server message", this.text, msg);
 
     const srv = el("div", "pbg-row");
     const quick = (label: string, cmd: string, danger = false) => {
@@ -132,27 +132,27 @@ export class GmPanel extends Modal {
       });
       srv.appendChild(b);
     };
-    quick("Encerrar partida", ":endbattle", true);
-    quick("Últimas denúncias", ":reports");
+    quick("End match", ":endbattle", true);
+    quick("Latest reports", ":reports");
     quick("Bugs", ":bugs");
     quick("Ajuda", ":help");
-    this.section("Servidor", srv);
+    this.section("Server", srv);
 
     this.section("Resposta", this.log);
     this.body.appendChild(this.status);
-    this.button("Fechar", true, () => this.close());
+    this.button("Close", true, () => this.close());
     for (const inp of [this.nick, this.amount, this.gift, this.text]) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") e.preventDefault(); });
   }
 
   private num(): number | null {
     const n = Math.trunc(Number(this.amount.value));
-    if (!Number.isFinite(n) || n < 0) { this.say("Valor inválido."); return null; }
+    if (!Number.isFinite(n) || n < 0) { this.say("Invalid value."); return null; }
     return n;
   }
 
   private needNick(): boolean {
     if (this.nick.value.trim()) return true;
-    this.say("Escolha o jogador (lista ou apelido).");
+    this.say("Choose the player (list or nickname).");
     return false;
   }
 
@@ -160,7 +160,7 @@ export class GmPanel extends Modal {
     this.disarm();
     this.armed = b;
     b.dataset.label = label;
-    b.textContent = "Confirmar?";
+    b.textContent = "Confirm?";
   }
 
   private disarm(): void {
@@ -174,7 +174,7 @@ export class GmPanel extends Modal {
 
   private run(cmd: string): void {
     if (cmd.length > CHAT_MAX) { this.say(`Comando maior que ${CHAT_MAX} letras (apelido ou texto longo demais).`); return; }
-    if (!this.d.send(cmd)) { this.say("Não enviado: sem conexão."); return; }
+    if (!this.d.send(cmd)) { this.say("Not sent: no connection."); return; }
     this.say(`Enviado: ${cmd}`, true);
   }
 

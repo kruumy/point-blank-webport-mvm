@@ -108,6 +108,8 @@ export function mapFromRoomMapId(mapId: number): MapId {
 
 export const AssetPaths = {
   get visualGlb() { return `/assets/maps/${CurrentMap}/visual.glb`; },
+  /** the i3World sky scene (pb-extract-tools export-visual --sky); indoor maps have none */
+  get skyGlb() { return `/assets/maps/${CurrentMap}/sky/sky.glb`; },
   get collisionGlb() { return `/assets/maps/${CurrentMap}/collision.glb`; },
   get collisionJson() { return `/assets/maps/${CurrentMap}/collision.json`; },
   get lightingJson() { return `/assets/maps/${CurrentMap}/lighting.json`; },

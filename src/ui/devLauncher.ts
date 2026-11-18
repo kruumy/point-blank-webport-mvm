@@ -32,14 +32,14 @@ export function openDevLauncher(start: (map: string) => void): void {
   const maps = "";
   box.innerHTML = `<h3>Testes offline <small>(F2 fecha)</small></h3>
 <label>Mapa <select id="dl-map">${maps}</select></label>
-<label>Modo <select id="dl-mode">${opt("tdm", "Team Deathmatch")}${opt("bomb", "Destruição (Bomba)")}</select></label>
+<label>Modo <select id="dl-mode">${opt("tdm", "Team Deathmatch")}${opt("bomb", "Destruction (Bomb)")}</select></label>
 <label>Seu time <select id="dl-team">${opt("red", "TR / vermelho")}${opt("blue", "CT / azul")}</select></label>
 <label>Entrar como espectador (8x8 de bots) <input id="dl-spec" type="checkbox"></label>
 <label>Bots <input id="dl-bots" type="number" min="0" max="16" value="0"></label>
 <label>Bots no seu time <input id="dl-allies" type="number" min="0" max="16" value="0"></label>
 <label>Rodadas p/ vencer (0 = sem limite) <input id="dl-rounds" type="number" min="0" max="9" value="3"></label>
-<label>Nascer perto da bomba <select id="dl-spawn">${opt("", "não")}${opt("a", "ponto A")}${opt("b", "ponto B")}</select></label>
-<label>Bomba já plantada <select id="dl-planted">${opt("", "não")}${opt("a", "no ponto A")}${opt("b", "no ponto B")}</select></label>
+<label>Nascer perto da bomba <select id="dl-spawn">${opt("", "no")}${opt("a", "site A")}${opt("b", "site B")}</select></label>
+<label>Bomba já plantada <select id="dl-planted">${opt("", "no")}${opt("a", "at site A")}${opt("b", "at site B")}</select></label>
 <label>Anéis dos pontos <input id="dl-rings" type="checkbox"></label>
 <div class="row"><button id="dl-go">Iniciar</button><button id="dl-x">Fechar</button></div>
 <small>Dentro do jogo, F2 abre o menu de ações (plantar, explodir, teleportar...).</small>`;

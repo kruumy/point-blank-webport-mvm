@@ -27,12 +27,12 @@ export const COUNTDOWN_SOUNDS = ["UI_Count_A.wav", "UI_Count_B.wav", "UI_Count_C
 
 const STR = {
   // String_Brazil.lua texts as fallback
-  stopGetAway: ["STR_TBL_GUI_READYROOM_STOP_GET_AWAY", "Não é possível mudar para outras funções ao iniciar jogo"],
+  stopGetAway: ["STR_TBL_GUI_READYROOM_STOP_GET_AWAY", "Cannot switch to other functions after the game starts"],
   start: ["STR_TBL_GUI_READY_NOTICE_START_COUNTDOWN", "{col:255,120,0,255}Iniciando contagem regressiva.{/col}"],
-  alarm: ["STR_TBL_GUI_READY_NOTICE_PRE_GAME_START_ALARM", "{col:255,120,0,255}Início do jogo em %dsegundos{/col}"],
-  startGame: ["STR_TBL_GUI_READY_NOTICE_START_GAME", "{col:255,120,0,255}O jogo será iniciado.{/col}"],
-  aborted: ["STR_TBL_GUI_READY_NOTICE_COUNTDOWN_ABORTED", "{col:255,120,0,255} Algum jogador não está pronto, a contagem regressiva foi cancelada.{/col}"],
-  abortedByHost: ["STR_TBL_GUI_READY_NOTICE_COUNTDOWN_ABORTED_BY_ROOM_MASTER", "{col:255,120,0,255}O dono da sala cancelou a contagem regressiva.{/col}"],
+  alarm: ["STR_TBL_GUI_READY_NOTICE_PRE_GAME_START_ALARM", "{col:255,120,0,255}Game starts in %d seconds{/col}"],
+  startGame: ["STR_TBL_GUI_READY_NOTICE_START_GAME", "{col:255,120,0,255}The game is starting.{/col}"],
+  aborted: ["STR_TBL_GUI_READY_NOTICE_COUNTDOWN_ABORTED", "{col:255,120,0,255} A player is not ready; the countdown was cancelled.{/col}"],
+  abortedByHost: ["STR_TBL_GUI_READY_NOTICE_COUNTDOWN_ABORTED_BY_ROOM_MASTER", "{col:255,120,0,255}The room owner cancelled the countdown.{/col}"],
 } as const;
 const str = (k: keyof typeof STR): string => tOr(STR[k][0], STR[k][1]);
 

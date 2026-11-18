@@ -65,16 +65,16 @@ export class BattleSocial {
     });
     this.votes.onEvent((e) => { if ("kind" in e) this.lastKind = e.kind; this.model.handle(e); });
     this.model.text = (k) => ({
-      already: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_ALREADY", "Você já votou."),
-      running: tOr("STR_ACK_FORCIBLYREMOVE_START_FAIL_ALREADY", "Outra votação já está em andamento."),
-      cooldown: "Aguarde um minuto para iniciar outra votação.", // [RECRIADO]
-      rank: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_NORIGHT", "Não tem direito ao voto."),
-      noright: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_NORIGHT", "Não tem direito ao voto."),
-      fail: tOr("STR_ACK_FORCIBLYREMOVE_UNKNOWN_ERROR", "Erro desconhecido."),
-      few: this.lastKind === "leader" ? "É preciso ter pelo menos 4 jogadores humanos na partida para votar um novo líder." : "É preciso ter pelo menos 4 jogadores humanos na partida para votar uma expulsão.",
-      protected: "Esse jogador não pode ser expulso por votação.",
-      badTarget: "Esse jogador não pode ser o novo líder.",
-      highPing: "Esse jogador tem ping alto demais para ser líder.",
+      already: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_ALREADY", "You have already voted."),
+      running: tOr("STR_ACK_FORCIBLYREMOVE_START_FAIL_ALREADY", "Another vote is already in progress."),
+      cooldown: "Wait a minute before starting another vote.", // [RECRIADO]
+      rank: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_NORIGHT", "You are not allowed to vote."),
+      noright: tOr("STR_ACK_FORCIBLYREMOVE_VOTE_FAIL_NORIGHT", "You are not allowed to vote."),
+      fail: tOr("STR_ACK_FORCIBLYREMOVE_UNKNOWN_ERROR", "Unknown error."),
+      few: this.lastKind === "leader" ? "At least 4 human players are needed in the match to vote for a new leader." : "At least 4 human players are needed in the match to vote a kick.",
+      protected: "This player cannot be kicked by vote.",
+      badTarget: "This player cannot be the new leader.",
+      highPing: "This player's ping is too high to be leader.",
     })[k];
     setBugContext(() => ({ p2p_role: d.room.isLeader ? "host" : "guest", room_id: d.room.room?.roomId ?? null, map: d.room.room?.mapId ?? null, mode: d.room.room?.roomType ?? null }));
     this.prevBugOpener = setBugOpener(() => this.openBug());
@@ -162,15 +162,15 @@ export class BattleSocial {
     switch (cmd.toLowerCase()) {
       case "/bloquear": case "/block": {
         const nick = splitArgs(arg, 1)[0] ?? "";
-        if (!nick) { chat.system("Uso: /bloquear <apelido>"); return true; }
+        if (!nick) { chat.system("Usage: /block <nickname>"); return true; }
         const p = this.resolve(nick);
         chat.block(p?.nick ?? nick);
-        chat.system(`${p?.nick ?? nick}: bloqueado (chat e rádio).`);
+        chat.system(`${p?.nick ?? nick}: blocked (chat and radio).`);
         return true;
       }
       case "/desbloquear": case "/unblock": {
         const nick = splitArgs(arg, 1)[0] ?? "";
-        if (!nick) { chat.system(chat.blockedNicks().length ? `Bloqueados: ${chat.blockedNicks().join(", ")}` : "Ninguém bloqueado."); return true; }
+        if (!nick) { chat.system(chat.blockedNicks().length ? `Blocked: ${chat.blockedNicks().join(", ")}` : "Nobody blocked."); return true; }
         const p = this.resolve(nick);
         chat.unblock(p?.nick ?? nick);
         chat.system(`${p?.nick ?? nick}: desbloqueado.`);
@@ -189,7 +189,7 @@ export class BattleSocial {
   /** 5203: show the notice, then leave through the normal leave path (the server already removed the slot) */
   private kicked(): void {
     if (this.banner || this.disposed) return;
-    const msg = tOr("STR_ACK_FORCIBLYREMOVE_KICKED_BY_VOTE", "%s Você foi expulso da sala através de votação.").replace(/%s\s*/, "").replace(/\{\/?col[^}]*\}/g, "");
+    const msg = tOr("STR_ACK_FORCIBLYREMOVE_KICKED_BY_VOTE", "%s You were kicked from the room by vote.").replace(/%s\s*/, "").replace(/\{\/?col[^}]*\}/g, "");
     chat.system(msg);
     const b = this.banner = document.createElement("div");
     b.style.cssText = 'position:fixed;left:50%;top:38%;transform:translateX(-50%);z-index:70;padding:14px 22px;background:rgba(0,0,0,.78);border:1px solid rgba(255,255,255,.3);'

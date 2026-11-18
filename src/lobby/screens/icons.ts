@@ -62,9 +62,9 @@ export function iconOf(itemId: number): CrossRect | null {
 /** Item class name for the no-icon card (server ItemClass, Plugin.Core/Enums/ItemClass.cs) [RECRIADO]. */
 export function noIconLabel(itemId: number): string {
   const c = Math.floor(itemId / 100000);
-  if (c >= 9 && c <= 14) return ["Uniforme", "Calça", "Luva", "Cinto", "Coldre", "Skin"][c - 9];
-  return ({ 15: "Dino", 16: "Manutenção", 17: "Consumível", 18: "Cupom", 20: "Pontos", 22: "Cartão de missão", 26: "Cartão de missão", 27: "Boina", 28: "Caixa",
-    30: "Acessório", 32: "Emblema", 33: "Emblema", 34: "Cartão de nome", 35: "Cartão de nome", 36: "Passe" } as Record<number, string>)[c] ?? "Item";
+  if (c >= 9 && c <= 14) return ["Uniforme", "Pants", "Luva", "Cinto", "Coldre", "Skin"][c - 9];
+  return ({ 15: "Dino", 16: "Maintenance", 17: "Consumable", 18: "Cupom", 20: "Points", 22: "Mission card", 26: "Mission card", 27: "Boina", 28: "Caixa",
+    30: "Accessory", 32: "Emblema", 33: "Emblema", 34: "Name card", 35: "Name card", 36: "Passe" } as Record<number, string>)[c] ?? "Item";
 }
 
 /**
@@ -99,5 +99,5 @@ export function paintIcon(el: HTMLElement, itemId: number, bw = el.clientWidth, 
   el.classList.remove("pbui-missing");
   el.classList.add("pbui-noicon");
   el.dataset.noicon = noIconLabel(itemId);
-  el.title = `[RECRIADO] sem ícone para ${itemId}`;
+  el.title = `[RECRIADO] no icon for ${itemId}`;
 }

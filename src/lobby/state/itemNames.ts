@@ -58,7 +58,10 @@ let loading: Promise<void> | null = null;
 /** Browser: client names (fetch) + server snapshot (lazy chunk, ~400 KB) when a meta screen opens. */
 export function loadItemNames(uiBase = "/assets/ui"): Promise<void> {
   return (loading ??= Promise.all([
-    fetch(`${uiBase}/strings/items.pt-BR.json`).then((r) => (r.ok ? r.json() : {})).then(setClientItemNames).catch(() => {}),
+    fetch(`${uiBase}/strings/items.pt-BR.json`).then((r) => (r.ok ? r.json() : {})).then(setClientItemNames)
+      // [RECRIADO] English names over the client's PT-BR ones (public/locale/en/items.json, same ids)
+      .then(() => fetch("/locale/en/items.json")).then((r) => (r.ok ? r.json() : {})).then((en: Record<string, string>) => { Object.assign(client, en); })
+      .catch(() => {}),
     import("./data/itemNames.json").then((m) => setItemNameTable(((m as { default?: unknown }).default ?? m) as { names: Record<string, [string, string]> })),
     import("../../weapons/throwables.ts").then((t) => setClientIdMap((id) => (t.isServerThrowable(id) ? t.pack2017Id(id) : id))),
   ]).then(() => {}).catch((e) => { loading = null; console.warn("[lobby] item names not loaded", e); }));

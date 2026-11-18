@@ -133,8 +133,8 @@ export function tabLayout(d: HudData, W: number, H: number): PanelLayout {
   // CLAN, RANK, NICK, KILL, DEATH. Node 7 (+0x1ac / +0x1b0) has an empty string: not drawn. Headers are centred in their own rect.
   const HEADS: { key: string; fb: string; x: number; w: number }[] = [
     { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_ORDER", fb: "Rank", x: 18, w: 29 },
-    { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_CLAN", fb: "Clã", x: 47, w: 28 },
-    { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_RANK", fb: "Nível", x: 76, w: 28 },
+    { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_CLAN", fb: "Clan", x: 47, w: 28 },
+    { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_RANK", fb: "Level", x: 76, w: 28 },
     { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_NICK", fb: "Apelido", x: 103, w: 165 },
     { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_KILL", fb: "KILL", x: 265, w: 39 },
     { key: "STR_TBL_INGAME_HUD_SCORE_TEXT_DEATH", fb: "DEATH", x: 300, w: 55 },

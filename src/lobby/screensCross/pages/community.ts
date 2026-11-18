@@ -60,12 +60,12 @@ const HIDDEN = [
 const TEXTS: Texts = {
   ...NOTE_TEXTS,
   cmCommunityCaption: ["STR_POPUP_COMMUNITY", "Comunidade"],
-  cmFriendTab: ["STR_POPUP_FRIEND", "Amigos"],
+  cmFriendTab: ["STR_POPUP_FRIEND", "Friends"],
   cmBlockTab: ["STR_POPUP_BLOCK", "Bloquear"],
   cmContactListName: ["STR_POPUP_NAME", "Nome"],
   // the exe's text map says STR_POPUP_RIGHT_HANDED here (a wrong key); the list's state column is STR_POPUP_STATE [INFERIDO]
   cmContactListState: ["STR_POPUP_STATE", "Estado"],
-  cmContactKey: ["STR_POPUP_DETAIL_INFO", "Informações"],
+  cmContactKey: ["STR_POPUP_DETAIL_INFO", "Information"],
   cmNicknameKey: ["STR_POPUP_NICKNAME", "Apelido"],
   cmPositionKey: ["STR_POPUP_CUR_POSITION", "Estado"],
   cmAdd: ["STR_POPUP_ADD_FRIEND", "Adicionar"],
@@ -76,15 +76,15 @@ const TEXTS: Texts = {
   cmInvite: ["STR_POPUP_INVITE", "Convidar"],
   // cmFind's own label key is not in the exe's label code [INFERIDO]: the popup title key is used
   cmFind: ["STR_POPUP_FIND_USER", "Buscar"],
-  cmContactClose: ["STR_POPUP_CLOSE", "Fechar"],
-  cmLeave: ["STR_POPUP_CLOSE", "Fechar"],
+  cmContactClose: ["STR_POPUP_CLOSE", "Close"],
+  cmLeave: ["STR_POPUP_CLOSE", "Close"],
   cmUserDetailInfoPopupMsgCaption: ["STR_TBL_PROFILE_NOTICE_TEXT", "Aviso"],
-  cmUserDetailInfoPopupMsgConfirm: ["STR_POPUP_OK", "Confirmar"],
-  cmUserDetailInfoPopupMsgCancel: ["STR_POPUP_CANCEL", "Cancelar"],
+  cmUserDetailInfoPopupMsgConfirm: ["STR_POPUP_OK", "Confirm"],
+  cmUserDetailInfoPopupMsgCancel: ["STR_POPUP_CANCEL", "Cancel"],
   cmNicknameCaption: ["STR_POPUP_ADD_FRIEND", "Adicionar"],
-  cmNicknameMessage: ["STR_POPUP_MESSAGE_INPUT_FRIEND_NAME", "Digite o apelido do usuário \npara adicionar na lista de amigos."],
-  cmNicknameConfirm: ["STR_POPUP_OK", "Confirmar"],
-  cmNicknameCancel: ["STR_POPUP_CANCEL", "Cancelar"],
+  cmNicknameMessage: ["STR_POPUP_MESSAGE_INPUT_FRIEND_NAME", "Enter the user's nickname \nto add to the friend list."],
+  cmNicknameConfirm: ["STR_POPUP_OK", "Confirm"],
+  cmNicknameCancel: ["STR_POPUP_CANCEL", "Cancel"],
 };
 
 interface Row { f: Friend; idx: number }
@@ -176,7 +176,7 @@ export class CommunityPage {
     this.button("cmLeave", () => this.close());
     this.button("cmContactTab", () => this.showTab("contacts"));
     this.button("cmNoteTab", () => this.showTab("notes"));
-    this.button("cmBlockTab", () => this.say(this.str("STR_POPUP_PREPARE_PLAN", "Opção desabilitada por enquanto ;)")));
+    this.button("cmBlockTab", () => this.say(this.str("STR_POPUP_PREPARE_PLAN", "Option disabled for now ;)")));
     this.button("cmAdd", () => this.openNick("add"));
     this.button("cmFind", () => this.openNick("find"));
     this.button("cmInvite", () => this.invite());
@@ -277,14 +277,14 @@ export class CommunityPage {
     if (m.kind === "accept") {
       // Aceitar (1816, exe 0x8875c0 -> 0x78e760): the server answers 1815 Accept + Update, then the list follows
       const err = conn ? await acceptFriend(conn, m.idx) : 0x80000000;
-      if (err) this.say(this.str("STR_TBL_GUI_BASE_FAIL_REQUEST_FRIEND", "Não conseguiu adicionar o amigo à lista."));
+      if (err) this.say(this.str("STR_TBL_GUI_BASE_FAIL_REQUEST_FRIEND", "Could not add the friend to the list."));
       return this.draw();
     }
     // Excluir / Recusar (1820, exe 0x8875f0 -> 0x78e7e0): the exe clears the card's selection after the request
     this.sel = -1;
     const err = conn ? await deleteFriend(conn, m.idx) : 0x80000000;
-    if (err) this.say(this.str("STR_TBL_GUI_BASE_FAIL_DELETE_FRIEND", "Não foi possível excluir o amigo."));
-    else if (m.kind === "delete") this.say(this.str("STR_TBL_GUI_BASE_NOTICE_DELETE_FRIEND_COMPLETE", "[%s] foi excluído da sua lista de amigos.").replace("%s", m.nick));
+    if (err) this.say(this.str("STR_TBL_GUI_BASE_FAIL_DELETE_FRIEND", "Could not delete the friend."));
+    else if (m.kind === "delete") this.say(this.str("STR_TBL_GUI_BASE_NOTICE_DELETE_FRIEND_COMPLETE", "[%s] was removed from your friend list.").replace("%s", m.nick));
     this.draw();
   }
 
@@ -300,8 +300,8 @@ export class CommunityPage {
     const nick = (this.nickBox?.value ?? "").trim();
     const find = this.nickMode === "find";
     this.nickOn = false;
-    if (!nick) this.say(this.str("STR_POPUP_MESSAGE_INPUT_NAME", "Digite o apelido."));
-    else if (nick.length < 2 || nick.length > 16) this.say(this.str("STR_POPUP_MESSAGE_LIMITED_NAME_LENGTH", "O apelido deve ter de 2 até 16 caracteres."));
+    if (!nick) this.say(this.str("STR_POPUP_MESSAGE_INPUT_NAME", "Enter the nickname."));
+    else if (nick.length < 2 || nick.length > 16) this.say(this.str("STR_POPUP_MESSAGE_LIMITED_NAME_LENGTH", "The nickname must be 2 to 16 characters."));
     else if (find) this.findFriend(nick);
     else this.addFriend(nick);
     this.draw();
@@ -311,7 +311,7 @@ export class CommunityPage {
    * seleciona a linha da lobby (lobbyPick -> lbUserListSlotSelect); fora das duas listas, sem seleção, o nick vai ao servidor
    * (opcode 297). Miss: nenhum aviso, como no exe (o 297 não tem resposta no cliente, ver friendClient.ts). */
   findFriend(nick: string): void {
-    if (nick === chat.myNick) return this.say(this.str("STR_POPUP_MESSAGE_INPUT_SELF", "Não é possível buscar você mesmo."));
+    if (nick === chat.myNick) return this.say(this.str("STR_POPUP_MESSAGE_INPUT_SELF", "You cannot search for yourself."));
     const rows = this.rows();
     const pos = rows.findIndex((r) => r.f.nick === nick);
     if (pos >= 0) {
@@ -331,9 +331,9 @@ export class CommunityPage {
    * do dono; o convite vai pelo app (877 pelo session id do lobby, ver app.ts inviteFriend). Sala: "já está numa sala". */
   private invite(): void {
     const r = this.selected();
-    if (!r) return this.say(this.str("STR_POPUP_MESSAGE_CHOOSE_FRIEND_TO_INVITE", "Escolha um amigo para convidar."));
+    if (!r) return this.say(this.str("STR_POPUP_MESSAGE_CHOOSE_FRIEND_TO_INVITE", "Choose a friend to invite."));
     const top = crossState(r.f.status);
-    if (top === CrossState.ROOM) return this.say(this.str("STR_POPUP_MESSAGE_FRIEND_IN_THE_ROOM", "O amigo já está em uma sala."));
+    if (top === CrossState.ROOM) return this.say(this.str("STR_POPUP_MESSAGE_FRIEND_IN_THE_ROOM", "Your friend is already in a room."));
     if (top !== CrossState.LOBBY) return this.say(this.str("STR_POPUP_MESSAGE_INVITE_ONLINE_FRIEND", "Convide apenas amigos online no canal."));
     this.inviteFriend(r.f.nick);
     this.draw();
@@ -343,7 +343,7 @@ export class CommunityPage {
   private visit(): void {
     const r = this.selected();
     if (!r) return this.say(this.str("STR_POPUP_PLEASE_MESSAGE_FRIEND_TO_VISIT", "Selecione o amigo que deseja visitar."));
-    if (crossState(r.f.status) !== CrossState.ROOM) return this.say(this.str("STR_POPUP_MESSAGE_FRIEND_IN_THE_ROOM", "O amigo deve estar na mesma sala."));
+    if (crossState(r.f.status) !== CrossState.ROOM) return this.say(this.str("STR_POPUP_MESSAGE_FRIEND_IN_THE_ROOM", "Your friend must be in the same room."));
     this.ctx.ctl.visitRoom(r.f.status);
     this.draw();
   }
@@ -356,9 +356,9 @@ export class CommunityPage {
       case CrossState.SENT:
       case CrossState.RECEIVED: return this.str("STR_POPUP_SECRET", "Privado");
       case CrossState.OFFLINE: return this.str("STR_POPUP_OFFLINE_STATE", "Offline");
-      case CrossState.ONLINE: return this.str("STR_POPUP_READY_STATE", "Aguardando");
+      case CrossState.ONLINE: return this.str("STR_POPUP_READY_STATE", "Waiting");
       case CrossState.LOBBY: return this.str("STR_POPUP_WHAT_POSITION_LOBBY", "%d-Lobby").replace("%d", String(chan));
-      case CrossState.ROOM: return this.str("STR_POPUP_WHAT_POSITION", "Sala %d-%d").replace("%d", String(chan)).replace("%d", String(room));
+      case CrossState.ROOM: return this.str("STR_POPUP_WHAT_POSITION", "Room %d-%d").replace("%d", String(chan)).replace("%d", String(room));
       default: return "";
     }
   }
@@ -395,22 +395,22 @@ export class CommunityPage {
       const recv = this.isReceived(sel.f);
       g.setText("cmNicknameValue", sel.f.nick);
       g.setText("cmPositionValue", this.stateText(sel.f));
-      g.setText("cmProfile", recv ? this.str("STR_POPUP_ACCEPT_FRIEND", "Aceitar amigo") : this.str("STR_POPUP_DELETE_FRIEND", "Excluir"));
+      g.setText("cmProfile", recv ? this.str("STR_POPUP_ACCEPT_FRIEND", "Aceitar amigo") : this.str("STR_POPUP_DELETE_FRIEND", "Delete"));
     }
     g.show("cmUserDetailInfoPopupMsg", !!this.msg || !!this.noteAsk);
     if (this.noteAsk) g.setText("cmUserDetailInfoPopupMsgMessage", this.noteAsk.text);
     else if (this.msg) {
       const m = this.msg;
-      const text = m.kind === "accept" ? this.str("STR_POPUP_Q_MESSAGE_ACCEPT_TO_FRINED", "Deseja aceitar o pedido de amizade do usuário [%s]?")
-        : m.kind === "refuse" ? this.str("STR_POPUP_MESSAGE_REFUSE_FRIEND", "Deseja recusar o pedido de amizade do usuário [%s]?")
+      const text = m.kind === "accept" ? this.str("STR_POPUP_Q_MESSAGE_ACCEPT_TO_FRINED", "Accept the friend request from user [%s]?")
+        : m.kind === "refuse" ? this.str("STR_POPUP_MESSAGE_REFUSE_FRIEND", "Decline the friend request from user [%s]?")
         : this.str("STR_POPUP_MESSAGE_DELETE_FRIEND", "Deseja excluir o amigo [%s]?");
       g.setText("cmUserDetailInfoPopupMsgMessage", text.replace("%s", m.nick));
     }
     if (this.nickOn) {
       const find = this.nickMode === "find";
-      g.setText("cmNicknameCaption", find ? this.str("STR_POPUP_FIND_USER", "Buscar usuário") : this.str("STR_POPUP_ADD_FRIEND", "Adicionar"));
-      g.setText("cmNicknameMessage", find ? this.str("STR_POPUP_MESSAGE_FINDING_NAME", "Digite o apelido do usuário \npara buscar na lista de amigos.")
-        : this.str("STR_POPUP_MESSAGE_INPUT_FRIEND_NAME", "Digite o apelido do usuário \npara adicionar na lista de amigos."));
+      g.setText("cmNicknameCaption", find ? this.str("STR_POPUP_FIND_USER", "Search user") : this.str("STR_POPUP_ADD_FRIEND", "Adicionar"));
+      g.setText("cmNicknameMessage", find ? this.str("STR_POPUP_MESSAGE_FINDING_NAME", "Enter the user's nickname \nto search the friend list.")
+        : this.str("STR_POPUP_MESSAGE_INPUT_FRIEND_NAME", "Enter the user's nickname \nto add to the friend list."));
     }
     g.show(NICK_POPUP, this.nickOn);
     for (const fn of this.repaints) fn();

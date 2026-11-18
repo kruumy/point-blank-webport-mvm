@@ -86,7 +86,7 @@ export function taskText(t: MissionTaskDef, progress: number, o: TaskTextOpts): 
   if (req === 3) {
     // Weapon_Cont 0x99c7d0 (Cross 0x990800, ETC6 + action with no space between): "(Em 1 Round) ", "para %s " (STAGE_ENTER / INTERCEPT) / "no %s ", weapon, "Está em uso" for the class kills, action
     const loc = stage ? R(type === 11 || type === 12 ? "STR_TBL_QUEST_WEAPON_COUNT_ETC15" : "STR_TBL_QUEST_WEAPON_COUNT_ETC14", "%s ").replace("%s", stage) : "";
-    const use = classKill ? R("STR_TBL_QUEST_WEAPON_COUNT_ETC6", "Está em uso") : "";
+    const use = classKill ? R("STR_TBL_QUEST_WEAPON_COUNT_ETC6", "In use") : "";
     return `${R("STR_TBL_QUEST_WEAPON_COUNT_ETC13", "(Em 1 Round) ")}${loc}${weaponPart(t, o)}${use}${action}\n${countLine("STR_TBL_QUEST_WEAPON_COUNT_ETC12", progress, limit)}`;
   }
   // Weapon_Accm 0x99ba70 (reqType 2 and anything else): "(Cumulativa) ", stage name, weapon, "Usar e " for the class kills, " ", action.
@@ -142,7 +142,7 @@ export function badgeType(badge: number): -1 | 0 | 1 | 2 | 3 {
 /** prize name of a badge kind (UpdatePrize 0x9544f0: RIBBON / ENSIGN / MEDALS / MEDALS _TEXT2) */
 export function badgeName(type: number): string {
   if (type === 0) return S("STR_TBL_PROFILE_RIBBON_TEXT2", "Broche");
-  if (type === 1) return S("STR_TBL_PROFILE_ENSIGN_TEXT2", "Insígnia");
+  if (type === 1) return S("STR_TBL_PROFILE_ENSIGN_TEXT2", "Insignia");
   if (type === 2 || type === 3) return S("STR_TBL_PROFILE_MEDALS_TEXT2", "Medalha");
   return "";
 }
@@ -214,30 +214,30 @@ export function tabSets(st: MissionState, tab: number): number[] {
 }
 
 export const MS = {
-  get tabName() { return S("STR_TBL_PROFILE_CHALLENGE_CARD_TEXT1", "Missões"); },
+  get tabName() { return S("STR_TBL_PROFILE_CHALLENGE_CARD_TEXT1", "Missions"); },
   get notDetected() { return "Mission card's not detected."; }, // the exe's own empty-list row (0x954d38), not a string table key
-  get challenge() { return S("STR_TBL_PROFILE_CHALLENGE_TEXT", "Missão"); },
+  get challenge() { return S("STR_TBL_PROFILE_CHALLENGE_TEXT", "Mission"); },
   get complete() { return S("STR_TBL_PROFILE_COMPLETE_TEXT", "Concluir"); },
-  get buyOk() { return S("STR_TBL_GUI_BASE_BUY_CARD", "Cartões de missão comprados com sucesso."); },
-  get deleteOk() { return S("STR_TBL_GUI_BASE_DELETE_CARD", "Excluiu pacote de cartão."); },
+  get buyOk() { return S("STR_TBL_GUI_BASE_BUY_CARD", "Mission cards purchased successfully."); },
+  get deleteOk() { return S("STR_TBL_GUI_BASE_DELETE_CARD", "Card pack deleted."); },
   get deleteAsk() { return S("STR_TBL_PROFILE_DELETE_CARD_MESSAGE", "Deseja excluir?"); },
-  get duplicate() { return S("STR_TBL_PROFILE_CARDSET_DUPLICATE", "Já existe cartão."); },
-  get limit() { return S("STR_TBL_GUI_BASE_LIMIT_CARD_COUNT", "O número de cartão de missão está restrito a 3 tipos."); },
-  get noPoint() { return S("STR_TBL_GUI_BASE_NO_POINT_TO_GET_ITEM", "Não possúi Gold suficiente."); },
-  get noCardInfo() { return S("STR_TBL_GUI_BASE_FAIL_BUY_CARD_BY_NO_CARD_INFO", "Compra não concluída."); },
-  get notTutorial() { return S("STR_TBL_GUI_BASE_DID_NOT_TUTORIAL_MISSION_CARD", "Necessário completar baralho de missões tutorial"); },
-  get deleteNoInfo() { return S("STR_TBL_GUI_BASE_FAIL_DELETE_CARD_BY_NOT_INFO", "Exclusão falhou."); },
-  get deleteNetwork() { return S("STR_TBL_GUI_BASE_FAIL_DELETE_ITEM_BY_NETWORK_PROBLEM", "Não é possível excluir item por problema de rede."); },
-  get selectCard() { return S("STR_TBL_PROFILE_PLEASE_SELETE_CARD", "Escolha um cartão para comprar."); },
-  get detailTitle() { return S("STR_TBL_PROFILE_CHALLENGE_CARD_INFO", "Informação do cartão de missão"); },
-  get cardName() { return S("STR_TBL_PROFILE_COMPENSATE_CARDNAME_TEXT", "Nome de cartão de missão:"); },
-  get price() { return S("STR_TBL_PROFILE_CARD_PRICE", "Preço:"); },
-  get totalPoint() { return S("STR_TBL_PROFILE_TOTAL_GET_POINT", "Total de Gold adquirido:"); },
-  get totalExp() { return S("STR_TBL_PROFILE_TOTAL_GET_EXT", "Total de experiência adquirida:"); },
-  get lastPoint() { return S("STR_TBL_PROFILE_LAST_REWARD_POINT1", "Último Gold adquirido"); },
-  get lastExp() { return S("STR_TBL_PROFILE_LAST_REWARD_EXT1", "Última EXP adquirida"); },
-  get prize() { return S("STR_TBL_PROFILE_PRIZE_NAME", "Prêmio:"); },
-  get master() { return S("STR_TBL_PROFILE_MASTER_MEDALS_TEXT", "Ordem Azul"); },
+  get duplicate() { return S("STR_TBL_PROFILE_CARDSET_DUPLICATE", "A card already exists."); },
+  get limit() { return S("STR_TBL_GUI_BASE_LIMIT_CARD_COUNT", "Mission cards are limited to 3 types."); },
+  get noPoint() { return S("STR_TBL_GUI_BASE_NO_POINT_TO_GET_ITEM", "Not enough Gold."); },
+  get noCardInfo() { return S("STR_TBL_GUI_BASE_FAIL_BUY_CARD_BY_NO_CARD_INFO", "Purchase not completed."); },
+  get notTutorial() { return S("STR_TBL_GUI_BASE_DID_NOT_TUTORIAL_MISSION_CARD", "You need to complete the tutorial mission deck"); },
+  get deleteNoInfo() { return S("STR_TBL_GUI_BASE_FAIL_DELETE_CARD_BY_NOT_INFO", "Deletion failed."); },
+  get deleteNetwork() { return S("STR_TBL_GUI_BASE_FAIL_DELETE_ITEM_BY_NETWORK_PROBLEM", "Cannot delete the item due to a network problem."); },
+  get selectCard() { return S("STR_TBL_PROFILE_PLEASE_SELETE_CARD", "Choose a card to buy."); },
+  get detailTitle() { return S("STR_TBL_PROFILE_CHALLENGE_CARD_INFO", "Mission card info"); },
+  get cardName() { return S("STR_TBL_PROFILE_COMPENSATE_CARDNAME_TEXT", "Mission card name:"); },
+  get price() { return S("STR_TBL_PROFILE_CARD_PRICE", "Price:"); },
+  get totalPoint() { return S("STR_TBL_PROFILE_TOTAL_GET_POINT", "Total Gold earned:"); },
+  get totalExp() { return S("STR_TBL_PROFILE_TOTAL_GET_EXT", "Total experience earned:"); },
+  get lastPoint() { return S("STR_TBL_PROFILE_LAST_REWARD_POINT1", "Last Gold earned"); },
+  get lastExp() { return S("STR_TBL_PROFILE_LAST_REWARD_EXT1", "Last EXP earned"); },
+  get prize() { return S("STR_TBL_PROFILE_PRIZE_NAME", "Prize:"); },
+  get master() { return S("STR_TBL_PROFILE_MASTER_MEDALS_TEXT", "Blue Order"); },
   /** Detail: the Lua binds STR_TBL_PROFILE_LAST_REWARD_ITEM, which pt-BR lacks: STR_TBL_TUTORIAL_RESULT_GET_ITEM [INFERIDO] */
   get lastItem() { return S("STR_TBL_TUTORIAL_RESULT_GET_ITEM", "Item obtido"); },
 };

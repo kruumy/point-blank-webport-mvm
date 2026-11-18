@@ -148,11 +148,11 @@ type CreateState = {
 /** RoomWeaponsFlag of the window: the mode's preset (special-weapon / AI modes), else the weapon checkboxes */
 /** ROOM_JOIN_ACK error -> text [RECRIADO]: the original strings for these codes were not traced (server handleJoinRoom). */
 const JOIN_FAIL: Record<number, string> = {
-  0x80001003: "A sala está lotada.",
-  0x80001004: "A sala não existe mais.",
-  0x80001005: "Senha incorreta.",
-  0x8000100c: "Você foi expulso desta sala.",
-  0x80001013: "Não é possível entrar: a partida já começou e o líder bloqueou a entrada no meio da partida.",
+  0x80001003: "The room is full.",
+  0x80001004: "The room no longer exists.",
+  0x80001005: "Wrong password.",
+  0x8000100c: "You were kicked from this room.",
+  0x80001013: "Cannot enter: the match has started and the leader blocked joining mid-match.",
 };
 /** Users limit of the picked map (Matches.xml Limit; Bomb Mission has its own list); AI rooms are fixed server-side */
 const playerLimit = (cr: CreateState): number => mapPlayerLimit(cr.map?.mapId ?? 0, !!ROOM_MODES[cr.mode].rounds);
@@ -488,7 +488,7 @@ export class Lobby2017 {
     if (this.kickedByServer) {
       this.teardown();
       // [RECRIADO] texts (no original string for the kicked side; the new login sees STBL_IDX_EP_LOGIN_ALREADY_LOGIN_Q); OK goes back to the login
-      this.fail(new Error(this.kickDuplicate ? "Sua conta foi conectada em outro lugar." : "Você foi desconectado do servidor por um GM."), () => this.deps.onExit());
+      this.fail(new Error(this.kickDuplicate ? "Sua conta foi conectada em outro lugar." : "You were disconnected from the server by a GM."), () => this.deps.onExit());
       return;
     }
     const to = this.session && this.server ? { server: this.server.index, channel: this.channelId, page: this.page } : null;
@@ -499,8 +499,8 @@ export class Lobby2017 {
     if (Date.now() - this.lastInput < RECONNECT_IDLE_MS) { void this.reconnect(to); return; }
     // idle tab (the server's PB_IDLE_KICK_MIN, or nobody there): a timeout, not a hiccup: no reconnect, OK goes back to the login.
     // "upstream closed" = the server closed the session: an idle timeout there, or the server restarting
-    const hint = /upstream closed/i.test(why) ? "\nTempo de conexão esgotado ou servidor reiniciado." : "";
-    this.fail(new Error(`Conexão com o servidor de jogo fechada: ${why}${hint}`), () => this.deps.onExit());
+    const hint = /upstream closed/i.test(why) ? "\nConnection timed out or server restarted." : "";
+    this.fail(new Error(`Connection to the game server closed: ${why}${hint}`), () => this.deps.onExit());
   }
 
   /**
@@ -589,7 +589,7 @@ export class Lobby2017 {
       const cr = this.create;
       const md = ROOM_MODES[cr?.mode ?? 0];
       const rs = kind === "create"
-        ? await RoomScreen.create(game, this.roomHost(), cr?.name.trim() || `sala de ${this.nick()}`, {
+        ? await RoomScreen.create(game, this.roomHost(), cr?.name.trim() || `${this.nick()}'s room`, {
           mapId: cr!.map!.mapId, mapName: cr!.map!.name, rule: md.rule, stage: md.stage, roomType: md.roomType, weaponsFlag: weaponsFlagFor(cr!),
           killTime: cr!.killTime, ai: md.ai ? { count: cr!.botCount, level: cr!.aiLevel, allies: cr!.botAllies } : undefined,
           password: cr!.passwordOn ? cr!.password : "", limit: cr!.limitEnter ? 1 : 0, watchRule: cr!.watch, slots: md.ai ? undefined : peopleOf(cr!),
@@ -631,7 +631,7 @@ export class Lobby2017 {
       rs = RoomScreen.adopt(game, this.roomHost(), ack);
     } catch (e) {
       console.warn("[lobby] clan battle room", e);
-      this.say("Não conseguiu entrar na sala da partida do clã.", true);
+      this.say("Could not enter the clan match room.", true);
       return;
     }
     respawnWithLoadout(rs.room, session.player);
@@ -687,7 +687,7 @@ export class Lobby2017 {
       this.battleLoadingGuard = setTimeout(() => {
         this.battleLoadingGuard = null;
         hideBattleLoading();
-        this.say("A partida não iniciou (tempo esgotado).", true);
+        this.say("The match did not start (timed out).", true);
         this.draw();
       }, 60000);
     } else if (!keep) hideBattleLoading();
@@ -744,7 +744,7 @@ export class Lobby2017 {
     const maps = stageChoices();
     const modeList = ROOM_MODES.map((_, i) => i);
     this.create = {
-      name: `sala de ${this.nick()}`, map: maps[0] ?? null, maps, pick: 0, top: 0, busy: false, dd: null,
+      name: `${this.nick()}'s room`, map: maps[0] ?? null, maps, pick: 0, top: 0, busy: false, dd: null,
       mode: 0, modeList, killTime: DEFAULT_KILLTIME, edit: false, botCount: AI_COUNT_MAX, aiLevel: 1, botAllies: 0, balance: 0,
       password: "", passwordOn: false, limitEnter: false, people: DEFAULT_PEOPLE, weapons: { ...ALL_WEAPONS }, watch: DEFAULT_WATCH,
       randomMap: false, randomIds: [], rm: null,
@@ -1388,7 +1388,7 @@ export class Lobby2017 {
    *); OK joins the room with the password the push carries */
   private onRoomInvite(inv: ClanRoomInvite): void {
     const name = this.session?.lobby.roomList().find((r) => r.roomId === inv.roomId)?.name ?? String(inv.roomId);
-    const text = tOr("STR_TBL_GUI_LOBBY_INVITE_MESSAGE1","%2% da sala %1% te convidou.\nDeseja aceitar?").replace("%2%", inv.nick).replace("%1%", name);
+    const text = tOr("STR_TBL_GUI_LOBBY_INVITE_MESSAGE1","%2% from room %1% invited you.\nAccept?").replace("%2%", inv.nick).replace("%1%", name);
     this.msg = { text, onOk: () => void this.openRoom("join", inv.roomId, inv.password) };
     this.draw();
   }
@@ -1623,7 +1623,8 @@ export class Lobby2017 {
   /** Client-side commands (bloquear, desbloquear, c, t, bug, denunciar without arguments); every other "/..." goes to the server as chat. */
   private chatCommand(t: string, general: number, inRoom: boolean): boolean {
     const a = splitArgs(t);
-    const cmd = a[0].toLowerCase();
+    // english aliases of the client commands
+    const cmd = ({ "/block": "/bloquear", "/unblock": "/desbloquear" } as Record<string, string>)[a[0].toLowerCase()] ?? a[0].toLowerCase();
     if (cmd === "/bloquear" || cmd === "/desbloquear") {
       const nick = a[1];
       if (!nick) {

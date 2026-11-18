@@ -66,7 +66,11 @@ const U = {
   pbFogMode: { value: 0 }, // 0 = off
   pbFogColor: { value: new THREE.Vector3(1, 1, 1) },
   pbFogParams: { value: new THREE.Vector3(1, 1000, 1) }, // near, far, density
+  pbLuxLit: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its lit (sun) parts
+  pbLuxShade: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its shaded parts
 };
+/** [RECRIADO] the live engine constants, for the theater looks (src/mvm/looks.ts) */
+export const pbUniforms = U;
 
 // Materials with N/S/R/E maps still to fetch (url in userData.pbNormalUrl / pbSpecUrl / pbRefUrl / pbEmissiveUrl, set by compressedTex
 // DetailMapsExt). Cleared on material dispose.
@@ -191,11 +195,10 @@ export function setPbLighting(j: PbLightingJson | null): void {
 export function configurePbRenderer(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
-  const f = current?.fog.find((x) => x.index === 0);
-  if (f && f.enable) {
-    const c = new THREE.Color().setRGB(f.color[0] / 255, f.color[1] / 255, f.color[2] / 255, THREE.SRGBColorSpace);
-    scene.fog = f.mode === 3 ? new THREE.Fog(c, f.near, f.far) : f.mode === 2 ? new THREE.FogExp2(c, f.density) : null;
-  } else scene.fog = null;
+  // from the uniforms, not lighting.json: a theater look changes them
+  const mode = current ? U.pbFogMode.value : 0, k = U.pbFogColor.value, p = U.pbFogParams.value;
+  const c = new THREE.Color().setRGB(k.x, k.y, k.z, THREE.SRGBColorSpace);
+  scene.fog = mode === 3 ? new THREE.Fog(c, p.x, p.y) : mode === 2 ? new THREE.FogExp2(c, p.z) : null;
 }
 
 /**
@@ -250,6 +253,8 @@ const WORLD_FS = /* glsl */ `
 uniform sampler2D map;
 uniform sampler2D luxMap;
 uniform vec4 pbLightDiffuse;
+uniform vec3 pbLuxLit;
+uniform vec3 pbLuxShade;
 uniform float alphaTest;
 varying vec2 vPbUv;
 varying vec2 vPbUv1;
@@ -257,6 +262,8 @@ ${FOG_PARS}
 void main() {
   vec4 D = texture2D(map, vPbUv);
   vec3 L = texture2D(luxMap, vPbUv1).rgb;
+  // [RECRIADO] the sun is baked into the lightmap with everything else: its bright end stands for the sunlit parts
+  L *= mix(pbLuxShade, pbLuxLit, smoothstep(0.25, 0.7, dot(L, vec3(0.3333))));
   float a = D.a * pbLightDiffuse.a;
   if (a <= alphaTest) discard;
   vec3 c = 2.0 * D.rgb * (L * ((L + D.rgb) * 0.3 + 1.0)); // Phong_DLX_Dir_
@@ -426,6 +433,8 @@ export function pbWorldMaterial(src: THREE.MeshStandardMaterial): THREE.ShaderMa
       luxMap: { value: rawTexture(lux) },
       alphaTest: { value: src.alphaTest > 0 ? src.alphaTest : -1 },
       pbLightDiffuse: U.pbLightDiffuse,
+      pbLuxLit: U.pbLuxLit,
+      pbLuxShade: U.pbLuxShade,
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
@@ -459,6 +468,8 @@ const WORLD_ARRAY_FS = /* glsl */ `
 uniform sampler2DArray mapArr;
 uniform sampler2DArray luxArr;
 uniform vec4 pbLightDiffuse;
+uniform vec3 pbLuxLit;
+uniform vec3 pbLuxShade;
 uniform float alphaTest;
 varying vec2 vPbUv;
 varying vec2 vPbUv1;
@@ -467,6 +478,8 @@ ${FOG_PARS}
 void main() {
   vec4 D = texture(mapArr, vec3(vPbUv, vPbLayer.x));
   vec3 L = texture(luxArr, vec3(vPbUv1, vPbLayer.y)).rgb;
+  // [RECRIADO] the sun is baked into the lightmap with everything else: its bright end stands for the sunlit parts
+  L *= mix(pbLuxShade, pbLuxLit, smoothstep(0.25, 0.7, dot(L, vec3(0.3333))));
   float a = D.a * pbLightDiffuse.a;
   if (a <= alphaTest) discard;
   vec3 c = 2.0 * D.rgb * (L * ((L + D.rgb) * 0.3 + 1.0)); // Phong_DLX_Dir_
@@ -483,6 +496,8 @@ export function pbWorldArrayMaterial(src: THREE.ShaderMaterial, mapArr: THREE.Te
       luxArr: { value: luxArr },
       alphaTest: { value: src.uniforms.alphaTest.value },
       pbLightDiffuse: U.pbLightDiffuse,
+      pbLuxLit: U.pbLuxLit,
+      pbLuxShade: U.pbLuxShade,
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,

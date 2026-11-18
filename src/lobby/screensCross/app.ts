@@ -15,6 +15,7 @@ import { ClassicOptionWindow } from "../../game/classicOptionWindow.ts";
 import { jsonOnce } from "../../jsonOnce.ts";
 import { Stage } from "../ui/LayoutRenderer.ts";
 import { UI_BASE } from "../ui/assets.ts";
+import { loadStrings } from "../ui/i18n.ts";
 import { I3Gui, TEXT_FONT, cloneNode, guiFont, renameTree, type GNode, type Img } from "../ui/i3Gui.ts";
 import type { PlayerStore } from "../state/PlayerStore.ts";
 import type { MissionClient } from "../../net/missionClient.ts";
@@ -263,7 +264,7 @@ export class LobbyScreenCross {
   private async boot(): Promise<void> {
     const [packs, strings] = await Promise.all([
       Promise.all(CROSS_PACKS.map((p) => jsonOnce<Pack>(`${BASE}/${p}.json`))),
-      jsonOnce<Record<string, string>>(`${BASE}/strings.json`).catch(() => ({})),
+      loadStrings().catch(() => ({})),
     ]);
     this.strings = strings;
     this.stage.design.style.visibility = "hidden"; // every window is visible until the first paint: no stacked flash on load
@@ -397,7 +398,7 @@ export class LobbyScreenCross {
   private enterServer(i: number): void {
     const sv = this.ctl.servers[i];
     if (!sv?.online || this.ctl.busy) return;
-    if (sv.maxPlayers > 0 && sv.players >= sv.maxPlayers) { this.ctl.say(this.str("STBL_IDX_EP_SERVER_USER_FULL_C", "Devido ao excesso de usuários no servidor, não foi possível conectar."), true); return; }
+    if (sv.maxPlayers > 0 && sv.players >= sv.maxPlayers) { this.ctl.say(this.str("STBL_IDX_EP_SERVER_USER_FULL_C", "Could not connect because the server is overloaded."), true); return; }
     this.ctl.listActivate("channels", i);
   }
 
@@ -688,7 +689,7 @@ export class LobbyScreenCross {
       const inv = this.inv, c = this.ctl;
       const picked = inv ? inv.rows.filter((_, i) => inv.picks[i]) : [];
       for (const u of picked) c.clanNet?.roomInvite(u.sessionId);
-      if (picked.length) c.say(this.str("STR_TBL_GUI_READY_NOTICE_SEND_INVITE", "Você enviou mensagem de convite a %d pessoas.").replace("%d", String(picked.length)));
+      if (picked.length) c.say(this.str("STR_TBL_GUI_READY_NOTICE_SEND_INVITE", "You sent an invite message to %d people.").replace("%d", String(picked.length)));
       this.inv = null;
       this.paint();
     };
@@ -753,7 +754,7 @@ export class LobbyScreenCross {
     const title = () => {
       const r = room(), v = this.inputs.roomTitle?.value ?? "";
       if (!r?.room || r.ai) return;
-      if (!v.trim()) { this.ctl.say(this.str("STR_TBL_GUI_READY_PLEASE_ENTER_ROOM_NAME", "Digite o nome da sala."), true); return; }
+      if (!v.trim()) { this.ctl.say(this.str("STR_TBL_GUI_READY_PLEASE_ENTER_ROOM_NAME", "Enter the room name."), true); return; }
       if (v !== r.room.name) r.changeRoomInfo({ name: v });
     };
     this.inputs.roomTitle = gui.edit("rrTitleValue", { maxLength: 22, onEnter: () => title() });
@@ -953,7 +954,7 @@ export class LobbyScreenCross {
    * findPlayer) e depois 888 -> 889. [RECRIADO] o fluxo de confirmação é o do clã (confirm); o exe não foi decodificado aqui. */
   private clanInviteMenu(nick: string): void {
     this.ctl.msg = {
-      text: this.str("STR_TBL_GUI_LOBBY_Q_CLAN_INVITE_USER", "Deseja convidar [ %s ] para o clã?").replace("%s", nick),
+      text: this.str("STR_TBL_GUI_LOBBY_Q_CLAN_INVITE_USER", "Invite [ %s ] to the clan?").replace("%s", nick),
       onOk: () => void this.sendClanInvite(nick), onCancel: () => {},
     };
     this.ctl.draw();
@@ -964,8 +965,8 @@ export class LobbyScreenCross {
     const found = conn ? await findUser(conn, nick) : false;
     const reply = found ? await this.ctl.clanNet?.invite() : undefined;
     this.ctl.msg = reply?.ok
-      ? { text: this.str("STR_POPUP_MESSAGE_SEND_INVITE_MESSAGE", "Você enviou uma solicitação ao usuário [%s].").replace("%s", nick) }
-      : { text: this.str(found ? "STR_TBL_NETWORK_FAIL_INVITED_USER" : "STR_TBL_NETWORK_NOT_FIND_USER", found ? "Não é possível convidar este usuário." : "Usuário não encontrado.") };
+      ? { text: this.str("STR_POPUP_MESSAGE_SEND_INVITE_MESSAGE", "You sent a request to user [%s].").replace("%s", nick) }
+      : { text: this.str(found ? "STR_TBL_NETWORK_FAIL_INVITED_USER" : "STR_TBL_NETWORK_NOT_FIND_USER", found ? "Cannot invite this user." : "User not found.") };
     this.ctl.draw();
   }
 
@@ -981,23 +982,23 @@ export class LobbyScreenCross {
   private inviteFriend(nick: string): void {
     const c = this.ctl, r = c.roomScreen?.room;
     // [RECRIADO] text: the exe's own refusal for a non-leader is not decoded (only the room leader's invite list exists here)
-    if (!r?.isLeader || (r.room?.state ?? 1) > 1 || c.busy) return c.say("Só o dono da sala pode convidar.");
+    if (!r?.isLeader || (r.room?.state ?? 1) > 1 || c.busy) return c.say("Only the room owner can invite.");
     const u = (c.session?.lobby.playerList() ?? []).find((x) => x.nickname === nick);
     if (!u) return c.say(this.str("STR_POPUP_MESSAGE_INVITE_ONLINE_FRIEND", "Convide apenas amigos online no canal."));
     c.clanNet?.roomInvite(u.sessionId);
-    c.say(this.str("STR_TBL_GUI_READY_NOTICE_SEND_INVITE", "Você enviou mensagem de convite a %d pessoas.").replace("%d", "1"));
+    c.say(this.str("STR_TBL_GUI_READY_NOTICE_SEND_INVITE", "You sent an invite message to %d people.").replace("%d", "1"));
   }
 
   /** Adicionar amigo (1811 by nick). Result text = the exe's STR for each outcome, shown in the message box. */
   private async addFriend(nick: string): Promise<void> {
     const conn = chat.connection;
     const err = conn ? await requestFriend(conn, nick) : 0x80000000;
-    const [key, fallback] = err === 0 ? ["STR_TBL_GUI_BASE_NOTICE_ADD_FRIEND_COMPLETE", "[%s] foi cadastrado na sua lista de amigos."]
-      : err === FriendErr.SELF && nick === chat.myNick ? ["STBL_IDX_CLAN_MESSAGE_MYSELF_FRIEND", "Não é possível adicionar você mesmo em sua lista."]
-      : err === FriendErr.FULL ? ["STR_POPUP_MESSAGE_NO_MORE_FRIEND", "Não é possível adicionar mais amigos."]
-      : err === FriendErr.ALREADY ? ["STR_POPUP_MESSAGE_ALREADY_FRIEND", "Usuário [%s] já está na sua lista de amigos."]
-      : err === FriendErr.NOT_FOUND ? ["STR_TBL_NETWORK_NOT_FIND_USER", "Usuário não encontrado."]
-      : ["STR_TBL_GUI_BASE_FAIL_REQUEST_FRIEND", "Não conseguiu adicionar o amigo à lista."];
+    const [key, fallback] = err === 0 ? ["STR_TBL_GUI_BASE_NOTICE_ADD_FRIEND_COMPLETE", "[%s] was added to your friend list."]
+      : err === FriendErr.SELF && nick === chat.myNick ? ["STBL_IDX_CLAN_MESSAGE_MYSELF_FRIEND", "You cannot add yourself to your list."]
+      : err === FriendErr.FULL ? ["STR_POPUP_MESSAGE_NO_MORE_FRIEND", "Cannot add more friends."]
+      : err === FriendErr.ALREADY ? ["STR_POPUP_MESSAGE_ALREADY_FRIEND", "User [%s] is already in your friend list."]
+      : err === FriendErr.NOT_FOUND ? ["STR_TBL_NETWORK_NOT_FIND_USER", "User not found."]
+      : ["STR_TBL_GUI_BASE_FAIL_REQUEST_FRIEND", "Could not add the friend to the list."];
     this.ctl.msg = { text: this.str(key, fallback).replace("%s", nick) };
     this.ctl.draw();
   }
@@ -1242,7 +1243,7 @@ export class LobbyScreenCross {
     // channel list only: the servers are the cards of ssServerListWin (paintServerCards)
     // only the first channel of each server is listed (user choice 2026-10-12): the protocol still carries the 11 channels a
     // server needs (2400 / 2333), the others are just not drawn
-    const rows = (c.channels?.channelPlayers ?? []).slice(0, VISIBLE_CHANNELS).map((n, i) => ({ num: i + 1, name: this.str("STR_TBL_GUI_READYROOM_NORMAL_SERVER1", "%03d-Servidor comum").replace("%03d", pad3(i + 1)), players: n, max: c.channels!.maxPerChannel, online: true }));
+    const rows = (c.channels?.channelPlayers ?? []).slice(0, VISIBLE_CHANNELS).map((n, i) => ({ num: i + 1, name: this.str("STR_TBL_GUI_READYROOM_NORMAL_SERVER1", "%03d-Normal Server").replace("%03d", pad3(i + 1)), players: n, max: c.channels!.maxPerChannel, online: true }));
     gui.setText("ssServerCaption", c.chrome().serverLabel || (this.textOf("ssServerCaption") ?? ""));
     for (let i = 0; i < SERVER_ROWS; i++) {
       const r = rows[i], k = i + 1;
@@ -1292,20 +1293,20 @@ export class LobbyScreenCross {
     // mode of the room for the clock / round / win lines: roomType / 4 (crossMap.ts infoMode, 0x6e0730)
     this.requestRoomAdd(r?.roomId ?? -1);
     const a = r && this.roomAdd?.roomId === r.roomId ? this.roomAdd : null;
-    const yesNo = (on: boolean) => on ? this.str("STR_TBL_GUI_LOBBY_LIMIT_TEXT", "Ativado") : this.str("STR_TBL_GUI_LOBBY_NONE_TEXT", "Não");
+    const yesNo = (on: boolean) => on ? this.str("STR_TBL_GUI_LOBBY_LIMIT_TEXT", "Ativado") : this.str("STR_TBL_GUI_LOBBY_NONE_TEXT", "No");
     // 0x836f9b: row state byte +0x1f == 0 (READY, wire state 1) -> WAIT_STATE. Else 0x836fd3: clock "%02d:%02d" (add block +0x23,
     // 0x836ff9) in, else CURRENT_ROUND_COUNT (round byte +0x22, 0x83703f)
     const mode = infoMode(r?.roomType ?? 0), rounds = ROUND_WIN_MODES.includes(mode);
-    const state = !r ? "" : r.state === 1 ? this.str("STR_TBL_GUI_LOBBY_WAIT_STATE_TEXT", "Aguarde...")
+    const state = !r ? "" : r.state === 1 ? this.str("STR_TBL_GUI_LOBBY_WAIT_STATE_TEXT", "Please wait...")
       : !a ? "" : CLOCK_MODES.includes(mode) ? `${String(Math.floor(a.battleTime / 60)).padStart(2, "0")}:${String(a.battleTime % 60).padStart(2, "0")}`
       : this.str("STR_TBL_GUI_LOBBY_CURRENT_ROUND_COUNT", "%d Rodada").replace("%d", String(a.round));
     // 0x8371b5: watch bits 1|2|4|8 all on -> OBSERVER1 (all), any of 1..0x10 -> OBSERVER2, none -> OBSERVER3
     const w = a?.watchRuleFlag ?? 0;
     const observer = (w & 0xf) === 0xf ? this.str("STR_TBL_GUI_LOBBY_ROOMINFO_OBSERVER1", "Utilizar todos")
-      : w & 0x1f ? this.str("STR_TBL_GUI_LOBBY_ROOMINFO_OBSERVER2", "Utilizar") : this.str("STR_TBL_GUI_LOBBY_ROOMINFO_OBSERVER3", "Não utilizar");
+      : w & 0x1f ? this.str("STR_TBL_GUI_LOBBY_ROOMINFO_OBSERVER2", "Utilizar") : this.str("STR_TBL_GUI_LOBBY_ROOMINFO_OBSERVER3", "Off");
     // 0x8372f1: balance 1 -> PERSON, 2 -> SKILLED, else NONE
     const balance = a?.balanceType === 1 ? this.str("STR_TBL_GUI_READY_TEAM_BALANCE_PERSON", "Qtde")
-      : a?.balanceType === 2 ? this.str("STR_TBL_GUI_READY_TEAM_BALANCE_SKILLED", "Rank") : this.str("STR_TBL_GUI_LOBBY_NONE_TEXT", "Não");
+      : a?.balanceType === 2 ? this.str("STR_TBL_GUI_READY_TEAM_BALANCE_SKILLED", "Rank") : this.str("STR_TBL_GUI_LOBBY_NONE_TEXT", "No");
     const info: [string, string][] = [
       ["lbMapValue", r ? stageName(r.mapId) : ""],
       ["lbModeValue", r ? modeLabel(r.rule, r.stage) : ""],
@@ -1650,7 +1651,7 @@ export class LobbyScreenCross {
     if (!r) return;
     const win = gui.get("rrRecordWin");
     if (win) win.el.style.top = `${this.recordShown ? RECORD_WIN.shownY : RECORD_WIN.foldedY}px`;
-    gui.setText("rrRecordCaption", this.recordShown ? this.str("STR_TBL_GUI_READY_DETAIL_INFO1", "< Informações detalhadas >") : this.str("STR_TBL_GUI_READY_DETAIL_INFO2", "< Informações detalhadas >"));
+    gui.setText("rrRecordCaption", this.recordShown ? this.str("STR_TBL_GUI_READY_DETAIL_INFO1", "< Detailed info >") : this.str("STR_TBL_GUI_READY_DETAIL_INFO2", "< Detailed info >"));
     const ins = c.inspect, mine = r.slots[r.mySlot], chrome = c.chrome(), my = c.player?.state.record ?? null, myClan = this.slotClan(r.mySlot);
     const who = ins
       ? { nick: ins.nick, rank: ins.rank, color: r.slots[ins.slot]?.nickColor ?? 0, season: ins.season, total: ins.total, clan: ins.clan, logo: this.slotClan(ins.slot).logo }
@@ -1661,13 +1662,13 @@ export class LobbyScreenCross {
     this.recentreRank();
     const pct = (a: number, b: number) => (b > 0 ? Math.trunc((a * 100) / b + 0.5) : 0);
     for (const [p, rec] of [["rrSeason", who.season], ["rrTotal", who.total]] as const) {
-      gui.setText(`${p}Record`, rec ? `${rec.matches}${this.str("STBL_IDX_BATTLE_COUNT", "Rodadas")} ${rec.wins}${this.str("STBL_IDX_BATTLE_WIN_COUNT", "Vitórias")} ${rec.loses}${this.str("STBL_IDX_BATTLE_LOSE_COUNT", "Derrotas")}` : "");
+      gui.setText(`${p}Record`, rec ? `${rec.matches}${this.str("STBL_IDX_BATTLE_COUNT", "Rounds")} ${rec.wins}${this.str("STBL_IDX_BATTLE_WIN_COUNT", "Wins")} ${rec.loses}${this.str("STBL_IDX_BATTLE_LOSE_COUNT", "Losses")}` : "");
       gui.setText(`${p}KillDeath`, rec ? this.str("STR_TBL_PROFILE_KILL_DEATH_RATE_MODE1", "KILL/DEATH: %d%%").replace("%d", String(pct(rec.kills, rec.kills + rec.deaths))).replace("%%", "%") : "");
       gui.setText(`${p}KillDeath2`, rec ? `${rec.kills} / ${rec.deaths}` : "");
       gui.setText(`${p}Headshot`, rec ? this.str("STR_TBL_PROFILE_HEADSHOT_RATE_MODE1", "HEADSHOT: %d%%").replace("%d", String(pct(rec.headshots, rec.totalKills))).replace("%%", "%") : "");
-      gui.setText(`${p}Disconnect`, rec ? this.str("STR_TBL_GUI_READY_BATTLE_LEAVE_RATE", "Desistências: %d").replace("%d", String(rec.escapes)) : "");
+      gui.setText(`${p}Disconnect`, rec ? this.str("STR_TBL_GUI_READY_BATTLE_LEAVE_RATE", "Desertions: %d").replace("%d", String(rec.escapes)) : "");
     }
-    const none = this.str("STR_TBL_GUI_READY_NO_JOINING", "Não cadastrado.");
+    const none = this.str("STR_TBL_GUI_READY_NO_JOINING", "Not registered.");
     paintMark(gui, "rrClanMark", who.nick && who.clan ? who.logo : null);
     gui.setText("rrClanNameValue", who.clan || none);
     // 0x7cd4f2: a clan member's name goes through 0x4ad850(rrClanNameValue, clan name +0x48, clan name colour +0x5f); no clan:

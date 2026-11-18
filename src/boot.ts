@@ -137,6 +137,33 @@ function playLocal(screen?: LobbyScreenLike, map?: MapId, allWeapons?: boolean, 
     .catch((err) => { finish(); fatal(err); });
 }
 
+/** [RECRIADO] movie theater (src/mvm): demo browser -> playback, back to the browser on Exit; closing it returns to the lobby */
+async function openTheater(screen?: LobbyScreenLike): Promise<void> {
+  if (busy) return;
+  busy = true;
+  screen?.hide();
+  try {
+    const [{ pickDemo }, { loadDemo }, { DemoNet }] = await Promise.all([import("./mvm/theater.ts"), import("./mvm/demo.ts"), import("./mvm/demoNet.ts"), loadMapIndex()]);
+    for (let name = await pickDemo(); name; name = await pickDemo()) {
+      try {
+        const demo = await loadDemo(name);
+        const { startGame } = await import("./main.ts");
+        await new Promise<void>((done) => {
+          let handle: GameHandle | null = null, left = false;
+          const leave = () => { left = true; handle?.stop(); done(); };
+          startGame({ map: demo.map as MapId, theater: new DemoNet(demo), onLeave: leave })
+            .then((h) => { handle = h; if (left) h.stop(); })
+            .catch((err) => { console.error("[mvm] theater", err); done(); });
+        });
+      } catch (err) { console.error("[mvm] demo", err); }
+    }
+  } finally {
+    busy = false;
+    if (screen) screen.show();
+    else location.search = ""; // opened from the login screen (?theater): back to it
+  }
+}
+
 /** Room battle went live: load the room's map with the Match UDP adapter; ENDBATTLE / kick / leave -> back to the room. */
 function playBattle(screen: LobbyScreenLike, net: PbBattleNet, room: RoomClient): void {
   if (busy) return;
@@ -287,7 +314,9 @@ const params = new URLSearchParams(location.search);
 // Default = login/lobby flow. ?playtest (or ?play, #play) = straight into a local match with bots;
 // ?playtest=all = every weapon + every battle item (Quick Change, Respawn, HP/Defense/Ammo coupons...) active.
 // ?play=fist = the same local match with the Clube da Luta loadout (bare fist 323001 only)
-if (params.has("playtest") || params.has("play") || location.hash === "#play") {
+if (params.has("theater")) {
+  void openTheater();
+} else if (params.has("playtest") || params.has("play") || location.hash === "#play") {
   const all = params.get("playtest") === "all" || params.get("play") === "all";
   playLocal(undefined, undefined, all, undefined, all, params.get("play") === "fist");
 } else if (params.has("manual")) {
@@ -304,6 +333,7 @@ function openLobby(session?: LobbyScreenOptions["session"]): void {
   let screen: LobbyScreenLike;
   // F2 in the lobby: offline test launcher (ui/devLauncher.ts)
   window.addEventListener("keydown", (e) => {
+    if (e.code === "F3" && !busy) { e.preventDefault(); void openTheater(screen); return; } // [RECRIADO] movie theater
     if (e.code !== "F2" || busy) return;
     e.preventDefault();
     if (document.getElementById("pbdevl")) document.getElementById("pbdevl")!.remove();

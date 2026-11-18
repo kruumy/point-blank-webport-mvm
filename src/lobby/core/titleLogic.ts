@@ -69,7 +69,7 @@ export function weaponText(cls: number, num: number, nameOf: (itemId: number) =>
   return name ? cleanLabel(tOr("STR_HEADER_AUTHORITY_WEAPON", "%s").replace("%s", name)) : "";
 }
 
-const NONE = (n: 1 | 2 | 3): string => cleanLabel(tOr(`STR_TBL_DESIGNATION_NONE_WITH_COLOR${n}`, "Indisponível"));
+const NONE = (n: 1 | 2 | 3): string => cleanLabel(tOr(`STR_TBL_DESIGNATION_NONE_WITH_COLOR${n}`, "Unavailable"));
 const joined = (xs: string[], none: string): string => (xs.length ? xs.join("\n") : none);
 /** Efeito + / Efeito - / Efeito extra rows of a title (i3UIEffectPlus / Minus / Add), UITabProfileDesignation::__UpdateDetailInfoBox
  * 0x950eb0: two slots per row, empty = "Indisponível" (NONE_WITH_COLOR1 / 2 / 3). Extra row, per slot: id 0 or an authority id ->
@@ -92,26 +92,26 @@ export const titleName2 = (d: TitleDef): string => cleanLabel(tOr(`STR_TBL_DESIG
 
 /** count lines of the badge rows: "Possui %d und." (owned) / "Precisa de %d und." (needed) */
 export const ownedText = (n: number): string => cleanLabel(tOr("STR_TBL_DESIGNATION_APPENDIX_BADGECOUNT_TEXT", "Possui %d und.")).replace("%d", String(n));
-export const neededText = (n: number): string => cleanLabel(tOr("STR_TBL_DESIGNATION_NEEDED_BADGECOUNT_TEXT", "Precisa de %d und.")).replace("%d", String(n));
+export const neededText = (n: number): string => cleanLabel(tOr("STR_TBL_DESIGNATION_NEEDED_BADGECOUNT_TEXT", "Needs %d pcs.")).replace("%d", String(n));
 
 export const TS = {
-  get select() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_SELECT", "Escolha o título")); },
-  get none() { return cleanLabel(tOr("STR_TBL_DESIGNATION_NONE_WITH_COLOR3", "Indisponível")); },
-  get getText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_TEXT", "Adquirir Título")); },
-  get useText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_USE_TEXT", "Usar Título")); },
-  get releaseText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_RELEASE_TEXT", "Cancelar Título")); },
-  get getAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_ANSWER_MESSAGE", "Deseja adquirir o título escolhido?")); },
-  get equipAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_EQUIP_ANSWER_MESSAGE", "Equipar o título escolhido?")); },
-  get releaseAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_RELEASE_ANSWER_MESSAGE", "Deseja cancelar o título escolhido?")); },
-  get noSlot() { return cleanLabel(tOr("STR_TBL_DESIGNATION_NO_SELECTED_SLOT_MESSAGE", "Não foi escolhido slot.")); },
-  get sameClass() { return cleanLabel(tOr("STR_TBL_DESIGNATION_FAIL_ANOTHER_USED", "Já está usando um Título do mesmo tipo.")); },
-  get dupSlot() { return cleanLabel(tOr("STR_TBL_NETWORK_DUPLICATED_DESIGNATION_TYPE", "O título já está sendo usado em outro slot.")); },
-  get notMatch() { return cleanLabel(tOr("STR_TBL_NETWORK_NOT_MATCH_BUY_DESIGNATION", "Condições para compra inadequadas.")); },
-  get noEquipYet() { return cleanLabel(tOr("STR_TBL_GUI_BASE_NO_EQUIP_PRE_DESIGNATION", "Não é possível equipar antes de adquirir o título.")); },
-  get gotIt() { return cleanLabel(tOr("STR_TBL_NETWORK_SUCESS_GET_DESIGNATION", "Obtenção de título realizada com sucesso.")); },
-  get gotPrize() { return cleanLabel(tOr("STR_TBL_NETWORK_SUCESS_GET_DESIGNATION_WITH_PRIZE", "Você recebeu recompensa por ter adquirido o título.")); },
-  get registered() { return cleanLabel(tOr("STR_TBL_NETWORK_REGISTER_DESIGNATION", "O título escolhido foi registrado com êxito.")); },
-  get releaseFail() { return cleanLabel(tOr("STR_TBL_NETWORK_FAIL_RELEASE_DESIGNATION", "Falha no cancelamento de título.")); },
-  get already() { return cleanLabel(tOr("STR_TBL_NETWORK_ALREADY_GET_DESIGNATION", "Já possui este título.")); },
-  get slotHint() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_EXPLAIN_MESSAGE", "Escolha o slot para equipar o título e confirme.")).split("\n")[0]; },
+  get select() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_SELECT", "Choose the title")); },
+  get none() { return cleanLabel(tOr("STR_TBL_DESIGNATION_NONE_WITH_COLOR3", "Unavailable")); },
+  get getText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_TEXT", "Get Title")); },
+  get useText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_USE_TEXT", "Use Title")); },
+  get releaseText() { return cleanLabel(tOr("STR_TBL_DESIGNATION_RELEASE_TEXT", "Cancel Title")); },
+  get getAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_ANSWER_MESSAGE", "Get the chosen title?")); },
+  get equipAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_EQUIP_ANSWER_MESSAGE", "Equip the chosen title?")); },
+  get releaseAsk() { return cleanLabel(tOr("STR_TBL_DESIGNATION_RELEASE_ANSWER_MESSAGE", "Cancel the chosen title?")); },
+  get noSlot() { return cleanLabel(tOr("STR_TBL_DESIGNATION_NO_SELECTED_SLOT_MESSAGE", "No slot chosen.")); },
+  get sameClass() { return cleanLabel(tOr("STR_TBL_DESIGNATION_FAIL_ANOTHER_USED", "You are already using a title of the same type.")); },
+  get dupSlot() { return cleanLabel(tOr("STR_TBL_NETWORK_DUPLICATED_DESIGNATION_TYPE", "The title is already used in another slot.")); },
+  get notMatch() { return cleanLabel(tOr("STR_TBL_NETWORK_NOT_MATCH_BUY_DESIGNATION", "Purchase conditions not met.")); },
+  get noEquipYet() { return cleanLabel(tOr("STR_TBL_GUI_BASE_NO_EQUIP_PRE_DESIGNATION", "Cannot equip before earning the title.")); },
+  get gotIt() { return cleanLabel(tOr("STR_TBL_NETWORK_SUCESS_GET_DESIGNATION", "Title obtained successfully.")); },
+  get gotPrize() { return cleanLabel(tOr("STR_TBL_NETWORK_SUCESS_GET_DESIGNATION_WITH_PRIZE", "You received a reward for earning the title.")); },
+  get registered() { return cleanLabel(tOr("STR_TBL_NETWORK_REGISTER_DESIGNATION", "The chosen title was registered successfully.")); },
+  get releaseFail() { return cleanLabel(tOr("STR_TBL_NETWORK_FAIL_RELEASE_DESIGNATION", "Failed to cancel the title.")); },
+  get already() { return cleanLabel(tOr("STR_TBL_NETWORK_ALREADY_GET_DESIGNATION", "You already have this title.")); },
+  get slotHint() { return cleanLabel(tOr("STR_TBL_DESIGNATION_GET_EXPLAIN_MESSAGE", "Choose the slot to equip the title and confirm.")).split("\n")[0]; },
 };
