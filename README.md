@@ -1,8 +1,8 @@
 # Point Blank web port
 
-Read this in Portuguese: [README.pt-BR.md](README.pt-BR.md).
-
 A web port of Point Blank (the Point Blank Cross client) for the browser. The client is TypeScript + Vite + three.js + Rapier. The server (`server`) speaks the original binary protocol and uses Postgres. Matches run peer-to-peer (WebRTC). The server handles login, lobby, rooms, items and progression.
+
+This is a fork of [LeandroDettmer/point-blank-webport](https://github.com/LeandroDettmer/point-blank-webport) that adds an English UI, a movie theater, a local admin panel and Postgres without Docker.
 
 > **Legal notice.** This repository contains only our code: client, server, database schema and scripts. It has no assets, no executable and no extracted game data. The code of this project is licensed under the [MIT License](LICENSE).
 >
@@ -17,11 +17,12 @@ A web port of Point Blank (the Point Blank Cross client) for the browser. The cl
 | Node.js 22.18 or newer | The server runs `.ts` files directly (type stripping). Tested with Node 24. |
 | npm | Comes with Node. |
 | Git | To clone the two repositories. |
-| Docker | Docker Desktop (Windows/macOS) or Docker Engine. Runs Postgres 16 on `127.0.0.1:5433`. Must be running before `dev:all`. |
+| Docker | Docker Desktop (Windows/macOS) or Docker Engine. Runs Postgres 16 on `127.0.0.1:5433`. Must be running before `dev:all`. Not needed with a local Postgres (see [Postgres without Docker](#postgres-without-docker)). |
 | Point Blank Cross client | A folder named `PBCross`, with `PointBlank.exe` and `Pack/`. You need your own copy of the client. |
 | Python 3 + `capstone` | Only for the reverse-engineering tools in `pb-extract-tools`. Not needed to play. |
+| ffmpeg on `PATH` | Only for rendering movies in the theater. For example `winget install Gyan.FFmpeg` on Windows. |
 
-ffmpeg comes with `npm install` (the `ffmpeg-static` package). Do not install it separately.
+The asset export brings its own ffmpeg (the `ffmpeg-static` package of `pb-extract-tools`, installed in step 2).
 
 ## Getting the client
 
@@ -45,8 +46,8 @@ Steps 1 and 2 run in `projects-folder/`. From step 3 on, the current directory i
 **1. Clone both repositories**
 
 ```sh
-git clone https://github.com/LeandroDettmer/point-blank-webport point-blank-webport
-git clone https://github.com/LeandroDettmer/pb-extract-tools-public pb-extract-tools
+git clone https://github.com/kruumy/point-blank-webport-mvm point-blank-webport
+git clone https://github.com/kruumy/pb-extract-tools-public pb-extract-tools
 ```
 
 **2. Install the dependencies**
@@ -159,6 +160,22 @@ How an online match runs:
 - **The leader can leave.** If the leader's tab closes or crashes, the server picks a new leader and that player's tab starts the host. The match goes on. HP returns to full until the next respawn, because the old state is lost. When the leader changes on purpose (vote or hand-over) and the old tab is still open, it sends its match state to the new host (`src/p2p/handoff.ts`), so HP and counters carry over.
 - **NAT.** With public STUN only, players behind a strict NAT or CGNAT may not connect: the guest gives up after 20 s with `WebRTC link timeout (NAT without TURN?)`. Set `TURN_URLS`, `TURN_USERNAME` and `TURN_CREDENTIAL` on the server (see [Environment variables](#environment-variables)). Do not put TURN credentials in the client build.
 
+## English text override
+
+Optional: put `{ "STR_KEY": "text" }` in `public/locale/en/strings.json` or `{ "itemId": "name" }` in `public/locale/en/items.json` to replace the client's text. `npm run locale:en` redraws the labels baked into the UI images in English. `public/locale/` is git-ignored.
+
+## Movie theater
+
+Every match is recorded to `mvm/demos/`. Press **F3** in the lobby (or open http://localhost:8000/?theater) to play one back with first-person, third-person, free or dolly cameras, edit deaths and character models, adjust lighting and depth of field, and render to ProRes in `mvm/movies/` (needs ffmpeg on `PATH`). The Controls tab lists the keys. Dev server only.
+
+## Admin panel
+
+http://localhost:8090/admin edits accounts. Only from this machine.
+
+## Postgres without Docker
+
+Set `PB_PG_BIN` to a Postgres 16 `bin` folder and `dev:all` runs it itself, with its data in `db/pgdata/` (or `PB_PG_DATA`).
+
 ## Environment variables
 
 The server reads `server/.env.local` (if it exists) and then the environment variables. An environment variable wins over the file. All of them are optional. The full list with comments is in `server/.env.example`.
@@ -181,6 +198,7 @@ Development variables used by the scripts (you do not need to set them):
 
 - `PB_TOOLS`: path to `pb-extract-tools`. Default: the sibling folder `../pb-extract-tools`.
 - `PB_CLIENTS`: folder that contains `PBCross`. Default: `Clients/` at the root of the repository.
+- `PB_PG_BIN` / `PB_PG_DATA`: local Postgres instead of Docker (see [Postgres without Docker](#postgres-without-docker)).
 
 ## Common problems
 
@@ -189,7 +207,8 @@ Development variables used by the scripts (you do not need to set them):
 - **Postgres does not start on 5433** because another database uses the port. Change `PB_DB_PORT` (see above).
 - **`pbx doctor` does not find Point Blank Cross**. The folder has another name or is outside `Clients/`. Rename it to `PBCross` or set `PB_CLIENTS`.
 - **The game opens with empty screens or 404 files**. An export step failed or was skipped. Check the `pbx` summary and run again with `--from`.
-- **`ffmpeg` missing or `ffmpeg-static` without a binary**. The package downloads the binary during `npm install`. If the download failed (network or proxy), run `npm install` again.
+- **`ffmpeg` missing or `ffmpeg-static` without a binary** (asset export). The package downloads the binary during `npm --prefix ../pb-extract-tools install`. If the download failed (network or proxy), run that install again.
+- **"Rendering needs ffmpeg"** in the theater. Install ffmpeg so that `ffmpeg -version` works in a new terminal, then restart `dev:all`.
 - **`ERR_UNKNOWN_FILE_EXTENSION` with `.ts`**. Your Node is older than 22.18. Update it.
 - **`node-datachannel` fails to install**. It is a native module, used by the P2P tests. Check your Node version and the system build tools.
 
@@ -212,8 +231,10 @@ The smoke scripts in `scripts/dev/` and `src/**/dev/` import client code. Some o
 | `package.json`, `index.html`, `vite.config.ts`, `tsconfig.json` | client: dependencies, scripts (`dev:all`, `pbx`, `status`, `test:net`) and build |
 | `src/` | client: game, weapons, lobby, HUD, network, P2P host |
 | `public/` | static files of the client. `public/assets/` is generated by `pbx` (git-ignored) |
-| `scripts/` | `dev-all.mjs` (supervisor), `pbx.mjs` (starts the exporter), smoke scripts |
-| `server/` | server (its own project): `src/` (Auth and Game TCP, WebSocket web front and `/api`, Postgres), `test/`, `tools/`, `package.json` |
+| `scripts/` | `dev-all.mjs` (supervisor), `pbx.mjs` (starts the exporter), `mvm-server.ts` (theater files and render on the dev server), `locale-en-art.mjs` (English UI sheets), smoke scripts |
+| `src/mvm/` | movie theater: demo recording and playback, campaths, looks, depth of field, render |
+| `mvm/` | your demos, looks and movies (git-ignored) |
+| `server/` | server (its own project): `src/` (Auth and Game TCP, WebSocket web front, `/api` and `/admin`, Postgres), `test/`, `tools/`, `package.json` |
 | `server/runtime/` | configuration and data the server reads (`Config/`, `Data/`). Game data, see the legal notice |
 | `server/.env.example` | template of the server environment variables |
 | `db/` | `docker-compose.yml` (Postgres only) and `init/001_init.sql` (schema and game data, created on the first start of the volume) |
@@ -224,10 +245,10 @@ The smoke scripts in `scripts/dev/` and `src/**/dev/` import client code. Some o
 | Port | What it is |
 |---|---|
 | 8000 | game (Vite, in development) |
-| 8090 | web front: `/tcp` and `/signal` (WebSocket), `/api/register`, `/api/login`, `/health` (HTTP) |
+| 8090 | web front: `/tcp` and `/signal` (WebSocket), `/api/register`, `/api/login`, `/health`, `/admin` (HTTP) |
 | 39290 | Auth (client TCP protocol) |
 | 39291-39293 | Game, one per channel (TCP) |
-| 5433 | Postgres (Docker, `127.0.0.1` only) |
+| 5433 | Postgres (Docker or local, `127.0.0.1` only) |
 
 ## Other clients
 
