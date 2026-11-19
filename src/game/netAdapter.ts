@@ -38,8 +38,8 @@ export interface PlayerState {
    */
   /** ready = grenade pin out, held until the release (WeaponSystem.isThrowReady) */
   torsoAction?: "idle" | "fire" | "reload" | "change" | "zoom" | "ready" | "plant" | "defuse";
-  /** RMB silencer extension on (weapon.pef _Extension Silencer: MK23 / MP5K); wire: ActionState.action bit 9 */
-  silencer?: boolean;
+  /** RMB extension on (weapon.pef _Extension: Silencer, CrossFire, GrenadeLauncher); wire: ActionState.action bit 9 */
+  ext?: boolean;
   /** Legs moving (walk or run). Optional: falls back to |vel|>threshold. Packed into action bit14. */
   moving?: boolean;
   /** Sprinting (run vs walk); ignored when `moving` is false. Packed into action bit15. */

@@ -69,7 +69,8 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "recoilVertFactor": 0.85,
    "recoilHorzFactor": 0.75,
    "recoilHorzCount": 2,
-   "autoFireCount": 0
+   "autoFireCount": 0,
+   "reloadTimeDual": 0
   }
  },
  "SMG": {
@@ -136,7 +137,8 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "deviationFactor": 0.9,
    "recoilVertFactor": 0.9,
    "recoilHorzFactor": 0.75,
-   "recoilHorzCount": 0
+   "recoilHorzCount": 0,
+   "reloadTimeDual": 0
   }
  },
  "MG": {
@@ -202,7 +204,8 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "deviationFactor": 0.7,
    "recoilVertFactor": 0.7,
    "recoilHorzFactor": 0.7,
-   "recoilHorzCount": 1
+   "recoilHorzCount": 1,
+   "reloadTimeDual": 0
   }
  },
  "SR": {
@@ -269,7 +272,8 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "zoom": 69
   },
   "ext": {
-   "deviationFactor": 0
+   "deviationFactor": 0,
+   "reloadTimeDual": 0
   }
  },
  "SG": {
@@ -330,6 +334,9 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "sit": 33,
    "zoom": 0,
    "scope": 0
+  },
+  "ext": {
+   "reloadTimeDual": 0
   }
  },
  "HG": {
@@ -388,6 +395,9 @@ export const FAMILY_PB: Record<string, PbWeaponBlock> = {
    "sit": 35,
    "zoom": 84,
    "scope": 0
+  },
+  "ext": {
+   "reloadTimeDual": 0
   }
  },
  "KNIFE": {

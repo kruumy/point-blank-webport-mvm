@@ -94,6 +94,8 @@ export interface WeaponHudState {
   reserve: number;
   melee: boolean;
   reloading: boolean;
+  /** DualMag magazine flip under way */
+  flipping?: boolean;
   reloadProgress: number; // 0..1
   spreadDeg: number; // current cone half-angle
   zoomFov: number | null; // requested camera FOV when aiming
@@ -401,6 +403,7 @@ export class PbWeaponsBridge implements WeaponSystem {
       melee: h.family === "KNIFE" && !h.limitedAmmo,
       family: h.family,
       reloading: h.reloading,
+      flipping: h.flipping,
       reloadProgress: h.reloadProgress,
       spreadDeg: h.scoped ? 0 : h.spreadDeg,
       zoomFov: h.scoped ? h.fov : null, // scoped: hide crosshair; FOV itself is driven by src/weapons

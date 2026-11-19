@@ -25,7 +25,8 @@ export interface AnimAI {
   group: string;
   weapon: string;
   driver: string;
-  stances: { AttackIdle?: StateTable; Zoom?: StateTable };
+  /** CrossIdle = HK45 Dual CrossFire (Up_Ext_*), Grenade = K201 & co. launcher raised */
+  stances: { AttackIdle?: StateTable; Zoom?: StateTable; CrossIdle?: StateTable; Grenade?: StateTable };
 }
 export interface Anim3pvIndex {
   lower: { Stand: StateTable; Sit: StateTable };
@@ -175,20 +176,24 @@ export function dualClip(name: string, primary: THREE.AnimationClip, secondary: 
 export function dualTables(ai: AnimAI, clips: Map<string, THREE.AnimationClip>, aiName: string): AnimAI {
   const A = ai.stances.AttackIdle;
   if (!A || A.Idle || !A.RightIdle || !A.LeftIdle) return ai;
-  const out: StateTable = { ...A };
-  const make = (st: string, pri: string, sec: string) => {
-    const a = A[pri] && clips.get(A[pri].clip), b = A[sec] && clips.get(A[sec].clip);
-    if (!a) return;
-    const key = `dual:${aiName}/${st}`;
-    clips.set(key, b ? dualClip(key, a, b) : a);
-    out[st] = { ...A[pri], clip: key };
+  const merge = (T: StateTable, tag: string): StateTable => {
+    const out: StateTable = { ...T };
+    const make = (st: string, pri: string, sec: string) => {
+      const a = T[pri] && clips.get(T[pri].clip), b = T[sec] && clips.get(T[sec].clip);
+      if (!a) return;
+      const key = `dual:${aiName}/${tag}${st}`;
+      clips.set(key, b ? dualClip(key, a, b) : a);
+      out[st] = { ...T[pri], clip: key };
+    };
+    make("Idle", "RightIdle", "LeftIdle");
+    make("Move", T.RightMove ? "RightMove" : "RightIdle", T.LeftMove ? "LeftMove" : "LeftIdle");
+    make("Attack", "RightAttack", "LeftIdle");
+    make("AttackLeft", "LeftAttack", "RightIdle");
+    make("AttackBoth", "RightAttack", "LeftAttack");
+    return out;
   };
-  make("Idle", "RightIdle", "LeftIdle");
-  make("Move", A.RightMove ? "RightMove" : "RightIdle", A.LeftMove ? "LeftMove" : "LeftIdle");
-  make("Attack", "RightAttack", "LeftIdle");
-  make("AttackLeft", "LeftAttack", "RightIdle");
-  make("AttackBoth", "RightAttack", "LeftAttack");
-  return { ...ai, stances: { ...ai.stances, AttackIdle: out } };
+  const C = ai.stances.CrossIdle;
+  return { ...ai, stances: { ...ai.stances, AttackIdle: merge(A, ""), ...(C?.RightIdle && C.LeftIdle ? { CrossIdle: merge(C, "Cross/") } : {}) } };
 }
 
 /** Match preload: the 3PV bundles of a weapon's AI (what bindWeaponAnim downloads on the first actor that holds it). */

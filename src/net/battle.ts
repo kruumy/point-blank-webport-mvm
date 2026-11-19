@@ -12,7 +12,7 @@
 //                      action bits 2-9  : weaponSlot (equip slot in hand, exe netdata +0x38)
 //                      action bit 8    : airborne (jump / fall; web extension: the receiver has no velocity on the wire and vel.y from
 //                                         position deltas reads stairs as jumps)
-//                      action bit 9    : silencer extension on (weapon slots only use bits 2-4; web extension, not in the original wire)
+//                      action bit 9    : RMB extension on (weapon slots only use bits 2-4; web extension, not in the original wire)
 //                      action bits 10-13: torsoAction (0 idle,1 fire,2 reload,3 change,4 zoom,5 ready = grenade pin out;
 //                                         5 is ours [INFERIDO]: the exe's own value for the FireReady upper state is not decoded)
 //                      action bit 14    : moving (walk or run)
@@ -148,7 +148,7 @@ const TORSO_NAMES: (keyof typeof TORSO_IDS)[] = ["idle", "fire", "reload", "chan
 /** web extension: ActionState.value bit 7 while alive = the knife attack in this "fire" is the heavy one (zoomType only uses bits 4-6: 0/2/3) */
 const VALUE_HEAVY = 0x80;
 const FLAG_AIRBORNE = 0x0100; // web extension (slots only use bits 2-4): the sender is off the ground
-const FLAG_SILENCER = 0x0200;
+const FLAG_EXT = 0x0200;
 const FLAG_MOVING = 0x4000;
 const FLAG_RUNNING = 0x8000;
 /** web extension (slots only use bits 2-4): this record is an AI slot simulated by the match host. Every peer learns "this slot is
@@ -188,7 +188,7 @@ function packState(s: PlayerState, mark: number, bot: boolean): ActionOut {
     (s.crouch ? POSTURE_CROUCH : 0) |
     ((wslot & 7) << WEAPON_SLOT_SHIFT) |
     (bot ? FLAG_BOT : 0) |
-    (s.silencer ? FLAG_SILENCER : 0) |
+    (s.ext ? FLAG_EXT : 0) |
     (s.airborne ? FLAG_AIRBORNE : 0) |
     ((torso & TORSO_MASK) << TORSO_SHIFT) |
     (moving ? FLAG_MOVING : 0) |
@@ -874,7 +874,7 @@ export class PbBattleNet implements NetAdapter {
         crouch: (act & POSTURE_MASK) === POSTURE_CROUCH,
         firing: torso === "fire",
         torsoAction: torso,
-        silencer: alive ? (act & FLAG_SILENCER) !== 0 : false,
+        ext: alive ? (act & FLAG_EXT) !== 0 : false,
         airborne: alive && (act & FLAG_AIRBORNE) !== 0,
         moving,
         running,

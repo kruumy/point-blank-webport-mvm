@@ -121,5 +121,7 @@ export async function loadDemo(name: string): Promise<Demo> {
   const head = JSON.parse(lines[0]) as DemoHeader;
   if (head.v !== 1) throw new Error(`demo version ${head.v}`);
   const recs = lines.slice(1).map((l) => JSON.parse(l) as DemoRecord);
+  // demos recorded before PlayerState.silencer became ext
+  for (const r of recs) if (r.k === "state" && "silencer" in r.s) r.s.ext = (r.s as { silencer?: boolean }).silencer;
   return { ...head, name, dur: recs.length ? recs[recs.length - 1].t : 0, recs };
 }

@@ -29,6 +29,8 @@ export interface CharAnimInput {
   crouch: boolean;
   grounded: boolean;
   zoom?: boolean;
+  /** RMB extension on: CrossIdle / Grenade stance of the AI */
+  ext?: boolean;
   /** MST WALK (Shift). Omitted: inferred from the speed (walkRunThreshold) */
   walking?: boolean;
   /** legs in motion. Omitted: inferred from |vel| (remote players: network `moving` bit, more reliable than the
@@ -52,7 +54,7 @@ export interface LowerTables {
 }
 export interface UpperAI {
   driver: string;
-  stances: { AttackIdle?: StateTable; Zoom?: StateTable };
+  stances: { AttackIdle?: StateTable; Zoom?: StateTable; CrossIdle?: StateTable; Grenade?: StateTable };
 }
 
 const DIRS = ["Front", "Back", "Left", "Right"] as const;
@@ -280,7 +282,7 @@ export class CharAnimator {
   private cls: UpperClass = "assault";
   private lowState = "";
   private lowKey = "";
-  private upStance: "AttackIdle" | "Zoom" = "AttackIdle";
+  private upStance: "AttackIdle" | "Zoom" | "CrossIdle" | "Grenade" = "AttackIdle";
   private upState = "";
   private upKey = "";
   private oneShot: OneShot | null = null;
@@ -396,7 +398,7 @@ export class CharAnimator {
 
   private upperTable(): StateTable {
     const S = this.upperT.stances;
-    return (this.upStance === "Zoom" ? S.Zoom : S.AttackIdle) ?? S.AttackIdle ?? {};
+    return S[this.upStance] ?? S.AttackIdle ?? {};
   }
 
   /**
@@ -612,10 +614,18 @@ export class CharAnimator {
     }
 
     // ---- upper: stance (AttackIdle | Zoom) x base (Idle | Move) + one-shot ----
-    const stance = s.zoom && this.zoomAI && this.upperT.stances.Zoom ? "Zoom" : "AttackIdle";
+    // RMB extension on (CrossFire / GrenadeLauncher): the AI's CrossIdle / Grenade stance
+    const S = this.upperT.stances;
+    const stance = s.ext && S.CrossIdle ? "CrossIdle" : s.ext && S.Grenade ? "Grenade"
+      : s.zoom && this.zoomAI && S.Zoom ? "Zoom" : "AttackIdle";
     if (stance !== this.upStance) {
+      // Up_Ext_Change into the crossed stance, Up_Ext_Recover (a CrossIdle state) out of it; a weapon swap's Change
+      // (which turns the extension off) keeps playing
+      const swapping = this.oneShot?.state === "Change" && this.t < this.oneShot.until;
+      if (this.upStance === "CrossIdle" && !swapping) this.playUpper("ExtensionDeactivate");
       this.upStance = stance;
       this.upState = "";
+      if (stance === "CrossIdle" && !swapping) this.playUpper("ExtensionActivate");
     }
     const UT = this.upperTable();
     const upName = moving && UT.Move ? "Move" : "Idle";

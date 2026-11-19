@@ -502,8 +502,7 @@ export class Bot implements Actor {
   }
   /** Muzzle(s) of the last shot on the 3rd-person model: the firing hand, or both guns for a DualSMG. */
   muzzles(): THREE.Vector3[] {
-    const v = this.visual;
-    return v.dualMode === "both" ? [v.muzzleWorld(new THREE.Vector3(), false), v.muzzleWorld(new THREE.Vector3(), true)] : [v.muzzleWorld()];
+    return this.visual.muzzles();
   }
   get visualRoot(): THREE.Object3D {
     return this.visual.root;

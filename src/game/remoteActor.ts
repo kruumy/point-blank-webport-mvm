@@ -95,13 +95,13 @@ export class RemoteActor implements Actor {
   /** the visual was rebuilt for another character (game.ts re-registers the bone hitboxes) */
   onVisualChanged: (() => void) | null = null;
   /** game.ts hook: positional weapon-fire sound (WeaponSystem.playRemoteFire), fired alongside the muzzle flash. */
-  onFire: (() => void) | null = null;
-  /** silencer switched on / off by the remote player (positional sound, game.ts) */
-  onSilencer: ((on: boolean) => void) | null = null;
+  onFire: ((heavy: boolean) => void) | null = null;
+  /** RMB extension switched on / off by the remote player (silencer sound, game.ts) */
+  onExt: ((on: boolean) => void) | null = null;
   /** plant / defuse hold started (kind) or ended (null): game.ts plays the hold sound at the holder */
   onBombHold: ((kind: "plant" | "defuse" | null) => void) | null = null;
-  silencerOn = false;
-  private silencerSeen = false;
+  extOn = false;
+  private extSeen = false;
   /** current weapon's class carries a laser (WeaponDotLaser); resolved async off weapons.json + weaponfx.json */
   /** spawn protection length (s), set by game.ts from the match config; remaining time of the current one */
   protectTime = 0;
@@ -207,14 +207,14 @@ export class RemoteActor implements Actor {
       else if (torso === "fire") this.playFire(!!s.heavy);
       else if (torso === "ready") this.visual.throwReady();
     }
-    // silencer extension: the ExtensionActivate / Deactivate clip of the weapon model plays on the edge (not on a weapon change)
-    const sil = !!s.silencer;
-    if (sil !== this.silencerOn) {
-      this.silencerOn = sil;
-      this.visual.setSilencer(sil, !weaponChanged && this.silencerSeen);
-      if (!weaponChanged && this.silencerSeen) this.onSilencer?.(sil);
-    } else if (weaponChanged) this.visual.setSilencer(sil, false);
-    this.silencerSeen = true;
+    // RMB extension: the ExtensionActivate / Deactivate clip of the weapon model plays on the edge (not on a weapon change)
+    const ext = !!s.ext;
+    if (ext !== this.extOn) {
+      this.extOn = ext;
+      this.visual.setExt(ext, !weaponChanged && this.extSeen);
+      if (!weaponChanged && this.extSeen) this.onExt?.(ext);
+    } else if (weaponChanged) this.visual.setExt(ext, false);
+    this.extSeen = true;
     this.moving = s.moving ?? false;
     this.running = s.running ?? false;
     this.moveDir = s.moveDir ?? 0;
@@ -309,7 +309,7 @@ export class RemoteActor implements Actor {
     this.lastHeavy = heavy;
     this.fireAnimCd = this.fireGap || 0.1;
     this.visual.fire(heavy);
-    this.onFire?.();
+    this.onFire?.(heavy);
   }
   /** seconds = the weapon's weapon.pef ReloadTime: the whole Up_Reload clip is stretched over it */
   playReload(seconds?: number): void {
@@ -335,6 +335,10 @@ export class RemoteActor implements Actor {
   muzzle(out = new THREE.Vector3()): THREE.Vector3 {
     return this.visual.muzzleWorld(out);
   }
+  /** Muzzle(s) of the last shot: both guns for a DualSMG / crossed HK45 Dual */
+  muzzles(): THREE.Vector3[] {
+    return this.visual.muzzles();
+  }
   /** Character model root (for charModel.getBoneHitboxes). */
   /** the helmet on the head (world transform + model to copy) for the HELMET PROTECTION drop */
   helmetSource() {
@@ -345,7 +349,7 @@ export class RemoteActor implements Actor {
   private reloadSeq = 0;
   private reloadSecs = 2;
   obsState(): ObsState {
-    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: this.airborne === undefined ? Math.abs(this.vel.y) < 1.5 : !this.airborne, aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready" };
+    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: this.airborne === undefined ? Math.abs(this.vel.y) < 1.5 : !this.airborne, aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready", ext: this.extOn };
   }
   get visualRoot(): THREE.Object3D {
     return this.visual.root;

@@ -111,6 +111,9 @@ const PART_RATE_MAX = 1.2;
 const DAMAGE_UP_MAX = 0.1;
 /** CalcHeadShotDamage 0x7fbf20 caps a human head hit at 255 (src/game/damage.ts HEAD_HIT_DAMAGE) */
 const HEAD_DAMAGE_MAX = 255;
+/** an RMB extension hit's range is checked from the shooter's last PosRotation (feet, half floats, one state tick old) to the hit
+ * point: eye height + a running tick of slack [INFERIDO] */
+const EXT_RANGE_SLACK = 2.5;
 /** best three titles' Fire_Speed (DesignationValue.pef: -0.004, -0.003, -0.003 s) and GetFireDelay's floor (0x616020) */
 const FIRE_SPEED_TITLE_MAX = 0.01;
 const FIRE_DELAY_MIN = 0.06;
@@ -144,6 +147,10 @@ export interface ItemStat {
   mission?: boolean;
   /** Extension2: the item the extension key swaps this one for in hand */
   alt?: number;
+  /** GrenadeLauncher extension: the shell item the raised launcher fires */
+  shell?: number;
+  /** RMB extension hit above damageMax (crossed HK45 Ext_Damage, M1887 stock blow): its base and range, m */
+  ext?: { damage: number; range: number };
 }
 /** pb-extract-tools match-data.mjs output (src/host/data/matchData.json). itemStats / weaponGroup / propBlast / defaultLoadout:
  * the anti-cheat. */
@@ -1293,7 +1300,7 @@ export class MatchCore {
     if (this.cfg.antiScript) {
       if (!st) return this.reject(room, pk, "stats", `The Item Statistic was not found. Please add: ${hit.weaponId} to config!`, true);
       const blast = propBreak ? this.data.propBlast?.[room.mapId] ?? 0 : 0;
-      if (this.validateHitData(raw, hit, st, w, blast) === null) {
+      if (this.validateHitData(raw, hit, st, w, blast, player.position) === null) {
         return this.reject(room, pk, "damage", `hit ${raw} part ${hitPart(hit.hitIndex)} with ${hit.weaponId} on ${hit.objectId}`, true);
       }
     }
@@ -1314,15 +1321,18 @@ export class MatchCore {
    * would fail the original: the cap is never below the honest maximum, max(pef / blade base) x PART_RATE_MAX x
    * (1 + DAMAGE_UP_MAX) (Cheytac: XML 95, pef 173); a head hit is capped at HEAD_DAMAGE_MAX (unchecked in the original, and
    * not on a map object, which takes the damage as is); a record that breaks a prop may carry its blast (`blast`). */
-  private validateHitData(raw: number, hit: HitDataInfo, st: ItemStat, w: number, blast: number): number | null {
+  private validateHitData(raw: number, hit: HitDataInfo, st: ItemStat, w: number, blast: number, from: Half3): number | null {
     const cls = itemClassified(idStatics(w, 2));
     const num1 = dist(vec(hit.startBullet), vec(hit.endBullet));
     if (cls === 3 || num1 <= st.range) {
       if (cls === 3 && num1 > st.range) return null;
       if (hitPart(hit.hitIndex) !== CharaHitPart.HEAD || hitType(hit.hitIndex) === ObjectType.Object) {
         const num2 = cls === 3 ? st.damage : st.damage + Math.trunc((st.damage * 30) / 100);
-        const honest = Math.trunc((st.damageMax ?? st.damage) * PART_RATE_MAX * (1 + DAMAGE_UP_MAX) + 0.5);
-        if (raw > Math.max(num2, honest, blast)) return null;
+        const honest = (d: number) => Math.trunc(d * PART_RATE_MAX * (1 + DAMAGE_UP_MAX) + 0.5);
+        // an RMB extension hit may reach its own cap, within the extension's range of the shooter only (a web hit's start is
+        // its end point, so num1 cannot tell)
+        const ext = st.ext && dist(vec(from), vec(hit.endBullet)) <= st.ext.range + EXT_RANGE_SLACK ? honest(st.ext.damage) : 0;
+        if (raw > Math.max(num2, honest(st.damageMax ?? st.damage), blast, ext)) return null;
       } else if (raw > HEAD_DAMAGE_MAX) return null;
       return raw;
     }
@@ -1354,8 +1364,9 @@ export class MatchCore {
   private addToLoadout(lo: Set<number>, id: number): void {
     if (id <= 0) return;
     lo.add(id);
-    const alt = this.statsOf(id)?.alt;
-    if (alt) lo.add(alt);
+    const st = this.statsOf(id);
+    if (st?.alt) lo.add(st.alt);
+    if (st?.shell) lo.add(st.shell);
   }
 
   /**the slot's own item a hit / WeaponSync names (the client names it by name: a same-name id of the item is

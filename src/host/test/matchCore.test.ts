@@ -272,7 +272,7 @@ test("anti-cheat is on by default; ItemStatistics + pef in matchData.json", () =
   assert.equal(DEFAULT_CONFIG.fireRateCap, true);
   assert.ok(DEFAULT_CONFIG.strikeLimit > 1, "never on the first rejection");
   assert.deepEqual([ST[K2].damage, ST[K2].fireDelay], [27, 0.075]);
-  assert.equal(ST[CHEYTAC].damageMax, 173, "pef Damage above the XML 95");
+  assert.equal(ST[CHEYTAC].damageMax, 150, "PBCross pef Damage above the XML 95");
   assert.equal(ST[SHOTGUN].hits, 8);
   assert.equal(ST[UZI].hits, 2, "DualSMG: both guns every shot");
   assert.equal(mapData.weaponGroup![702001001], mapData.weaponGroup![M7], "battle.ts WEAPON_IDS M-7 = the knife's name group");
@@ -288,8 +288,9 @@ test("(a) damage: honest maximum passes, inflated damage is dropped", () => {
   // head: CalcHeadShotDamage <= 255
   assert.equal(b.hits(0, { victim: 1, damage: 200, part: 14, weapon: K2 }).length, 1);
   assert.equal(b.hits(0, { victim: 1, damage: 256, part: 14, weapon: K2 }).length, 0);
-  // Cheytac body 173 x 1.2 = 208 (XML 95: the original would have dropped it), M-7 RMB 90 x 1.2 = 108 (XML 60)
-  assert.equal(b.hits(1, { victim: 0, damage: 208, weapon: CHEYTAC }).length, 1);
+  // Cheytac body 150 x 1.2 x 1.1 = 198 (XML 95: the original would have dropped it), M-7 RMB 90 x 1.2 = 108 (XML 60)
+  assert.equal(b.hits(1, { victim: 0, damage: 198, weapon: CHEYTAC }).length, 1);
+  assert.equal(b.hits(1, { victim: 0, damage: 199, weapon: CHEYTAC }).length, 0);
   assert.equal(b.hits(1, { victim: 0, damage: 108, weapon: M7 }).length, 1);
   assert.equal(b.hits(1, { victim: 0, damage: 130, weapon: M7 }).length, 0);
   assert.ok(b.warns.some((l) => /slot 0: hit 37 part 1 with 103004/.test(l)), b.warns.join("\n"));
@@ -324,12 +325,14 @@ test("(b) loadout: the RESPAWN's items (by name group), Dual swap, defaults and 
   assert.equal(b.hits(1, { victim: 0, damage: 100, weapon: CHEYTAC }).length, 1, "slot 2's dropped Cheytac, picked up");
 });
 
-test("(b) Champion Claymore 407113 has its own ItemStatistics row: its grenade hits pass in the explosive slot, over-damage is dropped", () => {
-  const CHAMPION = 407113;
-  assert.equal(ST[CHAMPION]?.damage, 65, "row of the 2017 base 407023");
+test("(b) Claymore 407023: its grenade hits pass in the explosive slot, over-damage is dropped; the Champion 407113 has no PBCross pef, so no row", () => {
+  const CLAYMORE = 407023, CHAMPION = 407113;
+  assert.equal(ST[CLAYMORE]?.damage, 65);
+  assert.equal(ST[CHAMPION], undefined, "ItemStatistics.xml only: export-weapons writes PBCross pef items");
   const b = new Bench();
-  b.join(0); b.join(1, { explosive: CHAMPION }); b.join(2);
-  assert.equal(b.hits(1, { victim: 0, damage: 65, weapon: CHAMPION }).length, 1, "Champion 65 hits the slot's Claymore");
+  b.join(0); b.join(1, { explosive: CLAYMORE }); b.join(2);
+  assert.equal(b.hits(1, { victim: 0, damage: 65, weapon: CLAYMORE }).length, 1, "65 hits the slot's Claymore");
+  assert.equal(b.hits(1, { victim: 0, damage: 2047, weapon: CLAYMORE }).length, 0, "over-damage");
 });
 
 test("(b) a guest's record for another slot is dropped; the host's AI seats pass (and are checked)", () => {
@@ -390,4 +393,22 @@ test("strikes: strikeLimit hard rejections drop the guest and its slot may not r
   const snap = b.core.snapshot();
   assert.deepEqual(snap.rooms[0].kicked, [1]);
   assert.ok(snap.rooms[0].players[0].loadout!.includes(K2));
+});
+
+test("(a)(b) RMB extensions: crossed HK45 Dual (Ext_Damage 41), M1887 stock blow (126), K201 launcher shell (411015)", () => {
+  const HK45_DUAL = 214007, M1887 = 106005, K201 = 103011, K201_SHELL = 411015;
+  const b = new Bench();
+  b.join(0); b.join(1, { primary: M1887, secondary: HK45_DUAL }); b.join(2, { primary: K201 });
+  // the hits land at (0, 1.5, 0) (webHit): slot 1 stands beside it, then 40 m away
+  const stand = (x: number) => b.send(1, [1, { posRot: { x, y: 0, z: 0, yaw: 0, pitch: 0, area: 0 } }]);
+  stand(1);
+  assert.equal(b.hits(1, { victim: 0, damage: 41, weapon: HK45_DUAL }).length, 1, "crossed shot");
+  assert.equal(b.hits(1, { victim: 0, damage: 126, weapon: M1887 }).length, 1, "stock blow");
+  assert.equal(b.hits(1, { victim: 0, damage: 200, weapon: M1887 }).length, 0, "over the blow");
+  stand(40);
+  assert.equal(b.hits(1, { victim: 0, damage: 126, weapon: M1887 }).length, 0, "a stock blow from 40 m");
+  assert.equal(b.hits(1, { victim: 0, damage: 41, weapon: HK45_DUAL }).length, 0, "Ext_Damage past Ext_Range (30 m)");
+  assert.equal(b.hits(1, { victim: 0, damage: 28, weapon: HK45_DUAL }).length, 1, "a normal shot keeps its own cap");
+  assert.equal(b.hits(2, { victim: 0, damage: 65, weapon: K201_SHELL }).length, 1, "the launcher's shell is in the K201's loadout");
+  assert.equal(b.hits(1, { victim: 0, damage: 65, weapon: K201_SHELL }).length, 0, "no launcher, no shell");
 });

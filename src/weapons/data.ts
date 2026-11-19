@@ -90,7 +90,9 @@ export function buildParams(fam: Family, s: WeaponStat, pb: PbWeaponBlock | unde
       vertRecoverTime: r.vertRecoverTime ?? 1, horzRecoverTime: r.horzRecoverTime ?? 1, camSyncRate: r.camSyncRate ?? 1,
     },
     ext: { type: p.extType, deviationFactor: x.deviationFactor, recoilVertFactor: x.recoilVertFactor,
-      recoilHorzFactor: x.recoilHorzFactor, recoilHorzCount: x.recoilHorzCount, recoilVertCount: x.recoilVertCount },
+      recoilHorzFactor: x.recoilHorzFactor, recoilHorzCount: x.recoilHorzCount, recoilVertCount: x.recoilVertCount,
+      fireDelay: x.fireDelay, damage: x.damage, meleeDamage: x.meleeDamage, meleeTime: x.meleeTime, range: x.range,
+      reloadTimeDual: x.reloadTimeDual, shell: x.info },
     fallback: !pb,
   };
   if (fam === "KNIFE") {

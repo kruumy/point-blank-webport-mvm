@@ -83,7 +83,15 @@ export interface ClassParams {
   moveNormal?: MoveNormal;
   /** knife: AttackDamageA1 / AttackTimeA1 (LMB), AttackDamageB1 / AttackTimeB1 / FireDelay2 (RMB) */
   /** Ext_* factors, active while the extension (RMB zoom/scope/steady aim) is on (0x5cea50 / 0x5ced10 / 0x7e8400) */
-  ext?: { type?: string; deviationFactor?: number; recoilVertFactor?: number; recoilHorzFactor?: number; recoilHorzCount?: number; recoilVertCount?: number };
+  ext?: { type?: string; deviationFactor?: number; recoilVertFactor?: number; recoilHorzFactor?: number; recoilHorzCount?: number; recoilVertCount?: number;
+    /** CrossFire: Ext_FireDelay / Ext_Damage of the crossed-arms shot */
+    fireDelay?: number; damage?: number;
+    /** DirectMelee: ExtensionDamage / ExtensionAttackTime (hit time in the blow) / ExtensionRange (m) */
+    meleeDamage?: number; meleeTime?: number; range?: number;
+    /** DualMag: ReloadTimeDual, the flip to the taped magazine (s) */
+    reloadTimeDual?: number;
+    /** GrenadeLauncher: _ExtensionInfo, the GrenadeShell entry the launcher fires */
+    shell?: string };
   melee?: { damageA: number; timeA: number; damageB: number; timeB: number; delayB: number;
     /** DualKnife (Bone Knife, Kunai): second blade hit of the same swing, AttackDamage/TimeA2 / B2 */
     damageA2?: number; timeA2?: number; damageB2?: number; timeB2?: number };
@@ -129,7 +137,8 @@ export interface PbWeaponBlock {
   crosshair?: Partial<SpreadParams["cross"]> & { type?: number; invisible?: number };
   moveNormal?: Partial<MoveNormal>;
   ext?: { deviationFactor?: number; recoilVertFactor?: number; recoilHorzFactor?: number; recoilHorzCount?: number;
-    recoilVertCount?: number; autoFireCount?: number; fireDelay?: number; damage?: number };
+    recoilVertCount?: number; autoFireCount?: number; fireDelay?: number; damage?: number;
+    meleeDamage?: number; meleeTime?: number; range?: number; reloadTimeDual?: number; info?: string; fireSound?: string };
   melee?: { damageA1?: number; damageA2?: number; damageB1?: number; damageB2?: number; timeA1?: number; timeA2?: number;
     timeB1?: number; timeB2?: number; fireDelay2?: number; autoFireCount2?: number };
   grenade?: { explosionNearRange?: number; explosionRange?: number; explosionSlope?: number; explosionTime?: number; effectiveTime?: number;
@@ -362,11 +371,13 @@ export interface WeaponHudState {
   /** a knife with a magazine (Ballistic Knife): the HUD shows its ammo */
   limitedAmmo?: boolean;
   reloading: boolean;
+  /** DualMag magazine flip under way (not a reload here: no reload bar) */
+  flipping?: boolean;
   /** 0..1 */
   reloadProgress: number;
   switching: boolean;
-  /** silencer extension on (MK23 / MP5K) */
-  silencer?: boolean;
+  /** RMB extension on (silencer, CrossFire arms, raised launcher) */
+  ext?: boolean;
   aiming: boolean;
   /** sniper scope overlay is visible (hide crosshair) */
   scoped: boolean;

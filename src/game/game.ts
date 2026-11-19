@@ -292,6 +292,7 @@ export class Game implements BotHost {
   /** per-actor footstep tracker (bots/remotes): last feet position + accumulated distance */
   private actorSteps = new Map<string, { prev: THREE.Vector3; dist: number; left: boolean }>();
   private wasThrowReady = false;
+  private shadowExt = false;
   /** ADS (right click held): the weapon input */
   private localAiming = false;
   /** the weapon's own zoom state (sniper scope = toggle, the rest = hold): drives the shadow's Zoom stance and the wire
@@ -698,8 +699,8 @@ export class Game implements BotHost {
     if (def) pbw?.audio.fireAt(def, muzzle, shooter.id);
     if (def && def.family !== "KNIFE" && def.family !== "GRENADE") this.grazeMe(shooter, origin, dir, w.range);
     // the PB effects of a 3rd-person shot (flash / tracer / impact or blood); a bot watched in FPS: from the arms' muzzle, no 3PV flash
-    const fps = pbw && this.watchedInFps(shooter) ? pbw.observedMuzzle(new THREE.Vector3()) : null;
-    if (pbw && def) (fps ? [fps] : muzzles).forEach((m, i) => pbw.worldShot(def.id, m, hit.point, i === 0 && hit.distance < Infinity
+    const fps = pbw && this.watchedInFps(shooter) ? pbw.observedMuzzles() : null;
+    if (pbw && def) (fps ?? muzzles).forEach((m, i) => pbw.worldShot(def.id, m, hit.point, i === 0 && hit.distance < Infinity
       ? { normal: hit.normal, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null, { flash: !fps }));
     if (hit.actorId) {
       const target = this.actorById(hit.actorId);
@@ -964,7 +965,7 @@ export class Game implements BotHost {
   private deathDrop(victim: Actor): void {
     if (victim === this.me) {
       const d = this.pbWeapons()?.dropCurrent(true);
-      if (d) this.localDrop(d.def.id, d.slot, d.ammo, d.reserve, true);
+      if (d) this.localDrop(d.def.id, d.slot, d.ammo, d.extra, d.reserve, true);
     } else if (victim instanceof Bot && this.net.mode === "local" && this.drops) {
       this.drops.spawn({ weaponId: BOT_WEAPON.id, slot: 0, ammo: BOT_WEAPON.mag, extra: 0, reserve: BOT_WEAPON.reserve, owner: victim.id, local: true, death: true },
         victim.feet(new THREE.Vector3()), victim.yaw());
@@ -972,11 +973,11 @@ export class Game implements BotHost {
   }
 
   /** A drop by the local player (G or death): on the floor here + DropWeapon to the room. */
-  private localDrop(weaponId: number, slot: number, ammo: number, reserve: number, death: boolean): void {
+  private localDrop(weaponId: number, slot: number, ammo: number, extra: number, reserve: number, death: boolean): void {
     if (slot > 1 || !this.drops) return;
     const feet = this.me.feet(new THREE.Vector3());
-    const d = this.drops.spawn({ weaponId, slot: slot as 0 | 1, ammo, extra: 0, reserve, owner: this.me.id, local: true, death }, feet, this.player.yaw);
-    this.net.sendDrop?.({ actorId: this.me.id, weaponId, slot: d.slot, ammo, extra: 0, reserve, death, idx: d.idx, pos: [feet.x, feet.y, feet.z], yaw: this.player.yaw });
+    const d = this.drops.spawn({ weaponId, slot: slot as 0 | 1, ammo, extra, reserve, owner: this.me.id, local: true, death }, feet, this.player.yaw);
+    this.net.sendDrop?.({ actorId: this.me.id, weaponId, slot: d.slot, ammo, extra, reserve, death, idx: d.idx, pos: [feet.x, feet.y, feet.z], yaw: this.player.yaw });
     if (this.net.sendDropped) this.dropStream.set(d.idx, { x: NaN, y: NaN, z: NaN, at: -1 });
   }
 
@@ -1054,6 +1055,7 @@ export class Game implements BotHost {
       if (ng) {
         ng.owner = e.actorId; // the HUD warning skips allies' throws (Cross 0x744ac0)
         if (ng.sticky) ng.fuse = Infinity; // C5: waits for the trigger record
+        if (def?.className === "GrenadeShell") ng.sticky = true; // a launcher shell stops where it hits, like the owner's
         this.remoteThrows.set(key, ng);
       }
       return;
@@ -1085,7 +1087,7 @@ export class Game implements BotHost {
     if (!ws || !this.me.alive) return;
     const feet = this.me.feet(this._v);
     const d: DroppedWeapon | null = findPickup(this.drops.field.drops.values(), feet, (s) => ws.slotEmpty(s));
-    if (!d || !ws.pickUp(d.weaponId, d.ammo, d.reserve)) return;
+    if (!d || !ws.pickUp(d.weaponId, d.ammo, d.reserve, d.extra)) return;
     this.drops.remove(d.idx);
     this.net.sendPickup?.({ actorId: this.me.id, weaponId: d.weaponId, slot: d.slot, ammo: d.ammo, extra: d.extra, reserve: d.reserve, death: false, idx: d.idx });
   }
@@ -1881,7 +1883,7 @@ export class Game implements BotHost {
       this.player.addRecoil(e.recoilPitch, e.recoilYaw);
       // WeaponGrenade::Throw 0x62ebb3: the thrower's own "Granada!" (AUTO 1: voice only) + radio 0x1f to the team
       if (e.thrown) this.sendRadio(radioId(3, 1));
-      this.shadowVisual.fire();
+      this.shadowVisual.fire(!!e.heavy);
     });
     this.weapons.onHit((e) => {
       const target = e.hit.actorId ? this.actorById(e.hit.actorId) : null;
@@ -1924,7 +1926,7 @@ export class Game implements BotHost {
         r = new RemoteActor(s.id, s, this.scene);
         r.protectTime = this.theater ? 0 : this.match.cfg.spawnProtect; // the theater: no spawn blink (a seek reads as a respawn)
         const ra = r;
-        // scratch for the remote fire/silencer events: every consumer (audio.start, effects, shoot) copies what it keeps
+        // scratch for the remote fire/extension events: every consumer (audio.start, effects, shoot) copies what it keeps
         const tMuzzle = new THREE.Vector3(), tEye = new THREE.Vector3(), tDir = new THREE.Vector3();
         // the equipped character arrived / loaded (RESPAWN 5138): the bone hitboxes belong to the new model
         ra.onVisualChanged = () => {
@@ -1932,33 +1934,35 @@ export class Game implements BotHost {
           this.hitColliders.add(ra);
         };
         // positional weapon-fire sound (net torsoAction "fire" edge, RemoteActor.playFire)
-        ra.onFire = () => {
+        ra.onFire = (heavy) => {
           const db = this.pbWeapons()?.db;
           const def = (ra.weaponId && db?.def(ra.weaponId)) || (db && db.find(ra.weaponName) && db.def(db.find(ra.weaponName)!.id));
           if (!def) return;
+          if (heavy && def.params.ext?.type === "DirectMelee") return; // M1887 stock blow: no shot sound / tracer
           const muzzle = ra.muzzle(tMuzzle);
-          this.pbWeapons()?.audio.fireAt(def, muzzle, ra.id, { silencer: ra.silencerOn, zoom: ra.aiming });
+          this.pbWeapons()?.audio.fireAt(def, muzzle, ra.id, { silencer: ra.extOn && def.params.ext?.type === "Silencer", zoom: ra.aiming });
           // flash + tracer + impact from the replicated aim (eye ray; the shot itself is the shooter's own client). The ray takes
           // the last replicated angles (viewDir), not the body's smoothed aim: the packet that carries the "fire" edge holds the
           // angles of that shot, the lerped aim lags behind it and put the wall mark beside where he was looking
           if (def.family === "KNIFE" || def.family === "GRENADE") return;
+          if (ra.extOn && def.params.ext?.type === "GrenadeLauncher") return; // a shell (its throw event), not a bullet
           const hit = this.shoot(ra, ra.eye(tEye), ra.viewDir(tDir), def.range * 1.5 || 200);
           if (hit.colliderHandle !== undefined && !hit.actorId && hit.distance <= def.range) this.damageMapProp(hit.colliderHandle, def.params.damage, null);
           this.grazeMe(ra, tEye, tDir, def.range);
           // watched in FPS: his body is hidden, the tracer starts at the arms' muzzle and the flash is observeFire's
-          const fps = this.watchedInFps(ra) ? this.pbWeapons()?.observedMuzzle(tMuzzle) : null;
-          this.pbWeapons()?.worldShot(def.id, fps ?? muzzle, hit.point, hit.distance < Infinity
-            ? { normal: hit.normal, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null, { flash: !fps, tint: this.muzzleTintOfId(ra.id) });
+          const fps = this.watchedInFps(ra) ? this.pbWeapons()?.observedMuzzles() : null;
+          (fps ?? ra.muzzles()).forEach((m, i) => this.pbWeapons()?.worldShot(def.id, m, hit.point, i === 0 && hit.distance < Infinity
+            ? { normal: hit.normal, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null, { flash: !fps, tint: this.muzzleTintOfId(ra.id) }));
         };
         // the others hear the plant / defuse hold (WM_C4_Take / disarm clip) from the holder's position
         ra.onBombHold = (kind) => {
           if (kind) this.bombVis?.remoteHold(ra.id, kind, ra.feet(new THREE.Vector3()));
           else this.bombVis?.remoteStop(ra.id);
         };
-        ra.onSilencer = (on) => {
+        ra.onExt = (on) => {
           const db = this.pbWeapons()?.db;
           const def = ra.weaponId ? db?.def(ra.weaponId) : undefined;
-          if (def) this.pbWeapons()?.audio.silencerAt(def, on, ra.muzzle(tMuzzle));
+          if (def?.params.ext?.type === "Silencer") this.pbWeapons()?.audio.silencerAt(def, on, ra.muzzle(tMuzzle));
         };
         this.remotes.set(s.id, r);
         // a player who starts the battle after us (the round-start burst is over): CStageBattle::_ProcessEvent_StartBattle 0x776680
@@ -2115,7 +2119,7 @@ export class Game implements BotHost {
       ? "defuse"
       : recentlyFired
       ? "fire"
-      : ws.reloading
+      : ws.reloading || ws.flipping // the others see the DualMag flip as a reload [INFERIDO: its 3PV AI has no flip state]
         ? "reload"
         : this.time < this.changeUntil
           ? "change"
@@ -2138,7 +2142,7 @@ export class Game implements BotHost {
       weapon: ws.name,
       weaponId: this.pbWeapons()?.getHudState().id || undefined,
       weaponSlot: ws.slot,
-      silencer: this.pbWeapons()?.getHudState().silencer,
+      ext: this.pbWeapons()?.getHudState().ext,
       firing: this.firing,
       torsoAction,
       heavy: torsoAction === "fire" && this.lastHeavy,
@@ -2240,7 +2244,7 @@ export class Game implements BotHost {
     // G = drop (key map slot 22 -> ProcessDropWeapon 0xa21070)
     if (canShoot && pressed(inp, "drop") && this.drops.field.canDrop() && !this.c4InHand()) {
       const d = this.pbWeapons()?.dropCurrent();
-      if (d) this.localDrop(d.def.id, d.slot, d.ammo, d.reserve, false);
+      if (d) this.localDrop(d.def.id, d.slot, d.ammo, d.extra, d.reserve, false);
     }
     const wi: WeaponInput = {
       fire: canShoot && inp.button(0),
@@ -2274,7 +2278,8 @@ export class Game implements BotHost {
     });
     const ws = this.weapons.getState();
     this.me.weaponName = ws.name;
-    if (ws.name && ws.name !== this.shadowWeaponName) {
+    const swapped = !!ws.name && ws.name !== this.shadowWeaponName;
+    if (swapped) {
       // the weapon's own PB upper-body AI (reload/change/attack clips), same as RemoteActor.apply
       const first = !this.shadowWeaponName;
       this.shadowWeaponName = ws.name;
@@ -2284,11 +2289,15 @@ export class Game implements BotHost {
       });
       if (!first) this.changeUntil = this.time + 0.35;
     }
-    if (ws.reloading && !this.wasReloading) this.shadowVisual.reload();
-    this.wasReloading = ws.reloading;
+    const reloading = ws.reloading || !!ws.flipping;
+    if (reloading && !this.wasReloading) this.shadowVisual.reload();
+    this.wasReloading = reloading;
     const ready = !!this.pbWeapons()?.isThrowReady();
     if (ready && !this.wasThrowReady) this.shadowVisual.throwReady(); // own shadow: the pin-out pose too
     this.wasThrowReady = ready;
+    // own shadow: the RMB extension as the others see it (crossed arms, raised launcher, silencer); no clip on a swap
+    const ext = !!this.pbWeapons()?.getHudState().ext;
+    if (ext !== this.shadowExt) { this.shadowVisual.setExt(ext, !swapped); this.shadowExt = ext; }
 
     // Bots / remotes
     const perfBots = botPerf();
@@ -2657,7 +2666,7 @@ export class Game implements BotHost {
       if (this.specPlanting) this.specPlantT += dt;
       ws.observePlant(this.specPlanting, this.specPlantT / BOMB.plantTime);
       const left = this.specReloadEnd - this.time;
-      ws.observeState({ speed: os.speed, grounded: os.grounded, aiming: os.aiming, reloadT: left > 0 ? 1 - left / Math.max(0.001, this.specReloadLen) : os.reloading ? 0.999 : -1 }); // still reloading past the estimate: hold the end
+      ws.observeState({ speed: os.speed, grounded: os.grounded, aiming: os.aiming, ext: !!os.ext, reloadT: left > 0 ? 1 - left / Math.max(0.001, this.specReloadLen) : os.reloading ? 0.999 : -1 }); // still reloading past the estimate: hold the end
     }
   }
 

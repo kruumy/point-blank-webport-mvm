@@ -460,7 +460,7 @@ export class CharVisual {
       void inst?.animator("3pv").then((a) => {
         if (tok !== this.weaponTok) return;
         this.weaponAnim = a;
-        a?.syncExt(this.silencerOn);
+        a?.syncExt(this.extOn);
       });
       if (this.weaponObj) {
         if (this.shadowOnly) makeShadowOnly(this.weaponObj);
@@ -489,12 +489,14 @@ export class CharVisual {
   /** One shot: upper Attack (dual: the hand whose turn it is, or both) + the firing gun's own Fire clip. */
   fire(heavy = false): void {
     let hand: "L" | "both" | undefined;
-    if (this.dual === "both") hand = "both";
+    // the extension flag on an alternating dual = HK45 Dual crossed (CrossFire): both guns each pull (0x644ee0)
+    if (this.dual === "both" || (this.dual === "alt" && this.extOn)) hand = "both";
     else if (this.dual === "alt") {
       hand = this.nextLeft ? "L" : undefined;
       this.nextLeft = !this.nextLeft;
     }
     this.side = hand === "L" ? "L" : "R";
+    this.bothFired = hand === "both";
     this.anim?.fire(heavy, hand);
     if (this.dual === "melee") {
       const k = heavy ? "attackB" : "attackA";
@@ -520,10 +522,10 @@ export class CharVisual {
   plant(on: boolean): void {
     if (on) { this.anim?.hold("Attack"); this.plantT = 0; } else { this.anim?.release(); this.plantT = -1; if (this.weaponObj) setC4Lcd(this.weaponObj, 1); }
   }
-  /** RMB silencer extension of the held weapon: the silencer mesh + ExtensionActivate / Deactivate of the weapon model (the upper body keeps AttackIdle) */
-  private silencerOn = false;
-  setSilencer(on: boolean, animate: boolean): void {
-    this.silencerOn = on;
+  /** RMB extension of the held weapon: ExtensionActivate / Deactivate of the weapon model (silencer mesh), the upper body's CrossIdle / Grenade stance */
+  private extOn = false;
+  setExt(on: boolean, animate: boolean): void {
+    this.extOn = on;
     const a = this.weaponAnim;
     if (!a) return;
     if (animate) a.setExt(on, true, a.set.states.ExtensionActivate?.dur ?? 2);
@@ -532,10 +534,6 @@ export class CharVisual {
   /** grenade pin out: the upper AttackReady, held until the throw (fire) or a swap replaces it */
   throwReady(): void {
     this.anim?.ready();
-  }
-  /** dual-wield mode of the held weapon (null = one gun) */
-  get dualMode(): "alt" | "both" | "melee" | null {
-    return this.dual;
   }
   /** `shotDir` = world direction the bullet travelled (same frame as die): picks DamageFrontLeftA / FrontRightA / BackA */
   hurt(shotDir?: THREE.Vector3): void {
@@ -614,6 +612,12 @@ export class CharVisual {
     return b ? b.getWorldPosition(out) : null;
   }
 
+  /** the last shot left both guns (DualSMG, HK45 Dual crossed) */
+  private bothFired = false;
+  /** Muzzle(s) of the last shot: the firing hand, or both guns */
+  muzzles(): THREE.Vector3[] {
+    return this.bothFired ? [this.muzzleWorld(new THREE.Vector3(), false), this.muzzleWorld(new THREE.Vector3(), true)] : [this.muzzleWorld()];
+  }
   /** Muzzle of the gun that fired last (dual "alt": that hand; "both": `left` picks the left gun). */
   muzzleWorld(out = new THREE.Vector3(), left = this.side === "L"): THREE.Vector3 {
     if (left && this.muzzleNodeL) return this.muzzleNodeL.getWorldPosition(out);
@@ -628,7 +632,7 @@ export class CharVisual {
       const eq = actorEquip(this.equipActor);
       if (eq) this.setEquip(eq);
     }
-    this.weaponAnim?.syncExt(this.silencerOn);
+    this.weaponAnim?.syncExt(this.extOn);
     this.weaponAnim?.update(dt);
     this.weaponAnimL?.update(dt);
     if (this.plantT >= 0 && this.weaponObj) {
@@ -658,6 +662,7 @@ export class CharVisual {
           crouch: s.crouch,
           grounded: s.grounded ?? true,
           zoom: s.zoom,
+          ext: this.extOn,
           moving: s.moving,
           walking: s.walking,
           dir8: s.dir8,

@@ -33,8 +33,13 @@ const helmetRate = (t: { hasHelmet?: boolean; id?: string | number }): number | 
   (t.hasHelmet && t.id !== undefined ? actorHelmetDefense(String(t.id)) : 0) || undefined;
 
 interface SlotState {
-  /** silencer weapons (pef _Extension Silencer): the RMB extension is on */
-  silencer?: boolean;
+  /** the RMB extension is on: Silencer (silencer on), CrossFire (crossed arms), GrenadeLauncher (launcher raised) */
+  ext?: boolean;
+  /** DualMag: rounds in the taped magazine not in use (vf148 extra rounds); magR = the taped one is in the gun */
+  mag2?: number;
+  magR?: boolean;
+  /** GrenadeLauncher: shells in the launcher (the shell entry's LoadBullet) */
+  shells?: number;
   /** Extension2 Dual: the other variant (single <-> dual) with its own magazine and reserve while it is put away */
   alt?: SlotState;
   def: WeaponDef;
@@ -435,7 +440,7 @@ export class WeaponSystem {
       this.viewmodel.observing = true;
       this.viewmodel.reloadScale = 1; // not the spectator's own Quick Change Reload from an earlier life
       this.obsDef = def;
-      if (swap) { this.obsBoltUntil = 0; this.obsThrowT = -1; this.viewmodel.throwT = -1; this.viewmodel.throwReady = false; } // a cut throw / pin does not follow the swap
+      if (swap) { this.obsExt = undefined; this.obsBoltUntil = 0; this.obsThrowT = -1; this.viewmodel.throwT = -1; this.viewmodel.throwReady = false; } // a cut throw / pin does not follow the swap
       this.viewmodel.setWeapon(def, true, !(swap && opts.swap)); // no Change clip on mount unless HE swapped
       // his draw (Change) state runs on the arms only when HE swapped weapons (quick swaps included); a new watched player / view
       // already holds his weapon: no draw clip, and one still running from the previous target is dropped
@@ -454,9 +459,16 @@ export class WeaponSystem {
     return this.obsDef ? this.obsDef.fireMode : null;
   }
 
-  /** world position of the arms' muzzle while a player is watched in FPS (his tracer / flash start there, not at his hidden 3PV body) */
-  observedMuzzle(out: THREE.Vector3): THREE.Vector3 | null {
-    return this.obsDef && this.viewmodel ? this.viewmodel.muzzleWorld(out) : null;
+  /** world position of the arms' muzzle(s) while a player is watched in FPS (his tracers / flash start there, not at his hidden 3PV body) */
+  observedMuzzles(): THREE.Vector3[] | null {
+    const vm = this.viewmodel;
+    if (!this.obsDef || !vm) return null;
+    if (!this.obs?.ext || this.obsDef.params.ext?.type !== "CrossFire") return [vm.muzzleWorld()];
+    // crossed HK45 Dual: both guns fire
+    const was = vm.side;
+    const out = (["R", "L"] as const).map((side) => { vm.side = side; return vm.muzzleWorld(); });
+    vm.side = was;
+    return out;
   }
 
   /** the watched weapon's ReloadTime (s): the arms' LoadMagazine clip is stretched over it (his Quick Change Reload is not networked) */
@@ -485,11 +497,19 @@ export class WeaponSystem {
 
   private ownArms: { itemId: number; team: 0 | 1 } | null | undefined = undefined;
   private obsDef: WeaponDef | null = null;
-  private obs: { speed: number; grounded: boolean; aiming: boolean; reloadT: number } | null = null;
+  private obs: { speed: number; grounded: boolean; aiming: boolean; ext?: boolean; reloadT: number } | null = null;
+  /** the watched player's extension as last seen on this weapon (undefined: not seen yet, no switch clip) */
+  private obsExt: boolean | undefined;
 
-  /** the observed player's motion for the arms (walk / run bob, jump, zoom, reload progress -1 = none) */
-  observeState(s: { speed: number; grounded: boolean; aiming: boolean; reloadT: number }): void {
+  /** the observed player's motion for the arms (walk / run bob, jump, zoom, extension, reload progress -1 = none) */
+  observeState(s: { speed: number; grounded: boolean; aiming: boolean; ext?: boolean; reloadT: number }): void {
     this.obs = s;
+    const ext = !!s.ext, dualMag = this.obsDef?.params.ext?.type === "DualMag";
+    // a DualMag's ext bit is its flip (getHudState): the flip clip, not the full reload his "reload" torso state also says
+    if (ext && dualMag) this.obs = { ...s, reloadT: -1 };
+    // his RMB extension switched: the same on / off clips as our own toggle (a flip has no off clip)
+    if (this.obsDef && this.obsExt !== undefined && ext !== this.obsExt && (ext || !dualMag)) this.viewmodel?.toggleExt(ext, this.extClip(this.obsDef, ext).dur);
+    this.obsExt = ext;
   }
 
   /** the observed player holds the C4 install: the Install clip on the arms + the LCD steps */
@@ -510,10 +530,18 @@ export class WeaponSystem {
     // a stab / throw is not a shot: the knife swings (light / heavy as the remote's fire event says), no kick, no muzzle flash
     if (def.family === "KNIFE") { vm.meleeSwing(heavy, heavy ? def.params.melee?.delayB ?? def.fireDelay : def.fireDelay, !!def.params.melee?.timeA2); return; }
     if (def.family === "GRENADE") { this.observeThrow(def); return; }
+    const x = def.params.ext?.type, ext = !!this.obs?.ext;
+    if (heavy && x === "DirectMelee") { vm.stockBlow(); return; } // M1887 stock blow
+    if (ext && x === "GrenadeLauncher") { vm.fireKick(2.2); return; } // a shell: Attack_Grenade, no muzzle flash
     if (def.fireMode === "bolt" && this.aiming) this.obsBoltUntil = this.time + Math.max(def.fireDelay, def.params.loadBulletTime ?? 0);
-    vm.fireKick(def.family === "SR" || def.family === "SG" ? 6 : def.family === "HG" ? 3.5 : 2.2, false);
+    const both = ext && x === "CrossFire";
+    vm.fireKick(def.family === "SR" || def.family === "SG" ? 6 : def.family === "HG" ? 3.5 : 2.2, both ? "both" : false);
     this.effects.setWeapon(def.id, def.family);
-    this.effects.muzzleFlash(vm.muzzleNode, vm.muzzleWorld(), def.family === "SG" || def.family === "SR" ? 1.5 : 1, undefined, tint);
+    for (const side of both ? ["R", "L"] as const : ["R"] as const) {
+      if (both) vm.side = side; // crossed: a flash at each gun, as our own shot
+      this.effects.muzzleFlash(vm.muzzleNode, vm.muzzleWorld(), def.family === "SG" || def.family === "SR" ? 1.5 : 1, undefined, tint);
+    }
+    if (both) vm.side = "R";
     if (def.params.loadBulletTime !== undefined) vm.loadBullet();
   }
 
@@ -566,8 +594,32 @@ export class WeaponSystem {
     if (def.family === "KNIFE") return { def, ammo: 0, reserve: 0 };
     // Ammo Up coupon: reserve (weapon.pef MaxBullet) + 40% / 10% [INFERIDO: the exe's Ability bullet formula is not
     // decoded; applied to the reserve of every firearm, rounded down]
-    return { def, ammo: def.loadedBullet, reserve: Math.floor(def.totalBullet * (1 + (this.itemFx.ammoUp ?? 0))) };
+    const s: SlotState = { def, ammo: def.loadedBullet, reserve: Math.floor(def.totalBullet * (1 + (this.itemFx.ammoUp ?? 0))) };
+    const t = def.params.ext?.type;
+    if (t === "DualMag") s.mag2 = def.loadedBullet; // LoadBullet per magazine, the taped one full at spawn [INFERIDO]
+    // shells: the shell entry's LoadBullet (1); its MaxBullet is 0, so no spare shells [INFERIDO: no refill but respawn]
+    if (t === "GrenadeLauncher") s.shells = this.shellLoad(def);
+    return s;
   }
+
+  /** shells a launcher holds: its shell entry's LoadBullet; 0 without a shell item (the launcher is not raised) */
+  private shellLoad(def: WeaponDef): number {
+    const sh = this.shellDef(def);
+    return sh ? sh.pb?.loadBullet ?? 1 : 0; // [INFERIDO] 1 when the shell entry omits LoadBullet
+  }
+
+  /** the GrenadeShell item a launcher fires (weapon.pef _ExtensionInfo -> GrenadeShell/<name>, e.g. 411015) */
+  private shellDef(def: WeaponDef): WeaponDef | null {
+    const name = def.params.ext?.shell;
+    if (!name) return null;
+    let id = this.shellIds.get(name);
+    if (id === undefined) {
+      id = this.db.all().find((w) => w.pb?.src === `pef-cross:GrenadeShell/${name}`)?.id ?? 0;
+      this.shellIds.set(name, id);
+    }
+    return id ? this.db.def(id) ?? null : null;
+  }
+  private shellIds = new Map<string, number>();
 
   /** full ammo on every slot (respawn); a dropped or picked-up weapon gives way to the player's own loadout again */
   refill(): void {
@@ -611,7 +663,7 @@ export class WeaponSystem {
    * dead state. `force` = the death drop (CGameCharaManager::DeathHuman 0x57364e: the weapon in hand if its slot < 2),
    * which skips the fire-state gate. Returns the dropped weapon, or null.
    */
-  dropCurrent(force = false): { def: WeaponDef; slot: SlotIndex; ammo: number; reserve: number } | null {
+  dropCurrent(force = false): { def: WeaponDef; slot: SlotIndex; ammo: number; extra: number; reserve: number } | null {
     const slot = this.cur;
     const s = this.slots[slot];
     if (!s || slot > 1) return null;
@@ -622,7 +674,10 @@ export class WeaponSystem {
     this.autoCont = false;
     this.burstLeft = 0;
     this.slots[slot] = null;
-    const out = { def: s.def, slot, ammo: s.ammo, reserve: s.reserve };
+    // extra (vf148): the DualMag's taped magazine / the launcher's shells. A DualMag already on its taped magazine has no flip
+    // left: the other magazine's rounds go to the reserve, so the receiver's R is the full reload [INFERIDO]
+    const used = s.magR ? s.mag2 ?? 0 : 0;
+    const out = { def: s.def, slot, ammo: s.ammo, extra: s.magR ? 0 : s.mag2 ?? s.shells ?? 0, reserve: s.reserve + used };
     // [RECRIADO] the next weapon is drawn (the receiver's 0xa13900 path swaps; its slot order was not traced)
     if (!force) {
       for (let k = 1; k <= 4; k++) {
@@ -642,12 +697,16 @@ export class WeaponSystem {
    * it had on the ground; the player keeps the weapon in hand ([RECRIADO]: the local swap after the pickup ack is not
    * traced), except when the hand is empty. Returns false if the slot is taken or the id is unknown.
    */
-  pickUp(id: number, ammo: number, reserve: number): boolean {
+  pickUp(id: number, ammo: number, reserve: number, extra = 0): boolean {
     const def = this.db.def(id);
     if (!def) return false;
     const idx = (isMissionWeapon(def.id) ? 5 : Math.min(5, Math.max(1, def.slot)) - 1) as SlotIndex;
     if (idx > 1 || this.slots[idx]) return false;
-    this.slots[idx] = { def, ammo: Math.max(0, Math.min(def.loadedBullet, ammo)), reserve: Math.max(0, reserve) };
+    const s: SlotState = { def, ammo: Math.max(0, Math.min(def.loadedBullet, ammo)), reserve: Math.max(0, reserve) };
+    // the magazine in the gun is the first one, extra the taped one (dropCurrent) [INFERIDO: WeaponDualMagazine's pickup not decoded]
+    if (def.params.ext?.type === "DualMag") s.mag2 = Math.max(0, Math.min(def.loadedBullet, extra));
+    if (def.params.ext?.type === "GrenadeLauncher") s.shells = Math.max(0, Math.min(this.shellLoad(def), extra));
+    this.slots[idx] = s;
     this.audio.preload(def);
     if (!this.slots[this.cur]) this.switchTo(idx);
     else this.audio.play(this.audio.swap(def));
@@ -674,6 +733,8 @@ export class WeaponSystem {
   }
 
   private startChange(def: WeaponDef) {
+    // the weapon comes out in its normal stance: crossed arms / raised launcher are off on every slot, a silencer stays on [INFERIDO]
+    for (const x of this.slots) if (x && x.def.params.ext?.type !== "Silencer") x.ext = false;
     this.switchTotal = this.changeTimeOf(def);
     this.switchTimer = this.switchTotal;
   }
@@ -829,7 +890,7 @@ export class WeaponSystem {
       const aimPress = !!input.aim && !this.aimWasDown;
       this.aimWasDown = !!input.aim;
       if (!gun || switching || input.cancelZoom) this.setZoom(false);
-      else if (aimPress && !this.reloading) this.pressZoom(s!.def);
+      else if (aimPress && !this.reloading && !this.flipping) this.pressZoom(s!.def);
       this.aiming = !!(gun && this.zoomOn && !this.reloading && !switching);
       this.scoped = this.aiming && !!s!.def.params.scope && this.time >= this.boltUntil;
     }
@@ -883,7 +944,7 @@ export class WeaponSystem {
       this.viewmodel.hidden = this.scoped || !this.viewmodelEnabled;
       // draw progress 0..1 -> Change clip time (the viewmodel plays the whole state over the swap time)
       this.viewmodel.switchT = this.switchTimer > 0 ? 1 - this.switchTimer / Math.max(0.001, this.switchTotal) : 1;
-      this.viewmodel.silencerWanted = !!s?.silencer;
+      this.viewmodel.extWanted = this.obs ? !!this.obs.ext : !!(s?.ext || s?.magR);
       this.viewmodel.reloadT = this.obs ? this.obs.reloadT : this.reloading ? 1 - this.reloadTimer / Math.max(0.001, this.reloadDuration) : -1;
       // no Zoom-stance pose under the overlay: it would still be blending out (weapon centred) on the first unscoped frames
       this.viewmodel.update(dt, cam, speed, grounded, (this.obs ? this.obs.aiming && this.obsBoltDone : this.aiming) && !this.scoped);
@@ -999,7 +1060,7 @@ export class WeaponSystem {
   /** true while the RMB extension (zoom / scope / steady aim / dot sight) is on: the Ext_* factors apply */
   private extOn(def: WeaponDef): boolean {
     const t = def.params.ext?.type;
-    if (t === "Silencer") return !!this.slots[this.cur]?.silencer;
+    if (t === "Silencer" || t === "CrossFire") return !!this.slots[this.cur]?.ext;
     return this.aiming && !!t && t !== "DualMag";
   }
 
@@ -1009,19 +1070,30 @@ export class WeaponSystem {
    * recoil factors apply while it is on. Like the zoom key (ProcessExtension 0xa238f0) it is ignored while a
    * load / bolt cycle runs; firing is held for the clip [INFERIDO].
    */
-  private toggleSilencer(): void {
+  private toggleExt(): void {
     const s = this.slots[this.cur];
     if (!s || this.reloading || this.time < this.nextFire) return;
-    const on = !s.silencer;
-    s.silencer = on;
+    const sil = s.def.params.ext?.type === "Silencer";
+    const on = !s.ext;
+    s.ext = on;
     const a = this.viewmodel?.weaponAnimator;
-    const key = a?.stateKey(on ? "extOn" : "extOff") ?? null;
-    const dur = (key && a?.set.states[key]?.dur) || 2;
-    this.viewmodel?.toggleSilencer(on, dur);
+    const { key, dur } = this.extClip(s.def, on);
+    this.viewmodel?.toggleExt(on, dur);
     this.nextFire = this.time + dur;
     const ev = a ? this.audio.stateSounds(a.set.ai, key) : null;
     if (ev) for (const [t, file] of ev.ev) this.later((t / ev.dur) * dur, () => this.slots[this.cur] === s && this.audio.play(file));
-    else this.audio.silencerAt(s.def, on); // the pack's ExtensionActivate / Deactivate clip when the AI state has no sound event
+    else if (sil) this.audio.silencerAt(s.def, on); // the pack's ExtensionActivate / Deactivate clip when the AI state has no sound event
+  }
+
+  /** the extension's on / off clip: the weapon's state key (its sound events) and the length, s */
+  private extClip(def: WeaponDef, on: boolean): { key: string | null; dur: number } {
+    const a = this.viewmodel?.weaponAnimator;
+    const key = a?.stateKey(on ? "extOn" : "extOff") ?? null;
+    const x = def.params.ext;
+    if (x?.type === "DualMag") return { key, dur: x.reloadTimeDual || 1.2 }; // the flip: ReloadTimeDual [INFERIDO 1.2 s when the pef omits it]
+    // CrossFire / GrenadeLauncher: the weapon's Activate state is the 1-frame idle; the arms' Ext_Change / Grenade_On sets the time
+    const armDur = x?.type === "Silencer" ? null : this.viewmodel?.armState(on ? "ExtensionActivate" : "ExtensionDeactivate");
+    return { key, dur: armDur || (key && a?.set.states[key]?.dur) || 2 };
   }
 
   /**
@@ -1075,7 +1147,10 @@ export class WeaponSystem {
 
   /** RMB press: toggle zoom; scope weapons step ScopeOverlay levels (0 -> 1 -> .. -> MaxScopeLevel -> 0) */
   private pressZoom(def: WeaponDef) {
-    if (def.params.ext?.type === "Silencer") return this.toggleSilencer();
+    const t = def.params.ext?.type;
+    if (t === "GrenadeLauncher" && !this.shellDef(def)) return; // no shell item exported: the launcher stays down
+    if (t === "Silencer" || t === "CrossFire" || t === "GrenadeLauncher") return this.toggleExt();
+    if (t === "DirectMelee") return this.stockBlow(def);
     // ProcessExtension 0xa238f0 ignores the zoom key during load magazine / load bullet / bolt cycle / swap (0xa23979)
     if (def.params.loadBulletTime !== undefined && this.time < this.nextFire) return;
     const on = def.params.scope ? this.scope.press() > 0 : !this.zoomOn;
@@ -1119,13 +1194,52 @@ export class WeaponSystem {
 
   // ---- reload --------------------------------------------------------------
   private canReload(s: SlotState | null): s is SlotState {
-    return !!s && !this.reloading && this.switchTimer <= 0 && s.def.family !== "KNIFE" && s.def.family !== "GRENADE" &&
-      s.reserve > 0 && s.ammo < s.def.loadedBullet;
+    if (!s || this.reloading || this.switchTimer > 0 || s.def.family === "KNIFE" || s.def.family === "GRENADE") return false;
+    if (this.canFlip(s)) return true;
+    const L = s.def.loadedBullet;
+    return s.reserve > 0 && (s.ammo < L || (s.mag2 !== undefined && s.mag2 < L));
   }
+
+  /** DualMag: the gun runs on the first magazine and the taped one has rounds -> R flips it in (ReloadTimeDual) */
+  private canFlip(s: SlotState): boolean {
+    return s.mag2 !== undefined && !s.magR && s.mag2 > 0 && s.ammo < s.def.loadedBullet;
+  }
+
+  /**
+   * DualMag flip (AK-47 / UMP45 / DSR-1 DualMag): the arms' ExtensionActivate (AK-47 Reload_B), the weapon's _Right states,
+   * ReloadTimeDual (1.2 s) long; the two magazines swap. The next R on the taped magazine is the full reload of both
+   * (LoadMag_RightAll) [INFERIDO: alternation read from the AI states and ReloadTimeDual; WeaponDualMagazine not decoded].
+   */
+  private flipMag(s: SlotState): void {
+    const dur = this.extClip(s.def, true).dur;
+    s.magR = true;
+    this.flipping = s;
+    this.setZoom(false);
+    this.shotCount = 0;
+    this.fireT = -1; this.fireEnd = 0;
+    this.viewmodel?.toggleExt(true, dur);
+    this.nextFire = this.time + dur;
+    this.later(dur, () => {
+      this.flipping = null;
+      if (this.slots[this.cur] !== s) return;
+      [s.ammo, s.mag2] = [s.mag2!, s.ammo];
+      this.emit(this.reloadL, { weapon: s.def, phase: "end", ammo: s.ammo, reserve: s.reserve, reloadTime: dur });
+    });
+  }
+
+  /** the slot whose DualMag flip is under way (its swap is a pending `later`) */
+  private flipping: SlotState | null = null;
 
   startReload(): boolean {
     const s = this.slots[this.cur];
     if (!this.canReload(s)) return false;
+    if (this.canFlip(s)) {
+      if (this.time < this.nextFire) return false;
+      this.flipMag(s);
+      return true;
+    }
+    // launcher raised: the Grenade stance's reload is the shell's (Reload_Grenade_B) and there is no spare shell [INFERIDO]
+    if (s.ext && s.def.params.ext?.type === "GrenadeLauncher") return false;
     this.reloading = true;
     this.fireT = -1; this.fireEnd = 0;
     this.shotCount = 0; // reload resets weapon+0xd00 (GAMEPLAY_RE_2017: FireEnd, ReturnToReady and reload)
@@ -1188,6 +1302,13 @@ export class WeaponSystem {
     const take = Math.min(need, s.reserve);
     s.ammo += take;
     s.reserve -= take;
+    if (s.mag2 !== undefined) {
+      // DualMag full reload: the taped magazine is refilled too and the first one goes back in
+      const t2 = Math.min(s.def.loadedBullet - s.mag2, s.reserve);
+      s.mag2 += t2;
+      s.reserve -= t2;
+      s.magR = false;
+    }
     this.finishReload(s, "end");
   }
 
@@ -1200,6 +1321,9 @@ export class WeaponSystem {
   private cancelReload() {
     const s = this.slots[this.cur];
     if (this.reloading && s) this.finishReload(s, "cancel");
+    // a cut flip never swapped: the first magazine stays in
+    if (this.flipping) this.flipping.magR = false;
+    this.flipping = null;
     this.pending = [];
   }
 
@@ -1223,8 +1347,10 @@ export class WeaponSystem {
    */
   private updateGun(s: SlotState, input: WeaponInput, speed: number, grounded: boolean, dt: number) {
     if (this.reloading) return;
+    if (s.ext && s.def.params.ext?.type === "GrenadeLauncher") return this.updateLauncher(s, input);
     const mode = s.def.fireMode;
-    const delay = fxFireDelay(s.def.fireDelay); // + equipped-title Fire_Speed
+    // CrossFire: Ext_FireDelay (0.65 s) while the arms are crossed
+    const delay = fxFireDelay(s.ext && s.def.params.ext?.fireDelay || s.def.fireDelay); // + equipped-title Fire_Speed
     let want = false;
     if (mode === "auto") want = input.fire;
     else if (mode === "burst") {
@@ -1255,7 +1381,7 @@ export class WeaponSystem {
       if (!this.dryLatched) {
         this.dryLatched = true;
         this.audio.play(this.audio.common("emptybullet"));
-        if (s.reserve > 0) this.startReload();
+        if (s.reserve > 0 || this.canFlip(s)) this.startReload();
       }
       return;
     }
@@ -1276,8 +1402,12 @@ export class WeaponSystem {
     // [INFERIDO] 2 rounds per shot: not confirmed in the exe (the local PointBlank.exe files are packed, 0x6526b0 does
     // not disassemble). pef: FireDecBulletCount 1 per Fire call, LoadBullet 60 = 2 x 30 (Dual Uzi 118004); whether
     // 0x6526b0 runs the decrement once or once per gun is open. If once: 1 round per shot, 2 bullets.
-    const guns: ("R" | "L")[] = dual === "both" && s.ammo >= 2 ? ["R", "L"] : dual === "alt" ? [this.dualLeft ? "L" : "R"] : ["R"];
-    if (dual === "alt") this.dualLeft = !this.dualLeft;
+    // CrossFire crossed (WeaponCrossFire vf1f8 0x644ee0): both guns every pull - the right one only while >= 2 rounds are
+    // left, then the left gun object (+0xa4d0) - and one round more than the normal shot (0x60f500): 2 bullets, 2 rounds
+    const cross = !!s.ext && p.ext?.type === "CrossFire";
+    const guns: ("R" | "L")[] = cross ? (s.ammo >= 2 ? ["R", "L"] : ["L"])
+      : dual === "both" && s.ammo >= 2 ? ["R", "L"] : dual === "alt" ? [this.dualLeft ? "L" : "R"] : ["R"];
+    if (dual === "alt" && !cross) this.dualLeft = !this.dualLeft;
     s.ammo -= guns.length;
     // NeedToLoadBullet weapons (bolt / pump) cycle LoadBulletTime after the shot; bursts pause AutoFireDelay at the end
     // LoadBullet (bolt / pump) also runs at the Quick Change Reload scale (OnActionLoadBullet 0xa0d2d0)
@@ -1317,7 +1447,8 @@ export class WeaponSystem {
     for (const muzzle of muzzles) for (let i = 0; i < pellets; i++) {
       off = pbShotOffsets(dev, this.rng);
       const dir = fwd.clone().applyAxisAngle(right, off.pitch * DEG).applyAxisAngle(up, off.yaw * DEG).normalize();
-      const end = this.traceBullet(def, origin, dir);
+      // crossed: Ext_Damage within Ext_Range
+      const end = this.traceBullet(def, origin, dir, s.ext && p.ext?.damage || p.damage, s.ext && p.ext?.range || undefined);
       // every pellet: the FireCollision loop (0x606e77..0x60719e) runs DoLineCollision 0x60f700 -> AddBulletTrace per bullet
       this.effects.tracer(muzzle, end);
     }
@@ -1347,7 +1478,7 @@ export class WeaponSystem {
     // drops zoom (_Idle_Camera); it does not come back by itself
     if (p.loadBulletTime !== undefined && s.ammo > 0) this.setZoom(false);
     // silencer on = _Muffler clip, zoom open = Zoom_Fire clip (WeaponAudio.fireClip)
-    this.audio.fire(def, { silencer: def.params.ext?.type === "Silencer" && !!s.silencer, zoom: this.zoomOn });
+    this.audio.fire(def, { silencer: def.params.ext?.type === "Silencer" && !!s.ext, zoom: this.zoomOn });
     this.emit(this.fireL, { weapon: def, slot: this.cur, kind: "bullet", origin, direction: fwd, ammo: s.ammo, reserve: s.reserve });
   }
 
@@ -1459,10 +1590,11 @@ export class WeaponSystem {
    * One bullet, exe-2017 WeaponBase::DoLineCollision 0x60f700 -> 0x609a30 (penetration.ts): the world walk 0x6094f0 sets how
    * far characters can be hit, then the characters, then the wall impacts when no character was hit. Returns the tracer end.
    */
-  private traceBullet(def: WeaponDef, origin: THREE.Vector3, dir: THREE.Vector3): THREE.Vector3 {
+  private traceBullet(def: WeaponDef, origin: THREE.Vector3, dir: THREE.Vector3, base = def.params.damage,
+    maxRange = def.params.range > 0 ? def.params.range : def.range): THREE.Vector3 {
     const shot = ++this.shotSeq;
     // the walk's range: GetRange vf+0x218 (pef Range); a hit past the XML range is dropped (the server rejects it)
-    const range = (def.params.range > 0 ? def.params.range : def.range) + titleFxLive.range; // title Fire_Range
+    const range = maxRange + titleFxLive.range; // title Fire_Range
     const sniper = def.classType === 5; // 0x609d90: class 5 hits every character on the line, the others the nearest
     let o = origin.clone();
     let travelled = 0;
@@ -1501,7 +1633,7 @@ export class WeaponSystem {
           const zone = c.target.hitzone;
           // behind the penetrated wall: info.f10 = its thickness (_CalcHitChara 0x60c904)
           const behind = wall !== null && dist > wall.dist;
-          const dmg = this.bulletDamage(def, zone, dist, !!c.target.hasHelmet, def.params.damage, behind ? wall!.thickness : 0, helmetRate(c.target));
+          const dmg = this.bulletDamage(def, zone, dist, !!c.target.hasHelmet, base, behind ? wall!.thickness : 0, helmetRate(c.target));
           // ExpHu01_1 sprays back at the shooter (emitDir +Y = local axis); worldShot uses -dir too
           this.effects.blood(p, dir);
           this.audio.hitAt("Human", p); // WM_Hit_Human_1..3 (Sound_Weapon_Common)
@@ -1563,6 +1695,52 @@ export class WeaponSystem {
   }
 
   // ---- melee ---------------------------------------------------------------
+  /**
+   * M1887 DirectMelee (RMB): the stock blow, SecondaryAttack (Attack_B 1 s) on the arms and Fire_Sec on the gun. One line hit
+   * at ExtensionAttackTime (0.367 s) like a knife stab, ExtensionDamage (126) within ExtensionRange (1.5 m). The gun can fire
+   * again when the clip ends [INFERIDO: the blow's state flow is not decoded; hit rule = WeaponKnife's line].
+   */
+  private stockBlow(def: WeaponDef): void {
+    const s = this.slots[this.cur], x = def.params.ext;
+    if (!s || !x?.meleeDamage || this.reloading || this.time < this.nextFire) return;
+    // [INFERIDO] 1 s without the arms' SecondaryAttack; 1.5 m / 0.37 s when the pef omits ExtensionRange / ExtensionAttackTime
+    const dur = this.viewmodel?.stockBlow() || 1;
+    this.fireT = -1; this.fireEnd = 0;
+    this.nextFire = this.time + dur;
+    const blow = { damage: x.meleeDamage, range: x.range || 1.5 };
+    // heavy: the others see the 3PV SecondaryAttack (Up_Attack_B), not a shot
+    const cam = this.ctx.camera;
+    this.emit(this.fireL, { weapon: def, slot: this.cur, kind: "melee", origin: cam.getWorldPosition(new THREE.Vector3()),
+      direction: cam.getWorldDirection(new THREE.Vector3()), ammo: s.ammo, reserve: s.reserve, heavy: true });
+    this.later(x.meleeTime ?? 0.37, () => this.slots[this.cur] === s && this.meleeHit(def, true, false, blow));
+  }
+
+  /**
+   * K201 GrenadeLauncher, launcher raised: LMB fires the shell (_ExtensionInfo GrenadeShell_K201 = item 411015: Damage 65,
+   * Explosion_Range 5, Throw_Speed 34) from the camera like a throw; it explodes where it hits [INFERIDO: contact fuse, the shell
+   * flight of WeaponGrenadeShell is not decoded]. With no shell left the launcher goes back down.
+   */
+  private updateLauncher(s: SlotState, input: WeaponInput): void {
+    if (!input.fire || this.triggerLatched || this.time < this.nextFire) return;
+    this.triggerLatched = true;
+    const shell = this.shellDef(s.def);
+    if (!shell || !s.shells) return this.toggleExt();
+    s.shells--;
+    const { origin, dir } = this.throwRay();
+    const vel = dir.clone().multiplyScalar(shell.params.throwSpeed ?? 34); // [INFERIDO] GrenadeShell_K201's 34 / 0.5 s when the entry omits them
+    // sticky + a 1 ms fuse that only runs once armed (stuck): it goes off on the first contact (fuse 0 would go off at once)
+    const g = this.spawnGrenade(shell.id, origin, vel, 0.001, true);
+    if (g) {
+      g.sticky = true;
+      this.onThrowNet?.({ state: "throw", g, pos: origin, vel });
+    }
+    this.nextFire = this.time + (shell.fireDelay || 0.5);
+    this.lastShot = this.time;
+    this.viewmodel?.fireKick(2.2); // the Grenade stance's Attack (Attack_Grenade)
+    this.audio.fire(s.def);
+    this.emit(this.fireL, { weapon: shell, slot: this.cur, kind: "throw", origin, direction: dir, ammo: s.ammo, reserve: s.reserve });
+  }
+
   private updateMelee(s: SlotState, input: WeaponInput) {
     if (!input.fire && !input.aim) this.meleeLatched = false;
     const ballistic = isBallisticKnife(s.def);
@@ -1684,13 +1862,13 @@ export class WeaponSystem {
   /** a melee button is held since the last swing (DualKnife needs a fresh press) */
   private meleeLatched = false;
 
-  private meleeHit(def: WeaponDef, heavy: boolean, second = false) {
+  private meleeHit(def: WeaponDef, heavy: boolean, second = false, blow?: { damage: number; range: number }) {
     if (heavy && (isBallisticKnife(def) || (def.className === "DualKnife" && def.pb?.extType === "Throw"))) return this.throwKunai(def, second);
     const cam = this.ctx.camera, m = def.params.melee;
     const origin = cam.getWorldPosition(new THREE.Vector3());
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     // a Throw / Ballistic / bow extension item carries the projectile range (70 m): a stab reaches like the blades (<= 3 m)
-    const range = Math.min(def.range, MELEE_REACH_MAX);
+    const range = blow?.range ?? Math.min(def.range, MELEE_REACH_MAX);
     // WeaponKnife::FireCollision 0x634bd0 -> DoFireCollision 0x634f70: ONE i3CollideeLine from the start point to the shot target
     // (vf 0x18c GetShotTargetPos 0x6092c0 = camera - At * Range: the crosshair ray), tested like a bullet line (WeaponBase 0x607840:
     // nearest world / character hit, the part is the hit shape's). No fan of rays, so aiming at the chest hits the chest.
@@ -1707,7 +1885,7 @@ export class WeaponSystem {
       const zone = best.target.hitzone;
       // AttackDamageA1 (LMB) / AttackDamageB1 (RMB) x part rate, helmet roll; no distance falloff (no DPD_Rate).
       // NOTE: with AntiScript on, the server rejects melee RawDamage > XML Damage (M-7: B1 90 > 60).
-      const base = (heavy ? (second ? m?.damageB2 : undefined) ?? m?.damageB : (second ? m?.damageA2 : undefined) ?? m?.damageA)
+      const base = blow?.damage ?? (heavy ? (second ? m?.damageB2 : undefined) ?? m?.damageB : (second ? m?.damageA2 : undefined) ?? m?.damageA)
         ?? def.params.damage;
       const dmg = this.bulletDamage(def, zone, 0, !!best.target.hasHelmet, base, 0, helmetRate(best.target));
       this.effects.blood(pt, best.dir);
@@ -1716,7 +1894,7 @@ export class WeaponSystem {
         distance: best.hit.timeOfImpact, zone, headshot: zone === "head", damage: Math.round(dmg), penetrated: 0, origin });
     } else {
       // breakable map object (glass, crate, vending machine...): a stab hurts it with the blow's damage [INFERIDO: same rule as bullets]
-      const base = (heavy ? (second ? m?.damageB2 : undefined) ?? m?.damageB : (second ? m?.damageA2 : undefined) ?? m?.damageA) ?? def.params.damage;
+      const base = blow?.damage ?? (heavy ? (second ? m?.damageB2 : undefined) ?? m?.damageB : (second ? m?.damageA2 : undefined) ?? m?.damageA) ?? def.params.damage;
       this.ctx.damageProp?.(best.hit.collider, this.bulletDamage(def, "body", 0, false, base), pt);
       if (second) return; // the 2nd blade hits the same wall / ground: no second mark or sound
       const surf = surfaceOfCollider(best.hit.collider.handle);
@@ -2270,9 +2448,11 @@ export class WeaponSystem {
       magSize: def?.loadedBullet ?? 0,
       limitedAmmo: !!def && isBallisticKnife(def),
       reloading: this.reloading,
+      flipping: !!this.flipping,
       reloadProgress: this.reloading ? 1 - this.reloadTimer / Math.max(0.001, this.reloadDuration) : 0,
       switching: this.switchTimer > 0,
-      silencer: !!s?.silencer,
+      // the wire's RMB extension bit; a DualMag sends its flip with it
+      ext: !!s?.ext || (!!s && this.flipping === s),
       aiming: this.aiming,
       scoped: this.scoped,
       laserOn: this.laser.active,

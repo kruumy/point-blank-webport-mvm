@@ -32,11 +32,13 @@ interface AnimIndex {
 }
 
 export type WeaponView = "1pv" | "3pv";
-export type WeaponAnimKind = "fire" | "reload" | "loadBullet" | "change" | "idle" | "extOn" | "extOff" | "attackA" | "attackB";
+export type WeaponAnimKind = "fire" | "reload" | "loadBullet" | "change" | "idle" | "extOn" | "extOff" | "attackA" | "attackB" | "secondary";
 const STATE: Record<WeaponAnimKind, string> = {
   fire: "Fire", reload: "LoadMag", loadBullet: "LoadBullet", change: "Change", idle: "Idle", extOn: "ExtensionActivate", extOff: "ExtensionDeactivate",
   // DualKnife blades: each hand's own swing clip (Attack<A|B>_<Male_>Left / _Right) re-orients the blade in the hand
   attackA: "AttackA", attackB: "AttackB",
+  // M1887 DirectMelee stock blow: Fire_Sec_1PV / Fire_Sec_3PV
+  secondary: "Fire_Sec",
 };
 
 export interface WeaponAnimSet {
@@ -248,7 +250,11 @@ export class WeaponAnimator {
     const h = this.hand === "L" ? "Left" : "Right"; // DualKnife packs: Change_Left / Change_Right per blade
     if (this._ext && (kind === "fire" || kind === "reload" || kind === "loadBullet" || kind === "idle")) {
       for (const k of [`${s}${v}_Ext_${g}`, `${s}${v}_Ext`, `${s}_Ext`]) if (st[k]) return k;
+      // DualMag packs (AK-47 / UMP45 DualMag): the taped magazine in use = the _Right states; its full reload refills both (RightAll)
+      for (const k of [`${s}_RightAll_${v}_${g.toUpperCase()}`, `${s}_Right`]) if (st[k]) return k;
     }
+    // DualMag: no ExtensionActivate state, the flip to the taped magazine is LoadMag_Right (reload_b) [INFERIDO]
+    if (kind === "extOn" && !st[s] && st.LoadMag_Right) return "LoadMag_Right";
     // [INFERIDO] gender states (LoadMag1PVMale) beat the plain one (LoadMag1PV) when both exist (7 weapons, audit-weapon-anim.mjs):
     // no exe proof for the opposite order, so the preference stays. Dual packs: <State>1PV_DualGun_<Left|Right> beats <State>1PV.
     for (const k of [s + v + g, `${s}${v}_${g}`, `${s}_${g}`, `${s}${v}_DualGun_${h}`, s + v, `${s}_${v}`, s, `${s}_${g}_${v}`, `${s}_${g}_${h}`, `${s}_${h}`]) if (st[k]) return k;

@@ -23,7 +23,9 @@ export const WEAPON_QUERY = (0xffff << 16) | 0x0005;
 /** motion / event counters of an actor for the observer view (game.ts spectateCam -> WeaponSystem.observeState) */
 export interface ObsState { speed: number; grounded: boolean; aiming: boolean; fireSeq: number; reloadSeq: number; reloadSecs: number; firing?: boolean; planting?: boolean; heavy?: boolean;
   /** replicated torsoAction "reload" / "ready" (grenade pin out): absent (bots) = the observer falls back to the reload counter / nothing */
-  reloading?: boolean; ready?: boolean }
+  reloading?: boolean; ready?: boolean;
+  /** RMB extension on (silencer, CrossFire arms, raised launcher) */
+  ext?: boolean }
 
 /** Anything that can be shot: local player, bot, or (later) a remote network player. */
 export interface Actor {

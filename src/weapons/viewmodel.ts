@@ -134,7 +134,7 @@ export interface State1pv {
 }
 export type Table1pv = Record<string, State1pv>;
 export interface Anim1pvIndex {
-  ai: Record<string, { group: string; weapon: string; stances: { AttackIdle?: Table1pv; Zoom?: Table1pv } }>;
+  ai: Record<string, { group: string; weapon: string; stances: { AttackIdle?: Table1pv; Zoom?: Table1pv; CrossIdle?: Table1pv; Grenade?: Table1pv } }>;
   /** weapons.json item id -> AI key "<Group>/<Weapon>" */
   weapons: Record<string, string>;
   names: Record<string, string>;
@@ -152,6 +152,8 @@ export interface Weapon1pv {
   A: Table1pv;
   /** Zoom stance, only for weapon.pef _ZoomType 2|3 (_CharaChangeAIContext 0xa1beb0, same rule as 3PV) */
   Z: Table1pv | null;
+  /** RMB extension stance: CrossIdle (HK45 Dual CrossFire, Ext_* clips) or Grenade (K201 & co. launcher raised) */
+  E?: Table1pv | null;
   clips: Map<string, THREE.AnimationClip>;
 }
 /**
@@ -210,14 +212,15 @@ export async function loadWeapon1pv(base: string, w: { id: number; name: string;
   if (!ai) return null;
   const st = ix.ai[ai].stances, zt = ix.zoomType[String(w.id)];
   const A = st.AttackIdle!, Z = (zt === 2 || zt === 3) && st.Zoom?.Idle ? st.Zoom : null;
-  const keys = new Set([...Object.values(A), ...Object.values(Z ?? {})].map((s) => s.clip));
+  const E = st.CrossIdle ?? st.Grenade ?? null;
+  const keys = new Set([...Object.values(A), ...Object.values(Z ?? {}), ...Object.values(E ?? {})].map((s) => s.clip));
   const files = [...new Set([...keys].map((k) => ix.bundles[k]).filter(Boolean))];
   const maps = await Promise.all(files.map((f) => loadBundle1pv(`${base}/${f}`)));
   const clips = new Map<string, THREE.AnimationClip>();
   for (const m of maps) for (const [k, c] of m) if (keys.has(k)) clips.set(k, c);
-  if (A.LeftIdle && A.RightIdle && !A.Idle) return dual1pv(ai, A, clips);
+  if (A.LeftIdle && A.RightIdle && !A.Idle) return dual1pv(ai, A, clips, E);
   if (!clips.get(A.Idle.clip)) return null;
-  return { ai, A, Z, clips };
+  return { ai, A, Z, E: E?.Idle && clips.get(E.Idle.clip) ? E : null, clips };
 }
 
 /**
@@ -238,13 +241,20 @@ export { dualClip };
  * Idle = RightIdle+LeftIdle, Move = RightMove+LeftMove, Attack = RightAttack (+LeftIdle), AttackLeft = LeftAttack
  * (+RightIdle). WeaponSystem alternates the hands per shot (Viewmodel.fireKick(left)).
  */
-function dual1pv(ai: string, A: Table1pv, clips: Map<string, THREE.AnimationClip>): Weapon1pv | null {
+function dual1pv(ai: string, A: Table1pv, clips: Map<string, THREE.AnimationClip>, E: Table1pv | null = null): Weapon1pv | null {
+  const out = dualTable(`${ai}/`, A, clips);
+  if (!out.Idle || !clips.get(out.Idle.clip)) return null;
+  // HK45 Dual CrossIdle: the same Left / Right layers with the Ext_* clips
+  const e = E?.LeftIdle && E.RightIdle ? dualTable(`${ai}/Cross/`, E, clips) : null;
+  return { ai, A: out, Z: null, E: e?.Idle && clips.get(e.Idle.clip) ? e : null, clips, dual: true };
+}
+function dualTable(tag: string, A: Table1pv, clips: Map<string, THREE.AnimationClip>): Table1pv {
   const c = (st: string) => (A[st] ? clips.get(A[st].clip) : undefined);
   const out: Table1pv = { ...A };
   const make = (st: string, pri: string, sec: string) => {
     const a = c(pri), b = c(sec);
     if (!a) return;
-    const key = `dual:${ai}/${st}`;
+    const key = `dual:${tag}${st}`;
     clips.set(key, b ? dualClip(key, a, b) : a);
     out[st] = { ...A[pri], clip: key };
   };
@@ -255,8 +265,7 @@ function dual1pv(ai: string, A: Table1pv, clips: Map<string, THREE.AnimationClip
   make("AttackBoth", "RightAttack", "LeftAttack"); // DualSMG: both guns fire each shot (arms: both attacks, 0xa0b977)
   if (A.RightJumpStart && A.LeftJumpStart) make("JumpStart", "RightJumpStart", "LeftJumpStart");
   if (A.RightJumpEnd && A.LeftJumpEnd) make("JumpEnd", "RightJumpEnd", "LeftJumpEnd");
-  if (!out.Idle || !clips.get(out.Idle.clip)) return null;
-  return { ai, A: out, Z: null, clips, dual: true };
+  return out;
 }
 
 // The viewmodel is lit like the chara it belongs to: the PB Phong_D_Dir_ shader with the map's
@@ -331,7 +340,7 @@ class ArmsRig {
 
   /** PB state of the equipped weapon's AttackIdle (or Zoom) stance with its clip. */
   private st(name: string, zoom = false): { c: THREE.AnimationClip; s: State1pv } | null {
-    const T = zoom && this.pb?.Z ? this.pb.Z : this.pb?.A;
+    const T = zoom && this.pb?.Z ? this.pb.Z : this.extStance && this.pb?.E ? this.pb.E : this.pb?.A;
     const s = T?.[name];
     const c = s ? this.pb!.clips.get(s.clip) : undefined;
     return s && c ? { c, s } : null;
@@ -358,8 +367,11 @@ class ArmsRig {
   /** The equipped weapon's own 1PV tables (loadWeapon1pv). */
   usePB(pb: Weapon1pv): void {
     this.pb = pb;
+    this.extStance = false;
     this.startBase();
   }
+  /** the RMB extension stance (pb.E) drives the arms */
+  private extStance = false;
 
   private startBase(): void {
     this.mixer.stopAllAction();
@@ -452,8 +464,19 @@ class ArmsRig {
 
   /** ExtensionActivate / ExtensionDeactivate (silencer on / off, weapon.pef _Extension Silencer), stretched over `duration` s */
   extAnim(on: boolean, duration: number): boolean {
+    // CrossFire / GrenadeLauncher: the AI changes stance (CrossIdle / Grenade), Ext_Change / Grenade_On leads into its idle
+    if (this.pb?.E && this.extStance !== on) {
+      this.extStance = on;
+      this.startBase();
+    }
     const x = this.st(on ? "ExtensionActivate" : "ExtensionDeactivate");
     return !!x && this.oneShot(x.c, x.c.duration / Math.max(0.05, duration), false);
+  }
+  /** weapon switch / late load: snap to the slot's stance without the Activate clip */
+  syncExtStance(on: boolean): void {
+    if (!this.pb?.E || this.extStance === on || this.shot) return;
+    this.extStance = on;
+    this.startBase();
   }
 
   /** Attack state; AttackBurst for burst-mode weapons [RECRIADO: the exe rule between the two is not decoded]. */
@@ -947,12 +970,23 @@ export class Viewmodel {
     if (left !== true) this.wAnim?.fire(this.fireCycle());
     if (left) this.wAnimL?.fire(this.fireCycle()); // left / both: the left pistol's own slide clip
   }
-  /** silencer state of the equipped slot (WeaponSystem sets it every frame; the toggle clips are started by toggleSilencer) */
-  silencerWanted = false;
-  toggleSilencer(on: boolean, duration: number): void {
-    this.silencerWanted = on;
+  /** RMB extension state of the equipped slot (WeaponSystem sets it every frame; the toggle clips are started by toggleExt) */
+  extWanted = false;
+  toggleExt(on: boolean, duration: number): void {
+    this.extWanted = on;
     if (this.rigActive) this.rig!.extAnim(on, duration);
     this.wAnim?.setExt(on, true, duration);
+  }
+  /** the arms' AI state length, s (null without the PB tables or the state) */
+  armState(name: string): number | null {
+    return this.rigActive ? this.rig!.stateDur(name) : null;
+  }
+  /** M1887 DirectMelee: the arms' SecondaryAttack (Attack_B) and the gun's Fire_Sec; its length, s (null: no PB tables) */
+  stockBlow(): number | null {
+    this.wAnim?.play("secondary");
+    if (!this.rigActive) return null;
+    this.rig!.melee(true);
+    return this.rig!.stateDur("SecondaryAttack");
   }
   /** bolt rifles: LoadBullet on the arms and on the weapon (bolt) over the LoadBulletTime cycle, scoped shots too */
   loadBullet(): void {
@@ -1170,6 +1204,7 @@ export class Viewmodel {
       }
     }
     if (!this.raising && this.switchT < 1) lower = 1 - this.switchT; // lowering the old weapon
+    rig.syncExtStance(this.extWanted);
     rig.update(dt, moving, aiming && this.family !== "KNIFE");
     // The PB arms are rigid to the view (they hang from the same Neck as the camera): no look sway, no procedural bob
     // (the walk bob is the Neck motion of the camera, src/player.ts) and no procedural kick (the Attack clip plays).
@@ -1219,7 +1254,7 @@ export class Viewmodel {
       if (tok !== this.wAnimTok) return;
       if (a) a.gender = pbLive.fpsFamily === "female" ? "female" : "male";
       this.wAnim = a;
-      a?.syncExt(this.silencerWanted);
+      a?.syncExt(this.extWanted);
       if (a && animLog) console.info(`[anim] weapon ${a.set.id}: ${Object.keys(a.set.states).join(", ")}`);
     });
   }
@@ -1238,7 +1273,7 @@ export class Viewmodel {
   private updateWeaponAnim(dt: number): void {
     const a = this.wAnim;
     if (!a) return;
-    a.syncExt(this.silencerWanted);
+    a.syncExt(this.extWanted);
     if (this.reloadT >= 0) {
       if (this.wReloadT < 0) {
         this.wReloadElapsed = 0;
