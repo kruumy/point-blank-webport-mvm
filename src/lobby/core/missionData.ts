@@ -17,7 +17,7 @@ export interface MissionSetDef {
 }
 export const MISSION_SETS: readonly MissionSetDef[] = [
   {
-    id: 1, key: "Tutorial", name: "Missão Tutorial", price: 0, totalExp: 1200, totalPoint: 0, bonusExp: 0, bonusPoint: 2000,
+    id: 1, key: "Tutorial", name: "Tutorial Mission", price: 0, totalExp: 1200, totalPoint: 0, bonusExp: 0, bonusPoint: 2000,
     bonusMaster: 0, bonusItems: [], file: "TutorialCard_Russia", questType: 2, tpl: "ButtonImageSet_Item_Card1_hs", cover: 0,
     prizes: [],
     cards: [
@@ -34,9 +34,9 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 2, key: "Dino_Tutorial", name: "Missão: Tutorial dos Dinossauros", price: 0, totalExp: 1500, totalPoint: 0, bonusExp: 0, bonusPoint: 0,
+    id: 2, key: "Dino_Tutorial", name: "Mission: Dinosaur Tutorial", price: 0, totalExp: 1500, totalPoint: 0, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [702015003], file: "Dino_Tutorial", questType: 2, tpl: "ButtonImageSet_Item_Card13_hs", cover: 12,
-    prizes: [{ id: 702015003, webId: 315003, name: "Faca de Osso" }],
+    prizes: [{ id: 702015003, webId: 315003, name: "Bone Knife" }],
     cards: [
       { gold: 0, exp: 150, badge: 0, tasks: [[2, 55, 0, 1, 0, 0], [2, 54, 0, 1, 0, 0], [2, 12, 0, 1, 0, 0], [2, 40, 0, 1, 3, 0]] },
       { gold: 0, exp: 150, badge: 0, tasks: [[2, 55, 0, 2, 0, 0], [2, 54, 0, 1, 0, 0], [2, 12, 0, 1, 0, 0], [2, 40, 0, 1, 4, 0]] },
@@ -51,9 +51,9 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 3, key: "Human_Tutorial", name: "Missão: Tutorial dos Sobreviventes", price: 0, totalExp: 1500, totalPoint: 0, bonusExp: 0, bonusPoint: 0,
+    id: 3, key: "Human_Tutorial", name: "Mission: Survivor Tutorial", price: 0, totalExp: 1500, totalPoint: 0, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [702015003], file: "Human_Tutorial", questType: 2, tpl: "ButtonImageSet_Item_Card14_hs", cover: 13,
-    prizes: [{ id: 702015003, webId: 315003, name: "Faca de Osso" }],
+    prizes: [{ id: 702015003, webId: 315003, name: "Bone Knife" }],
     cards: [
       { gold: 0, exp: 150, badge: 0, tasks: [[2, 11, 0, 1, 0, 0], [2, 15, 0, 1, 0, 0], [2, 49, 0, 1, 0, 0], [2, 50, 0, 1, 0, 0]] },
       { gold: 0, exp: 150, badge: 0, tasks: [[2, 15, 0, 1, 0, 0], [2, 50, 0, 1, 0, 0], [2, 15, 0, 1, 4, 0], [2, 15, 0, 1, 5, 0]] },
@@ -68,7 +68,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 5, key: "Assault", name: "Missão de Assalto", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
+    id: 5, key: "Assault", name: "Assault Mission", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "AssaultCard", questType: 2, tpl: "ButtonImageSet_Item_Card3_hs", cover: 2,
     prizes: [],
     cards: [
@@ -85,7 +85,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 6, key: "Support", name: "Missão de Apoio", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
+    id: 6, key: "Support", name: "Support Mission", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "BackUpCard", questType: 2, tpl: "ButtonImageSet_Item_Card4_hs", cover: 3,
     prizes: [],
     cards: [
@@ -102,7 +102,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 7, key: "Infiltration", name: "Missão de Invasão", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
+    id: 7, key: "Infiltration", name: "Infiltration Mission", price: 5000, totalExp: 2050, totalPoint: 0, bonusExp: 500, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "InfiltrationCard", questType: 1, tpl: "ButtonImageSet_Item_Card5_hs", cover: 4,
     prizes: [],
     cards: [
@@ -119,7 +119,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 8, key: "Special", name: "Missão de Defesa", price: 5400, totalExp: 2130, totalPoint: 0, bonusExp: 700, bonusPoint: 0,
+    id: 8, key: "Special", name: "Defense Mission", price: 5400, totalExp: 2130, totalPoint: 0, bonusExp: 700, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "SpecialCard", questType: 1, tpl: "ButtonImageSet_Item_Card6_hs", cover: 5,
     prizes: [],
     cards: [
@@ -136,7 +136,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 9, key: "Defcon", name: "Missão de Explosão", price: 5800, totalExp: 2200, totalPoint: 0, bonusExp: 1000, bonusPoint: 0,
+    id: 9, key: "Defcon", name: "Explosion Mission", price: 5800, totalExp: 2200, totalPoint: 0, bonusExp: 1000, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "DefconCard", questType: 2, tpl: "ButtonImageSet_Item_Card7_hs", cover: 6,
     prizes: [],
     cards: [
@@ -153,7 +153,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 10, key: "Commissioned", name: "Missão de Supressão", price: 8300, totalExp: 3000, totalPoint: 0, bonusExp: 2000, bonusPoint: 0,
+    id: 10, key: "Commissioned", name: "Suppression Mission", price: 8300, totalExp: 3000, totalPoint: 0, bonusExp: 2000, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "Commissioned_o", questType: 2, tpl: "ButtonImageSet_Item_Card8_hs", cover: 7,
     prizes: [],
     cards: [
@@ -170,7 +170,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 11, key: "Company", name: "Missão Forças Especiais", price: 11000, totalExp: 4000, totalPoint: 0, bonusExp: 3000, bonusPoint: 0,
+    id: 11, key: "Company", name: "Special Forces Mission", price: 11000, totalExp: 4000, totalPoint: 0, bonusExp: 3000, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "Company_o", questType: 2, tpl: "ButtonImageSet_Item_Card9_hs", cover: 8,
     prizes: [],
     cards: [
@@ -187,7 +187,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 12, key: "Field", name: "Missão Total", price: 14000, totalExp: 5000, totalPoint: 0, bonusExp: 4000, bonusPoint: 0,
+    id: 12, key: "Field", name: "Total Mission", price: 14000, totalExp: 5000, totalPoint: 0, bonusExp: 4000, bonusPoint: 0,
     bonusMaster: 1, bonusItems: [], file: "Field_o", questType: 1, tpl: "ButtonImageSet_Item_Card10_hs", cover: 9,
     prizes: [],
     cards: [
@@ -204,9 +204,9 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 13, key: "Event", name: "Cartas de Missão: Dezembro", price: 0, totalExp: 5000, totalPoint: 5000, bonusExp: 5000, bonusPoint: 5000,
+    id: 13, key: "Event", name: "Mission Cards: December", price: 0, totalExp: 5000, totalPoint: 5000, bonusExp: 5000, bonusPoint: 5000,
     bonusMaster: 0, bonusItems: [100003194, 1105003012], file: "EventCard", questType: 2, tpl: "Event_Mission_Card", cover: 18,
-    prizes: [{ id: 100003194, webId: 103194, name: "AUG A3 Independence" }, { id: 1105003012, webId: 700178, name: "Chapéu da Independência" }],
+    prizes: [{ id: 100003194, webId: 103194, name: "AUG A3 Independence" }, { id: 1105003012, webId: 700178, name: "Independence Hat" }],
     cards: [
       { gold: 500, exp: 500, badge: 0, tasks: [[2, 15, 0, 6, 0, 0], [2, 28, 0, 3, 0, 0], [2, 27, 0, 5, 0, 0], [2, 13, 0, 2, 0, 0]] },
       { gold: 500, exp: 500, badge: 0, tasks: [[2, 15, 0, 10, 0, 0], [2, 15, 0, 3, 4, 0], [2, 15, 0, 3, 5, 0], [2, 15, 0, 3, 7, 0]] },
@@ -221,9 +221,9 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 14, key: "Dino_Basic", name: "Missão: Dinossauro", price: 5500, totalExp: 2000, totalPoint: 1000, bonusExp: 0, bonusPoint: 0,
+    id: 14, key: "Dino_Basic", name: "Mission: Dinosaur", price: 5500, totalExp: 2000, totalPoint: 1000, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [1104003071], file: "Dino_Basic", questType: 2, tpl: "ButtonImageSet_Item_Card16_hs", cover: 15,
-    prizes: [{ id: 1104003071, webId: 700129, name: "Crânio de Dinossauro" }],
+    prizes: [{ id: 1104003071, webId: 700129, name: "Dinosaur Skull" }],
     cards: [
       { gold: 100, exp: 200, badge: 0, tasks: [[2, 55, 0, 6, 0, 0], [2, 54, 0, 3, 0, 0], [2, 40, 0, 4, 5, 0], [2, 13, 0, 2, 0, 0]] },
       { gold: 100, exp: 200, badge: 0, tasks: [[2, 54, 0, 3, 0, 0], [2, 55, 0, 4, 0, 0], [2, 13, 0, 1, 0, 0], [2, 40, 0, 5, 3, 0]] },
@@ -238,9 +238,9 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 15, key: "Human_Basic", name: "Missão: Sobreviventes", price: 5000, totalExp: 2000, totalPoint: 1000, bonusExp: 0, bonusPoint: 0,
+    id: 15, key: "Human_Basic", name: "Mission: Survivors", price: 5000, totalExp: 2000, totalPoint: 1000, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [1104003071], file: "Human_Basic", questType: 2, tpl: "ButtonImageSet_Item_Card15_hs", cover: 14,
-    prizes: [{ id: 1104003071, webId: 700129, name: "Crânio de Dinossauro" }],
+    prizes: [{ id: 1104003071, webId: 700129, name: "Dinosaur Skull" }],
     cards: [
       { gold: 100, exp: 200, badge: 0, tasks: [[2, 15, 0, 5, 0, 0], [2, 49, 0, 2, 0, 0], [2, 51, 0, 1, 0, 0], [2, 13, 0, 1, 0, 0]] },
       { gold: 100, exp: 200, badge: 0, tasks: [[2, 15, 0, 4, 4, 0], [2, 28, 0, 1, 0, 0], [2, 50, 0, 1, 0, 0], [2, 15, 0, 4, 5, 0]] },
@@ -255,7 +255,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 16, key: "Dino_Intensify", name: "Missão: Dinossauro - Nível 2", price: 9500, totalExp: 3000, totalPoint: 1500, bonusExp: 0, bonusPoint: 0,
+    id: 16, key: "Dino_Intensify", name: "Mission: Dinosaur - Level 2", price: 9500, totalExp: 3000, totalPoint: 1500, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [702001017], file: "Dino_Intensify", questType: 2, tpl: "ButtonImageSet_Item_Card18_hs", cover: 17,
     prizes: [{ id: 702001017, webId: 301017, name: "Fang Blade" }],
     cards: [
@@ -272,7 +272,7 @@ export const MISSION_SETS: readonly MissionSetDef[] = [
     ],
   },
   {
-    id: 17, key: "Human_Intensify", name: "Missão: Sobreviventes - Nível 2", price: 9000, totalExp: 3000, totalPoint: 1500, bonusExp: 0, bonusPoint: 0,
+    id: 17, key: "Human_Intensify", name: "Mission: Survivors - Level 2", price: 9000, totalExp: 3000, totalPoint: 1500, bonusExp: 0, bonusPoint: 0,
     bonusMaster: 0, bonusItems: [702001017], file: "Human_Intensify", questType: 2, tpl: "ButtonImageSet_Item_Card17_hs", cover: 16,
     prizes: [{ id: 702001017, webId: 301017, name: "Fang Blade" }],
     cards: [
