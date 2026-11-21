@@ -436,7 +436,8 @@ export class CharAnimator {
     tr.action.setLoop(THREE.LoopOnce, 1);
     tr.action.clampWhenFinished = true;
     // OnActionLoadMagazine 0xa0cd50: scale = i3AIState duration / ReloadTime (LoadBullet: / LoadBulletTime)
-    const scale = duration && duration > 0 ? (s.dur > 0 ? s.dur : c.duration) / duration : 1;
+    // the whole clip, not s.dur: some AI durations do not match their clip (DSR-1 ReloadB, XM2010 ReloadC) and the weapon's clip runs whole [INFERIDO]
+    const scale = duration && duration > 0 ? c.duration / duration : 1;
     tr.action.timeScale = scale;
     const len = c.duration / scale;
     tr.w = s.blend > 0 ? Math.min(tr.w, 0.999) : 1;

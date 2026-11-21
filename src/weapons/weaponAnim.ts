@@ -70,8 +70,11 @@ export interface WeaponAnimSet {
 const LEFT_RELOAD_AI = /^Weapon_(K-1_SE|Domi_K-1_Def|Domi_K-2_Def|Aks74u|Aks74u_Reload|Domi_SSG69_Def|Walther_Wa2000)$/;
 const LEFT_GRIP = { Male: [-0.007, -0.023, 0.037], Female: [-0.028, -0.013, 0.024] };
 
+const WHOLE_ROOT = /^(WholeDummy|WholeAniDummy|WholeAniDmy)$/;
+
 function leftGrip(state: ClipJson, idle: ClipJson | undefined): boolean {
-  const k = (c: ClipJson | undefined) => c?.tracks.find((t) => t.node === "LHandGunDummy")?.T?.slice(0, 3);
+  // the root every weapon mesh hangs from: LHandGunDummy, else Whole* (DSR-1 ReloadC, M70 ReloadB/C re-key it to the left grip)
+  const k = (c: ClipJson | undefined) => (c?.tracks.find((t) => t.node === "LHandGunDummy") ?? c?.tracks.find((t) => WHOLE_ROOT.test(t.node)))?.T?.slice(0, 3);
   const a = k(state), b = k(idle);
   return !!a && !!b && Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 0.05;
 }

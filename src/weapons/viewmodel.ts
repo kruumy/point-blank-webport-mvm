@@ -586,7 +586,8 @@ class ArmsRig {
     if (this.pb) {
       const x = this.st(state ?? (kind === "reload" ? "LoadMagazine" : "Change"));
       c = x?.c;
-      dur = x ? (x.s.dur > 0 ? Math.min(x.s.dur, x.c.duration) : x.c.duration) : 0;
+      // the whole clip, like the weapon's own state: some AI durations do not match their clip (DSR-1 ReloadB 1.667 of 2.667) [INFERIDO]
+      dur = x?.c.duration ?? 0;
     } else {
       c = kind === "reload" ? this.find(/(^|\/)Reload(_A)?$/i) : this.find(/(^|\/)Change$/i);
       dur = c?.duration ?? 0;
