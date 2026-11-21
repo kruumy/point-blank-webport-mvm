@@ -437,7 +437,7 @@ export class Theater {
     }, sig);
     cv.addEventListener("wheel", (e) => {
       if (this.rendering) return;
-      if (this.mode === "pov" || this.mode === "third") {
+      if (this.mode === "third") {
         e.preventDefault();
         this.setPovFov((this.povFov ?? Math.round(this.host.camera.fov)) + Math.sign(e.deltaY) * 2);
         return;
@@ -684,7 +684,7 @@ export class Theater {
     } else {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
-        ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, POV, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
+        ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
         ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete", "Remove selected node"],
         ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
