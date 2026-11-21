@@ -2,6 +2,7 @@ import { C4_ITEM_ID, isMissionWeapon } from "./mission";
 import * as THREE from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { WeaponAudio } from "./audio";
+import { getSettings } from "../gameplay/settings";
 import { WeaponDb } from "./data";
 import { WeaponEffects, hitShapeId, hitSide,surfaceOfCollider, terrainOfCollider, type Tint } from "./effects";
 import { soundTerrainOf } from "./terrainSound";
@@ -148,6 +149,8 @@ const MAX_TRACE = 300; // visual trace length; damage only inside weapon range
 const WALL_STEP = 0.01;
 /** blast lines skip their first metres so the floor the bomb rests on does not block them (blastLineClear) [INFERIDO] */
 const BLAST_SURFACE_SKIP = 0.05;
+/** floor blood ray drop factor per class (0x784269 switch: AR 21, SMG 25, HG 20, SG 15, SR 50, MG 20); knife: no exported decal */
+const BLOOD_DROP: Partial<Record<WeaponDef["family"], number>> = { AR: 21, SMG: 25, HG: 20, SG: 15, SR: 50, MG: 20 };
 
 /** longest melee reach in the pefs (Death-Scythe 2.85 m) */
 const MELEE_REACH_MAX = 3;
@@ -1502,6 +1505,26 @@ export class WeaponSystem {
     return typeof o === "function" ? o() : o;
   }
 
+  /** spray + one Bmk mark, wall else floor (0x7833d0) [INFERIDO: wall range = shot range, base damage, floor ray 5 m, decal turned to the shot] */
+  bodyBlood(def: WeaponDef, point: THREE.Vector3, dir: THREE.Vector3): void {
+    this.effects.blood(point, dir);
+    if (!BLOOD_DROP[def.family] || !getSettings().showBlood) return;
+    const world = (c: RAPIER.Collider) => !this.ctx.resolveTarget(c);
+    const wall = this.castNormal(point, dir, def.params.range > 0 ? def.params.range : def.range, world);
+    if (wall) {
+      const n = new THREE.Vector3(wall.normal.x, wall.normal.y, wall.normal.z);
+      this.effects.bloodMark(def.family, point.clone().addScaledVector(dir, wall.timeOfImpact), n, false);
+      return;
+    }
+    const jit = () => (Math.floor(Math.random() * 100) - 50) * 0.001;
+    const k = BLOOD_DROP[def.family]! / Math.max(def.params.damage, PB_EPS);
+    const drop = new THREE.Vector3(dir.x + jit(), dir.y - k + jit(), dir.z + jit()).normalize();
+    const floor = this.castNormal(point, drop, 5, world);
+    if (!floor) return;
+    const n = new THREE.Vector3(floor.normal.x, floor.normal.y, floor.normal.z);
+    this.effects.bloodMark(def.family, point.clone().addScaledVector(drop, floor.timeOfImpact), n, true, Math.atan2(dir.x, dir.z));
+  }
+
   private castNormal(origin: THREE.Vector3, dir: THREE.Vector3, len: number, pred?: (c: RAPIER.Collider) => boolean) {
     const R = this.ctx.RAPIER;
     const ray = new R.Ray({ x: origin.x, y: origin.y, z: origin.z }, { x: dir.x, y: dir.y, z: dir.z });
@@ -1635,7 +1658,7 @@ export class WeaponSystem {
           const behind = wall !== null && dist > wall.dist;
           const dmg = this.bulletDamage(def, zone, dist, !!c.target.hasHelmet, base, behind ? wall!.thickness : 0, helmetRate(c.target));
           // ExpHu01_1 sprays back at the shooter (emitDir +Y = local axis); worldShot uses -dir too
-          this.effects.blood(p, dir);
+          this.bodyBlood(def, p, dir);
           this.audio.hitAt("Human", p); // WM_Hit_Human_1..3 (Sound_Weapon_Common)
           this.emit(this.hitL, { weapon: def, kind: "bullet", target: c.target, collider: c.collider, point: p, normal: c.normal,
             distance: dist, zone, headshot: zone === "head", damage: Math.round(dmg), penetrated: behind ? 1 : 0, origin: origin.clone(), shot });
@@ -1814,7 +1837,7 @@ export class WeaponSystem {
     if (hit && target) {
       const dmg = this.bulletDamage(def, target.hitzone, 0, !!target.hasHelmet, (second ? m?.damageB2 : undefined) ?? m?.damageB ?? def.params.damage, 0, helmetRate(target));
       this.effects.setWeapon(def.id, def.family);
-      this.effects.blood(end, fwd);
+      this.bodyBlood(def, end, fwd);
       this.audio.knifeHit(target.hitzone === "head" ? "Head" : "Human", end);
       this.emit(this.hitL, { weapon: def, kind: "melee", target, collider: hit.collider, point: end, normal: fwd.clone().negate(),
         distance: hit.timeOfImpact, zone: target.hitzone, headshot: target.hitzone === "head", damage: Math.round(dmg), penetrated: 0, origin });
@@ -1888,7 +1911,7 @@ export class WeaponSystem {
       const base = blow?.damage ?? (heavy ? (second ? m?.damageB2 : undefined) ?? m?.damageB : (second ? m?.damageA2 : undefined) ?? m?.damageA)
         ?? def.params.damage;
       const dmg = this.bulletDamage(def, zone, 0, !!best.target.hasHelmet, base, 0, helmetRate(best.target));
-      this.effects.blood(pt, best.dir);
+      this.bodyBlood(def, pt, best.dir);
       this.audio.knifeHit(zone === "head" ? "Head" : "Human", pt);
       this.emit(this.hitL, { weapon: def, kind: "melee", target: best.target, collider: best.hit.collider, point: pt, normal: n,
         distance: best.hit.timeOfImpact, zone, headshot: zone === "head", damage: Math.round(dmg), penetrated: 0, origin });
@@ -2319,7 +2342,7 @@ export class WeaponSystem {
     this.effects.tracer(muzzle, to);
     if (!hit) return;
     if (hit.actor) {
-      this.effects.blood(to, dir);
+      this.bodyBlood(def, to, dir);
       this.audio.hitAt("Human", to); // WM_Hit_Human_* (Sound_Weapon_Common)
     } else {
       const n = hit.normal ?? dir.clone().negate();

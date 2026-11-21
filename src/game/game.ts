@@ -204,6 +204,12 @@ class PlayerActor implements Actor {
   }
 }
 
+/** unit direction `from` -> `to`, null when they meet */
+function shotDir(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3 | null {
+  const d = to.clone().sub(from);
+  return d.lengthSq() < 1e-8 ? null : d.normalize();
+}
+
 export class Game implements BotHost {
   readonly scene: THREE.Scene;
   readonly world: RAPIER.World;
@@ -768,7 +774,7 @@ export class Game implements BotHost {
       const dmg = Math.round(ex.damage * (1 - d / ex.range));
       if (dmg <= 0) continue;
       if (by === this.me) this.shotKills.hit(a.id, blast, true);
-      this.applyHit(by, a, weapon, dmg, 0, "torso", 1, chest.clone(), true);
+      this.applyHit(by, a, weapon, dmg, 0, "torso", 1, chest.clone(), true, at, true);
     }
   }
 
@@ -823,16 +829,29 @@ export class Game implements BotHost {
     if (!target.noteHit) return;
     const st = this.pbWeapons()?.db.find(weapon);
     const src = from ?? (attacker && attacker !== target ? attacker.eye(new THREE.Vector3()) : null);
-    if (!src) return;
-    const dir = point.clone().sub(src);
-    if (dir.lengthSq() < 1e-8) return;
-    target.noteHit({ dir: dir.normalize(), point: point.clone(), head: zone === "head", damage: st?.damage ?? base, classType: st?.classType ?? 0,
+    const dir = src && shotDir(src, point);
+    if (!dir) return;
+    target.noteHit({ dir, point: point.clone(), head: zone === "head", damage: st?.damage ?? base, classType: st?.classType ?? 0,
       explosion: explosion ?? (st?.family === "GRENADE" || weapon === "C4") });
+  }
+
+  /** blood of a received hit (the theater; a remote's knife live), not for blasts */
+  private hitBlood(e: HitEvent, meleeOnly: boolean): void {
+    const pbw = this.pbWeapons(), st = pbw?.db.find(e.weapon), def = st && pbw?.db.def(st.id);
+    const attacker = this.actorById(e.attackerId);
+    if (!pbw || !def || !attacker || e.explosion || def.family === "GRENADE" || e.weapon === "C4") return;
+    if (meleeOnly && def.family !== "KNIFE") return;
+    const point = new THREE.Vector3(e.point[0], e.point[1], e.point[2]);
+    const dir = shotDir(attacker.eye(new THREE.Vector3()), point);
+    if (!dir) return;
+    pbw.bodyBlood(def, point, dir);
+    if (def.family === "KNIFE") pbw.audio.knifeHit(e.zone === "head" ? "Head" : "Human", point);
+    else pbw.audio.hitAt("Human", point); // the theater's re-cast leaves body hits silent (remote onFire)
   }
 
   private applyHit(attacker: Actor, target: Actor, weapon: string, base: number, pen: number, zone: HitZone, falloff: number, point: THREE.Vector3, preScaled = false, from?: THREE.Vector3, explosion?: boolean): void {
     // recorded once the helmet roll is known (a replay pops the helmet from it) and before any kill it causes
-    const rec = (helmetBlocked: boolean) => this.rec?.add(this.time, { k: "hit", e: { attackerId: attacker.id, victimId: target.id, weapon, zone, baseDamage: base, preScaled, helmetPenetrate: pen, falloff, point: [point.x, point.y, point.z], t: 0, helmetBlocked } });
+    const rec = (helmetBlocked: boolean) => this.rec?.add(this.time, { k: "hit", e: { attackerId: attacker.id, victimId: target.id, weapon, zone, baseDamage: base, preScaled, helmetPenetrate: pen, falloff, point: [point.x, point.y, point.z], t: 0, helmetBlocked, explosion } });
     this.noteDeathHit(attacker, target, weapon, base, zone, point, from, explosion);
     if (target.kind === "remote") {
       // Client-authoritative: tell the victim's client; it applies damage and reports the kill.
@@ -1960,7 +1979,9 @@ export class Game implements BotHost {
           // watched in FPS: his body is hidden, the tracer starts at the arms' muzzle and the flash is observeFire's
           // the state that fires arrives before the body takes this frame's pose: its gun still sat where the last frame drew it
           // (a raised dual pistol or a sniper's barrel ~0.5 m away), so the flash and tracer start once the remotes are updated
-          const to = hit.point.clone(), impact = hit.distance < Infinity ? { normal: hit.normal?.clone() ?? null, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null;
+          // the theater: the body bleeds from its recorded hit (hitBlood)
+          const bodyInTheater = this.theater && !!hit.actorId;
+          const to = hit.point.clone(), impact = hit.distance < Infinity && !bodyInTheater ? { normal: hit.normal?.clone() ?? null, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null;
           this.remoteShots.push(() => {
             if (this.remotes.get(ra.id) !== ra) return; // left (or was dropped by a seek) before the frame drew it
             const fps = this.watchedInFps(ra) ? this.pbWeapons()?.observedMuzzles() : null;
@@ -2001,6 +2022,8 @@ export class Game implements BotHost {
     });
     this.net.onRemoteHit((e) => {
       this.rec?.add(this.time, { k: "hit", e });
+      // the theater's re-cast shots often miss the replayed body; live, a remote's knife draws no shot of its own
+      if (e.attackerId !== this.me.id || this.theater) this.hitBlood(e, !this.theater);
       // a remote player's hit on a bot WE host: the bot is ours, so its hp is ours to take
       const bot = this.bots.find((b) => b.id === e.victimId);
       if (bot) {

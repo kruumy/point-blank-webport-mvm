@@ -755,6 +755,8 @@ export async function preloadFx(weapons: { id: number; family: Family }[], extra
     if (info?.fire1st) names.add(info.fire1st);
     if (SHELL_FX[w.family]) names.add(SHELL_FX[w.family]!);
     cats.add(HIT_CAT[w.family] ?? "Ar");
+    const bmk = BMK_CAT[w.family];
+    if (bmk) names.add(`Bmk_${bmk}_Wa`).add(`Bmk_${bmk}_Fl`);
   }
   for (const n of Object.keys(d.effects)) for (const c of cats) if (n.startsWith(`Hit_${c}_`) || n.startsWith(`Hmk_${c}_`)) names.add(n);
   const out: THREE.Object3D[] = [];
@@ -928,6 +930,8 @@ export function hitSide(handle: number, featureId: number | undefined): "front" 
 
 /** weapon family -> effect category of the terrain tables (0x6900b0 / 0x6902f0, class table 0xba8a48) */
 const HIT_CAT: Partial<Record<Family, string>> = { SG: "Sg", KNIFE: "M9" };
+/** weapon family -> blood decal category (m_BloodEffIndex columns, names at 0xd5e928; class switch 0x784269, MG = Ar). No M9 / Gr decal is exported */
+const BMK_CAT: Partial<Record<Family, string>> = { AR: "Ar", MG: "Ar", SMG: "Smg", HG: "Hg", SG: "Sg", SR: "Sr" };
 /** weapon family -> shell effect (WeaponBase::Create 0x603c70) */
 const SHELL_FX: Partial<Record<Family, string>> = {
   HG: "Bul_Hg_MK23", AR: "Bul_Ar_M4A1", MG: "Bul_Ar_M4A1", SMG: "Bul_Smg_MP5K", SR: "Bul_Sr_HKPSG1", SG: "Bul_Sg_870MCS",
@@ -1058,10 +1062,11 @@ export class WeaponEffects {
     parent.add(inst.group);
     if (inst.decalOnly && parent === this.scene) inst.batcher = this.decalBatcher;
     inst.update(0);
-    if (inst.persistent) {
+    // the 30 s Bmk_* blood marks share the pool cap (Count 8 / 16): a shotgun leaves one per pellet
+    if (inst.persistent || name.startsWith("Bmk_")) {
       // Default.i3FxList Count = pool size (oldest evicted)
       const cap = this.data?.fxList[name]?.count ?? 32;
-      const pool = this.pools.get(name) ?? [];
+      const pool = (this.pools.get(name) ?? []).filter((f) => !f.dead && this.fx.includes(f));
       pool.push(inst);
       while (pool.length > cap) { const o = pool.shift()!; this.evict(o); }
       this.pools.set(name, pool);
@@ -1214,6 +1219,13 @@ export class WeaponEffects {
       return;
     }
 
+  }
+
+  /** blood decal Bmk_<cat>_Wa / _Fl on the world behind or under a hit body (CEffectManager::AddBloodEffect 0x686c50) */
+  bloodMark(family: Family, point: THREE.Vector3, normal: THREE.Vector3, floor: boolean, spin = 0): void {
+    const cat = BMK_CAT[family];
+    if (!cat || !getSettings().showBlood) return;
+    this.play(`Bmk_${cat}_${floor ? "Fl" : "Wa"}`, point.clone().addScaledVector(normal, 0.008), normal, this.scene, spin);
   }
 
   /** shell ejection; with weaponfx.json `parent` (EmptyCartridgeFXDummy) carries the effect frame */

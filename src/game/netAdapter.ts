@@ -82,6 +82,8 @@ export interface HitEvent {
   t: number;
   /** Helmet blocked the hit (it pops off) — computed by attacker's client, trusted by victim's client */
   helmetBlocked?: boolean;
+  /** a blast, not a bullet (local and demo only: not on the wire) */
+  explosion?: boolean;
 }
 
 export interface KillEvent {
