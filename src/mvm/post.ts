@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { renderOnTop } from "../render/onTop";
 
 /**
  * focus = view-space distance (m), or with focusUv the depth under that point of the image (0..1, origin bottom left),
@@ -141,10 +142,7 @@ export class Post {
     u.nearBlur.value = dof.near;
     u.farBlur.value = dof.far;
     r.render(this.quad, this.cam);
-    const auto = r.autoClear;
-    r.autoClear = false;
-    for (const o of shown) r.render(o, camera);
-    r.autoClear = auto;
+    renderOnTop(r, shown, camera);
   }
 
   dispose(): void {

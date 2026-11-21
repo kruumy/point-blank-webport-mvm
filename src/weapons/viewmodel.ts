@@ -32,6 +32,7 @@ import { DUAL_GRENADE_TIMES, isDualGrenade, throwKind, throwableBaseId } from ".
 
 /** crossfade (s) between a knife swing and the swing that restarts it */
 const MELEE_BLEND = 0.12;
+const VM_SCALE = 4;
 const HIP = new THREE.Vector3(0.16, -0.17, -0.34);
 const ADS = new THREE.Vector3(0, -0.115, -0.28);
 /** 1PV camera in the arms GLB (three space, model faces +Z, character right = -X), exe-2017 CGameCamera_FPS 0x689980:
@@ -724,15 +725,9 @@ export class Viewmodel {
     this.group.add(this.holder);
     camera.add(this.group);
     this.group.renderOrder = 10;
-    // depth clear right before the viewmodel pass: first object of the (transparent) viewmodel group
-    const clear = new THREE.Mesh(
-      new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute([0, 0, -1, 0.001, 0, -1, 0, 0.001, -1], 3)),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, transparent: true })
-    );
-    clear.frustumCulled = false;
-    clear.renderOrder = -1000;
-    clear.onBeforeRender = (renderer) => renderer.clearDepth();
-    this.group.add(clear);
+    // same picture (scaled about the eye), but the near plane (0.1) only cuts what is closer than 0.1 / VM_SCALE [RECRIADO]
+    this.group.scale.setScalar(VM_SCALE);
+    // drawn in its own pass after the world, on a cleared depth buffer (render/onTop.ts renderWithViewmodel)
     this.buildRig();
   }
 
@@ -950,14 +945,19 @@ export class Viewmodel {
     return this.dual && this.side === "L" ? this.muzzleL : this.muzzle;
   }
   muzzleWorld(out = new THREE.Vector3()): THREE.Vector3 {
-    return this.muzzleNode.getWorldPosition(out);
+    return this.unscaled(this.muzzleNode.getWorldPosition(out));
+  }
+  /** a viewmodel world point at its true distance from the eye (the group is drawn VM_SCALE times farther) */
+  private unscaled(p: THREE.Vector3): THREE.Vector3 {
+    const cam = this.group.parent;
+    return cam ? cam.localToWorld(cam.worldToLocal(p).divideScalar(VM_SCALE)) : p;
   }
   /** EmptyCartridgeFXDummy marker (shell effect frame) */
   get ejectNode(): THREE.Object3D {
     return this.dual && this.side === "L" ? this.ejectL : this.eject;
   }
   ejectWorld(out = new THREE.Vector3()): THREE.Vector3 {
-    return this.ejectNode.getWorldPosition(out);
+    return this.unscaled(this.ejectNode.getWorldPosition(out));
   }
 
   /**

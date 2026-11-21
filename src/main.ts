@@ -17,6 +17,7 @@ import { levelCacheStats } from "./levelCache";
 import { brightnessFactor, getSettings, onSettings, pixelRatioFor, type GameSettings } from "./gameplay/settings";
 import { preloadMatch, type MatchSet } from "./game/matchPreload";
 import { warmScene } from "./render/warmup";
+import { renderWithViewmodel } from "./render/onTop";
 import { TEST_EQUIPPED } from "./game/testLoadout";
 import { BOT_WEAPON } from "./game/weaponAdapter";
 import { DemoRecorder } from "./mvm/demo";
@@ -341,7 +342,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
       game.update(dt, dt);
       if (dt > 0) world.step(); // paused: ragdolls hold their pose
     },
-    render: () => renderer.render(scene, camera),
+    render: () => renderWithViewmodel(renderer, scene, camera),
     exit: () => opts.onLeave?.(),
   }) : null;
 
@@ -359,7 +360,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
     const t1 = performance.now();
     world.step();
     const t2 = performance.now();
-    renderer.render(scene, camera);
+    renderWithViewmodel(renderer, scene, camera);
     const t3 = performance.now();
     lastCpu = t3 - t0;
     perfTick(t1 - t0, t2 - t1, t3 - t2);
