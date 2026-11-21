@@ -328,7 +328,7 @@ export function handleReadyBattle(c: GameClient, rd: PacketReader): void {
   if (!s) return;
   s.specGM = s.stealth || (mode === 2 && p.isGM()) || (r.roomType === RoomCondition.Ace && (s.id < 0 || s.id > 1)); // before any early return: a stealth GM is never a combatant, whatever mode the client sent or when
   if (!s.equipment) return c.session.send(rp.readyBattleAck(0x800010ab));
-  const ml = getMapLimit(r.mapId, r.rule);
+  const ml = getMapLimit(r.mapId, r.rule, r.roomType);
   if (!ml) return;
   const bot = r.isBotMode();
   const { fr, ct, enemies } = readyCounts(r);
@@ -1436,7 +1436,7 @@ export function handleChangeSlot(c: GameClient, rd: PacketReader): void {
   let err = 0;
   if (s.state === SlotState.EMPTY) r.changeSlotState(s, SlotState.CLOSE, true);
   else if (s.state === SlotState.CLOSE) {
-    const ml = getMapLimit(r.mapId, r.rule);
+    const ml = getMapLimit(r.mapId, r.rule, r.roomType);
     if (ml && (req & 0x10000000) !== 0 && s.id < ml.limit && (!r.isBotMode() || r.leader % 2 === s.id % 2)) r.changeSlotState(s, SlotState.EMPTY, true);
   } else if (s.state >= 2 && s.state <= 10) {
     const t = r.svc.getAccount(s.playerId);

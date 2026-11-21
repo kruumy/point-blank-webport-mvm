@@ -52,7 +52,9 @@ import { detailPrize, stepPrize, type MissionPopup } from "./missions.ts";
 import { ClanClient, type ClanRoomInvite } from "../../net/clanClient.ts";
 import { MISSION_TABS, MS, buyBlock, cardSelectable, completeInfo, missionSet, rankBlock, rankBlockText, slotOfSet, tabSets } from "./missionLogic.ts";
 import { ALL_WEAPONS, DEFAULT_PEOPLE, DEFAULT_WATCH, STAGE_PASSWORD, STAGE_RANDOM_MAP, mapPlayerLimit, peopleOptions, WATCH, randomMapIds, randomMapMask, weaponChecksOf, weaponsFlagOf, type WeaponChecks } from "./roomRules.ts";
-import { DEFAULT_KILLTIME, DEFENCE_SERVER_MAP_IDS, DESTROY_SERVER_MAP_IDS, KILL_OPTS, ROOM_MODES, TIME_OPTS, conditionText, defaultKillTimeOf, modeIndex, modeLabel, type RoomMode } from "./roomModes.ts";
+import { CROSS_BOMB_MAP_IDS, DEFAULT_KILLTIME, DEFENCE_SERVER_MAP_IDS, DESTROY_SERVER_MAP_IDS, KILL_OPTS, ROOM_MODES, TIME_OPTS, conditionText, defaultKillTimeOf, modeIndex, modeLabel, TDM_SERVER_MAP_IDS, type RoomMode } from "./roomModes.ts";
+
+export { TDM_SERVER_MAP_IDS };
 
 export interface Lobby2017Deps {
   serverUrl: string;
@@ -75,14 +77,9 @@ export interface Lobby2017Deps {
 
 export { conditionText };
 
-/** Copy of src/ui/roomScreen.ts TDM_SERVER_MAP_IDS (Matches.xml Match Rule=; not exported there). */
-export const TDM_SERVER_MAP_IDS = new Set([
-  1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 18, 20, 21, 22, 23, 26, 27, 28, 29, 32, 33, 34, 35, 36, 37, 41, 42, 65, 67, 69,
-  105, 106, 107, 118, 119, 134, 136, 123, 139,
-]);
 
 /** Matches.xml Match Rule="2" (Bomb Mission). */
-export const BOMB_SERVER_MAP_IDS = new Set([131, 138, 135, 88, 91, 12, 13, 14, 15, 19, 24, 25, 43, 44, 45, 46, 47, 48, 89, 109, 111, 112, 117]);
+export const BOMB_SERVER_MAP_IDS = new Set([131, 138, 135, 88, 91, 12, 13, 14, 15, 19, 24, 25, 43, 44, 45, 46, 47, 48, 89, 109, 111, 112, 117, ...CROSS_BOMB_MAP_IDS]);
 
 /** Maps of the stage selector: exported 2017 maps valid for TDM (or Bomb Mission with `bomb`), deduped by server mapId, M. Station first (as RoomScreen's picker). */
 export function stageChoices(bomb = false, universe: ReadonlySet<number> = bomb ? BOMB_SERVER_MAP_IDS : TDM_SERVER_MAP_IDS): MapChoice[] {

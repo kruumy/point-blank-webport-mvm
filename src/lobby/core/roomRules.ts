@@ -74,8 +74,8 @@ export const DEFAULT_PEOPLE = 16;
 
 /** Matches.xml (server/runtime/Data/Maps) `Limit` of the maps below 16 players: Death Match (Rule 1) and Bomb Mission (Rule 2).
  * The server clamps to it (RoomModel.SetSlotCount); the Users combo only offers what fits. */
-const MAP_LIMIT_DM: Record<number, number> = { 9: 8, 10: 8, 41: 8, 105: 8, 106: 8 };
-const MAP_LIMIT_BOMB: Record<number, number> = { 89: 10 };
+const MAP_LIMIT_DM: Record<number, number> = { 9: 8, 10: 8, 41: 8, 105: 8, 106: 8, 49: 8, 57: 2, 70: 8, 155: 8 };
+const MAP_LIMIT_BOMB: Record<number, number> = { 89: 10, 49: 8, 70: 8 };
 export function mapPlayerLimit(mapId: number, bomb = false): number {
   return (bomb ? MAP_LIMIT_BOMB : MAP_LIMIT_DM)[mapId] ?? DEFAULT_PEOPLE;
 }

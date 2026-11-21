@@ -57,7 +57,8 @@ export const KILL_MARKS: Record<KillMarkId, KillMarkDef> = {
   revenge: { id: "revenge", caption: "", sound: "revenge", duration: 1.8 },
   // the VICTIM's mark (STR_HEADER_HELMET_PROTECTION =): the original "Helmet
   // Protection" cell of kill_message.i3i (right column, 5th row; 1px transparent margin, see helmet.smoke.node.ts)
-  helmetProtection: { id: "helmetProtection", caption: "", sound: "helmetProtection", duration: 1.0, sprite: { x: 540, y: 428, w: 472, h: 52 } },
+  // [INFERIDO] Cross kill_message.png: the art spans rows 428..484 (the 52-row cell cut its bottom); one clear row above and below
+  helmetProtection: { id: "helmetProtection", caption: "", sound: "helmetProtection", duration: 1.0, sprite: { x: 540, y: 427, w: 472, h: 59 } },
   // mission flow banners (kill_message1.i3i) — these are played by game.ts on match start/end, not by killmarks logic
   missionStart: { id: "missionStart", caption: "MISSION START", sound: "missionStart", duration: 2.0, sprite: { x: 558, y: 21, w: 433, h: 59, sheet: 1 } },
   missionSuccess: { id: "missionSuccess", caption: "MISSION SUCCESS", sound: "missionSuccess", duration: 2.0, sprite: { x: 27, y: 123, w: 433, h: 59, sheet: 1 } },

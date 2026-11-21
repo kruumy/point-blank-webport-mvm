@@ -25,7 +25,7 @@ export interface EquipIndex {
   /** helmet = the chara's default helmet entry */
   charas: Record<string, { family: string; helmet: string }>;
   entries: Record<string, EquipEntry>;
-  items: Record<string, { key: string; slot: "head" | "face" | "beret" }>;
+  items: Record<string, { key: string; slot: "head" | "face" | "beret"; name3?: string }>;
 }
 
 const BASE = "/assets/equip";
@@ -40,6 +40,16 @@ export function loadEquipIndex(): Promise<EquipIndex | null> {
     .then((r) => (r.ok ? (r.json() as Promise<EquipIndex>) : null))
     .then((j) => (index = j))
     .catch(() => null));
+}
+
+/** Every head-slot and beret item the index can draw, by name (theater hat picker). */
+export async function hatChoices(): Promise<{ itemId: number; slot: "head" | "beret"; label: string }[]> {
+  const ix = await loadEquipIndex();
+  if (!ix) return [];
+  return Object.entries(ix.items)
+    .filter(([, it]) => it.slot !== "face")
+    .map(([id, it]) => ({ itemId: +id, slot: it.slot as "head" | "beret", label: (it.name3 ?? it.key).replace(/_/g, " ") }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 export const equipKey = (e: HeadEquip | null | undefined): string => `${e?.head ?? 0}/${e?.face ?? 0}/${e?.beret ?? 0}`;

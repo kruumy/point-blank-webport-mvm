@@ -6,6 +6,7 @@ import {
 } from "./sights";
 import { smokeField, type SmokeSphere } from "./throwables";
 import type { Family } from "./types";
+import { applyPbCharaLighting, PB_VIEWER_MTL } from "../render/pbLighting";
 
 /**
  * Weapon FX with the 2017 client's own data (pb-extract-tools export-weaponfx.mjs -> public/assets/weapons/fx):
@@ -711,7 +712,13 @@ const shellName = (i3s: string | undefined): string | undefined => i3s?.split(/[
 function loadShellMesh(name: string): Promise<THREE.Object3D | null> {
   let p = shellLoads.get(name);
   if (!p) {
-    p = new GLTFLoader().loadAsync(`/assets/weapons/fx/mesh/${name}.glb`).then((gltf) => { shellMeshes.set(name, gltf.scene); return gltf.scene; }, () => null);
+    p = new GLTFLoader().loadAsync(`/assets/weapons/fx/mesh/${name}.glb`).then((gltf) => {
+      // PB chara shader once on the template: every clone shares it (no per-casing material). Casings only come from the local
+      // viewmodel (WeaponSystem.ejectShell), so the shooter's light state is PB_VIEWER_MTL, already updated at its feet each frame.
+      applyPbCharaLighting(gltf.scene, PB_VIEWER_MTL);
+      shellMeshes.set(name, gltf.scene);
+      return gltf.scene;
+    }, () => null);
     shellLoads.set(name, p);
   }
   return p;

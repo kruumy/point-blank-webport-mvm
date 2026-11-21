@@ -1,5 +1,6 @@
 import type { HitEvent, KillEvent, NetAdapter, PlayerState, ThrowEvent } from "../game/netAdapter";
 import type { Demo } from "./demo";
+import { noteActorEquip, type HeadEquip } from "../game/actorEquip.ts";
 
 type Cb<T> = (e: T) => void;
 interface Death { id: string; t: number; end: number; key: string; pick: number; carriers: { deathPick?: number | string }[] }
@@ -22,7 +23,11 @@ export class DemoNet implements NetAdapter {
   /** every death in the demo: its first and last dead state and the records that carry its pick */
   private readonly deaths: Death[] = [];
 
-  constructor(readonly demo: Demo) {
+  readonly demo: Demo;
+
+  // a plain field, not a parameter property: node's type stripping (src/net/test) cannot run those
+  constructor(demo: Demo) {
+    this.demo = demo;
     const dead = new Map<string, Death>(); // actor -> the death in progress
     for (const r of demo.recs) {
       if (r.k !== "state") continue;
@@ -100,6 +105,28 @@ export class DemoNet implements NetAdapter {
     if (!Object.keys(edits).length) delete this.demo.charas;
   }
 
+  /** the head items each actor's last played equip record gave it (before the hat edits) */
+  private readonly recEquip = new Map<string, HeadEquip>();
+  private noteEquip(id: string, eq: HeadEquip): void {
+    this.recEquip.set(id, eq);
+    const hat = this.demo.hats?.[id];
+    noteActorEquip(id, hat ? { ...eq, ...hat } : eq);
+  }
+
+  /** [RECRIADO] demo editor: the hat edit of that actor (undefined = the recorded head items) */
+  hatOf(id: string): { head: number; beret: number } | undefined {
+    return this.demo.hats?.[id];
+  }
+
+  /** [RECRIADO] demo editor: that actor wears `hat` for the whole demo; null = back to the recorded head items */
+  setHat(id: string, hat: { head: number; beret: number } | null): void {
+    const edits = (this.demo.hats ??= {});
+    if (hat) edits[id] = hat;
+    else delete edits[id];
+    if (!Object.keys(edits).length) delete this.demo.hats;
+    this.noteEquip(id, this.recEquip.get(id) ?? {});
+  }
+
   /** each actor's pose at `t`, interpolated between the recorded ticks around it (not across a respawn or a gap) */
   poses(t: number): { id: string; pos: [number, number, number]; yaw: number; pitch: number }[] {
     const out = [];
@@ -135,20 +162,25 @@ export class DemoNet implements NetAdapter {
         case "throw": for (const f of this.thrown) f(r.e); break;
         case "prop": for (const f of this.prop) f(r.i); break;
         case "leave": for (const f of this.leave) f(r.id); break;
+        case "equip": this.noteEquip(r.id, r.eq); break;
       }
     }
   }
 
   /** jumps to `t` without the events in between: plays each actor's last state (the caller snaps the bodies to it) */
   seek(t: number): PlayerState[] {
-    const recs = this.demo.recs, last = new Map<string, PlayerState>();
+    const recs = this.demo.recs, last = new Map<string, PlayerState>(), equip = new Map<string, HeadEquip>();
     let i = 0;
     for (; i < recs.length && recs[i].t <= t; i++) {
       const r = recs[i];
       if (r.k === "state") last.set(r.s.id, r.s);
       else if (r.k === "leave") last.delete(r.id);
+      else if (r.k === "equip") equip.set(r.id, r.eq);
     }
     this.cursor = i;
+    for (const [id, eq] of equip) this.noteEquip(id, eq);
+    // an actor with a hat edit and no equip record before `t` (older demos have none)
+    for (const id of Object.keys(this.demo.hats ?? {})) if (!equip.has(id)) this.noteEquip(id, {});
     const states = [...last.values()].map((s) => this.withChara(s));
     for (const s of states) for (const f of this.state) f(s);
     return states;

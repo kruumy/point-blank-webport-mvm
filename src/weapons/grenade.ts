@@ -5,6 +5,7 @@ import { createWeaponModel } from "./worldModel";
 import { terrainOfCollider } from "./effects";
 import { soundTerrainOf } from "./terrainSound";
 import { CLAYMORE_BACK_OFFSET, throwKind } from "./throwables";
+import { applyPbCharaLighting, createPbMtl, disposePbMtl, type PbMtl } from "../render/pbLighting";
 
 /** position handle kept for callers that relocate a grenade (net explode record) */
 export interface GrenadeBody {
@@ -118,6 +119,8 @@ const C5_HALF_THICK = 0.0356;
 
 export class GrenadePhysics {
   private list: LiveGrenade[] = [];
+  /** PB chara shader state per thrown item (light volume at its position, like a dropped helmet) and the materials made for it */
+  private pb = new Map<LiveGrenade, { mtl: PbMtl; mats: THREE.Material[] }>();
   /** set by WeaponSystem: the thrower's collider is not hit (0x62fc60 skips the owner and dead charas) */
   rayFilter: (g: LiveGrenade) => GrenadeRayFilter = () => ({});
 
@@ -136,9 +139,11 @@ export class GrenadePhysics {
     const mesh = new THREE.Group();
     mesh.position.copy(origin);
     this.scene.add(mesh);
+    const pb = { mtl: createPbMtl(), mats: [] as THREE.Material[] };
     // original grenade model (i3 space under its AxisRotate matrix, pivot = GunDummy)
     void createWeaponModel(weapon.id, "GRENADE", { grenade: true, projectile: true }).then((inst) => {
       if (!inst || !mesh.parent) return;
+      pb.mats = applyPbCharaLighting(inst.object, pb.mtl);
       const ax = new THREE.Group();
       ax.matrixAutoUpdate = false;
       ax.matrix.copy(inst.axis);
@@ -159,6 +164,7 @@ export class GrenadePhysics {
       },
     };
     this.list.push(g);
+    this.pb.set(g, pb);
     return g;
   }
 
@@ -247,6 +253,7 @@ export class GrenadePhysics {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const g = this.list[i];
       this.step(g, fdt);
+      this.pb.get(g)?.mtl.update(g.mesh.position, dt);
       if (grenadeArmed(g)) g.fuse -= fdt;
       const lost = !g.resting && !g.stuck && g.t > GRENADE.maxSegment;
       if (g.fuse <= 0 || lost) {
@@ -261,6 +268,12 @@ export class GrenadePhysics {
     const g = this.list[i];
     this.scene.remove(g.mesh);
     this.list.splice(i, 1);
+    const pb = this.pb.get(g);
+    if (pb) {
+      disposePbMtl(pb.mtl);
+      for (const m of pb.mats) m.dispose();
+      this.pb.delete(g);
+    }
   }
 
   /** grenades have no collider (the exe moves them by rays): nothing to exclude from other rays */

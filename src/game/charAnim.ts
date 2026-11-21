@@ -14,7 +14,8 @@ import * as THREE from "three";
  * Calf, Foot, Toe; Upper = 51 bones Spine1..3, Neck, Head, clavicles, arms, hands, fingers, twists. IK and Pivot
  * are in neither list (no layer time scale); the Up_*.i3a clips carry them, so here they follow the upper clip.
  * The clips themselves respect the split (every Low_*.i3a animates exactly the 10 lower bones), so the layers never
- * fight over a bone and both run at full weight. Vertical aim is added after the mixer (IK + Spine1..3, 1/4 each).
+ * fight over a bone and both run at full weight. Vertical aim is added after the mixer (IK + Spine1..3, 1/4 each),
+ * with the Pivot correction that turns the clip's aim reference back onto the character's facing (applyAim).
  */
 
 export type UpperClass = "assault" | "smg" | "sniper" | "shotgun" | "handgun" | "knife";
@@ -268,6 +269,8 @@ const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _axis = new THREE.Vector3();
 const _local = new THREE.Vector3();
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
 
 export class CharAnimator {
   readonly mixer: THREE.AnimationMixer;
@@ -298,6 +301,18 @@ export class CharAnimator {
   private aimRest: THREE.Quaternion[] = [];
   private aimApplied = false;
   private pitch = 0;
+  private readonly ik: THREE.Object3D | null;
+  /** Root's parent: the i3 character frame (0x5754f0 GetMatrix) */
+  private readonly charaFrame: THREE.Object3D | null;
+  /** Cross exe 0x53c6d0, on every upper AI state: the Pivot track of the state's clip at time 0 (Pivot's local rotation
+   *  under IK; it stays when the clip has none), and the state's blend time over which the correction moves */
+  private pivotQ: THREE.Quaternion | null = null;
+  private pivotBlend = 0;
+  private pivotT = 0;
+  /** the correction angle applied now (0x23c), moving toward the angle the pose asks for (0x240) */
+  private pivotAngle = 0;
+  /** the last non-degenerate correction axis (0x250): an aligned pose keeps it while the angle blends out */
+  private readonly pivotAxis = new THREE.Vector3();
   /** actor frame for the aim axis (defaults to the mixer root's parent) */
   aimFrame: THREE.Object3D | null = null;
   /** names of the clips currently weighted > 0.05, for debugging / headless validation */
@@ -316,6 +331,8 @@ export class CharAnimator {
       const b = root.getObjectByName(n);
       if (b) this.aimBones.push(b);
     }
+    this.ik = root.getObjectByName("IK") ?? null;
+    this.charaFrame = root.getObjectByName("Root")?.parent ?? null;
     const fb = fallbackTables(this.clips, "assault");
     this.lowerT = fb.lower;
     this.upperT = fb.upper;
@@ -426,6 +443,7 @@ export class CharAnimator {
     tr.target = 1;
     tr.rate = s.blend > 0 ? 1 / s.blend : Infinity;
     this.oneShot = { track: tr, state, until: this.t + Math.max(len, 0.1), fadeOut: Math.min(0.15, len * 0.5 + 0.05) };
+    this.notePivot(c, s.blend);
     this.onState?.("shot", `${state} -> ${s.clip}`);
     return true;
   }
@@ -546,7 +564,7 @@ export class CharAnimator {
     this.respawn();
     this.queued = null;
     this.t = clock;
-    this.phase = this.airTime = this.landT = this.pitch = 0;
+    this.phase = this.airTime = this.landT = this.pitch = this.pivotAngle = 0;
     this.wasGrounded = true;
   }
 
@@ -566,7 +584,10 @@ export class CharAnimator {
     tr.rate = rate;
     if (!s.loop || restart) tr.action.reset().play();
     if (layer === "low") this.lowKey = s.clip;
-    else this.upKey = s.clip;
+    else {
+      this.upKey = s.clip;
+      this.notePivot(tr.action.getClip(), s.blend);
+    }
     this.onState?.(layer, `${layer === "low" ? "" : this.upStance + "."}${name} -> ${s.clip}`);
   }
 
@@ -641,6 +662,9 @@ export class CharAnimator {
       tr.target = 0;
       tr.rate = 1 / Math.max(1e-3, this.oneShot.fadeOut);
       this.oneShot = null;
+      // back to the base AI state: 0x53c6d0 samples its Pivot again
+      const base = us && this.tracks.get(us.clip);
+      if (base) this.notePivot(base.action.getClip(), us.blend);
     }
 
     // ---- weights: fade, then normalise per layer (the mixer averages by weight; a sum < 1 would leak the bind pose)
@@ -672,6 +696,35 @@ export class CharAnimator {
     for (const tr of this.tracks.values()) if (tr.w > 0.05) this.active.push(tr.key);
   }
 
+  private notePivot(clip: THREE.AnimationClip, blend: number): void {
+    this.pivotBlend = blend;
+    this.pivotT = 0;
+    const tr = clip.tracks.find((t) => t.name === "Pivot.quaternion");
+    if (tr) (this.pivotQ ??= new THREE.Quaternion()).fromArray(tr.values, 0);
+  }
+
+  /** Cross exe 0x7dc100 (the path of every character but the camera's own): the angle and axis that turn the Pivot's
+   *  forward axis (pose of this frame) onto the character's; the angle reaches it over the state's blend time */
+  private pivotStep(dt: number): void {
+    let target = 0;
+    const frame = this.charaFrame;
+    if (this.pivotQ && this.ik && frame) {
+      this.ik.updateWorldMatrix(true, false);
+      // the exe's "at" row (Z of i3) is Y here: the skeleton frame is X right, Y forward, Z up (Y/Z swapped)
+      _v1.set(0, 1, 0).applyQuaternion(this.pivotQ).transformDirection(this.ik.matrixWorld);
+      _v2.set(0, 1, 0).transformDirection(frame.matrixWorld);
+      _axis.crossVectors(_v1, _v2);
+      if (_axis.lengthSq() > 4e-10) {
+        target = Math.acos(THREE.MathUtils.clamp(_v1.dot(_v2), -1, 1));
+        this.pivotAxis.copy(_axis).normalize();
+      }
+    }
+    if (target === this.pivotAngle) return;
+    this.pivotT += dt;
+    if (this.pivotT >= this.pivotBlend) this.pivotAngle = target;
+    else this.pivotAngle += (target - this.pivotAngle) * (this.pivotT / this.pivotBlend);
+  }
+
   private undoAim(): void {
     if (!this.aimApplied) return;
     for (let i = 0; i < this.aimBones.length; i++) this.aimBones[i].quaternion.copy(this.aimRest[i]);
@@ -680,23 +733,27 @@ export class CharAnimator {
 
   private applyAim(dt: number, pitch: number): void {
     this.pitch += (THREE.MathUtils.clamp(pitch, -1.2, 1.2) - this.pitch) * (1 - Math.exp(-20 * dt));
-    if (!this.aimBones.length || Math.abs(this.pitch) < 1e-3) return;
+    this.pivotStep(dt);
+    if (!this.aimBones.length || (Math.abs(this.pitch) < 1e-3 && Math.abs(this.pivotAngle) < 1e-4)) return;
     for (let i = 0; i < this.aimBones.length; i++) (this.aimRest[i] ??= new THREE.Quaternion()).copy(this.aimBones[i].quaternion);
     this.aimApplied = true;
     const frame = this.aimFrame ?? this.root.parent ?? this.root;
     frame.updateWorldMatrix(true, false);
     // actor right axis in world space; +pitch around +X of a -Z-forward frame tilts the chest up
     _axis.set(1, 0, 0).transformDirection(frame.matrixWorld);
-    const per = this.pitch / this.aimBones.length;
+    const per = this.pitch / this.aimBones.length, perPivot = this.pivotAngle / this.aimBones.length;
     for (const b of this.aimBones) {
       // the skeleton sits under the mirrored i3 AxisRotate (det -1): map the axis with the full inverse matrix
       // (not a world quaternion) and flip the angle's sign in a mirrored frame
       b.parent!.updateWorldMatrix(true, false);
       _m.copy(b.parent!.matrixWorld);
       const sign = _m.determinant() < 0 ? -1 : 1;
-      _local.copy(_axis).transformDirection(_m.invert());
-      _q.setFromAxisAngle(_local, per * sign);
-      b.quaternion.premultiply(_q);
+      _m.invert();
+      _local.copy(_axis).transformDirection(_m);
+      b.quaternion.premultiply(_q.setFromAxisAngle(_local, per * sign));
+      // 0x7dd770: the pitch, then the Pivot correction, both in the bone's parent frame
+      _local.copy(this.pivotAxis).transformDirection(_m);
+      b.quaternion.premultiply(_q.setFromAxisAngle(_local, perPivot * sign));
     }
   }
 }

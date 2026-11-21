@@ -115,10 +115,15 @@ export interface PropInstanceJson {
   objective?: ObjectiveSide;
 }
 
+/** CLadderTrigger box of the map (export-props.mjs `ladders`): centre, rotation, full size, climb axis (world) */
+export interface MapLadder { name: string; pos: [number, number, number]; quat: [number, number, number, number]; size: [number, number, number]; up: [number, number, number] }
+
 export interface MapPropsJson {
   source: string;
   objects: Record<string, PropObjectDef>;
   props: PropInstanceJson[];
+  /** absent in props.json exported before the ladders */
+  ladders?: { list: MapLadder[] };
   server?: { mapId: number | null; matchedByOrder?: boolean };
 }
 
@@ -153,6 +158,7 @@ export interface PropHit {
 export interface LoadedMapProps {
   group: THREE.Group;
   props: MapProp[];
+  ladders: MapLadder[];
   debugMeshes: THREE.Mesh[];
   /** damage to the breakable prop owning this collider handle; null when the collider is not a breakable prop */
   damage(handle: number, dmg: number): PropHit | null;
@@ -508,7 +514,7 @@ export async function loadMapProps(
   };
 
   const api: LoadedMapProps = {
-    group, props, debugMeshes, onBreak: null, onObjectiveHit: null,
+    group, props, ladders: json.ladders?.list ?? [], debugMeshes, onBreak: null, onObjectiveHit: null,
     setObjectiveLife(index, life) {
       const pr = props[index];
       if (!pr?.objective || pr.broken) return;

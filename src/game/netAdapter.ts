@@ -57,6 +57,11 @@ export interface PlayerState {
   chara?: number;
   /** AI slot: simulated by the match host (net/battle.ts FLAG_BOT, action bit 5) and replicated like a player */
   bot?: boolean;
+  /** the helmet-slot accessory popped off this life (Actor.helmetLost); web extension: action bit 6. Live, only true counts
+   *  (false or absent = keep the receiver's own: stale states, older peers); RemoteActor.apply */
+  helmetOff?: boolean;
+  /** climbing a ladder (player.ts onLadder): the receiver draws the normal pose, not a fall; web extension: action bit 7 */
+  ladder?: boolean;
   /** [RECRIADO] demo playback only (mvm/demoNet.ts): the death clip pick of this death, the same on every replay; a clip name = edited in the theater */
   deathPick?: number | string;
   t: number; // sender clock, ms

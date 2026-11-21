@@ -33,8 +33,18 @@ export interface RoomMode {
 
 /** Rotation of Rule 32 (HeadHunter, Rules.xml Mode 8) and Rule 80 (Chaos, Mode 15): the server's system_map_matches after
  * the system_map_rules seed (db/init/001_init.sql). getMapLimit (server roomModel.ts) refuses the ready of any other map. */
-export const HEADHUNTER_MAP_IDS: readonly number[] = [1, 2, 4, 5, 7, 9, 10, 23, 29, 67];
-export const CHAOS_MAP_IDS: readonly number[] = [1, 2, 4, 7, 9, 10, 20, 23, 42, 67];
+/** [RECRIADO] the exported Cross maps added to system_map_matches for Deathmatch, HeadHunter and Chaos (keep in step with the
+ * db/init/001_init.sql rows from seq 136), and those of them with bomb sites (Bomb Mission rows too) */
+export const CROSS_MAP_IDS: readonly number[] = [71, 38, 56, 8, 76, 83, 77, 66, 84, 80, 70, 79, 78, 57, 53, 55, 54, 49, 150, 151, 152, 153, 154, 155];
+export const CROSS_BOMB_MAP_IDS: readonly number[] = [71, 76, 84, 70, 49];
+export const HEADHUNTER_MAP_IDS: readonly number[] = [1, 2, 4, 5, 7, 9, 10, 23, 29, 67, ...CROSS_MAP_IDS];
+export const CHAOS_MAP_IDS: readonly number[] = [1, 2, 4, 7, 9, 10, 20, 23, 42, 67, ...CROSS_MAP_IDS];
+/** Matches.xml Match Rule="1" (Death Match) maps of the stage pickers (lobby controller and RoomScreen) */
+export const TDM_SERVER_MAP_IDS = new Set([
+  1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 18, 20, 21, 22, 23, 26, 27, 28, 29, 32, 33, 34, 35, 36, 37, 41, 42, 65, 67, 69,
+  105, 106, 107, 118, 119, 134, 136, 123, 139,
+  ...CROSS_MAP_IDS,
+]);
 /** Rotation of Rule 0 Conditions 16 (Annihilation = Rules.xml Mode 4, "Eliminate" in system_map_matches; 067 removed no row of it).
  * Rule 128 (Mode 43 / 46 / 49 / 50) has no map row, so those variants are not creatable. */
 export const ANNIHILATION_MAP_IDS: readonly number[] = [1, 2, 4, 9, 10, 18, 20, 28, 34, 41, 42, 65];

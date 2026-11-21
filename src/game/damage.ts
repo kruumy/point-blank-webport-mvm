@@ -130,10 +130,18 @@ export function helmetPenetrates(pen01: number, defense = DEFAULT_HELMET_DEFENSE
 }
 
 /**
- * Damage a head hit does when CalcHelmetPenetrate says the helmet stopped it.
- * TODO(caller of 0x5425e0, not decoded): PLACEHOLDER 0 - the helmet pops off and the hit is absorbed.
+ * Damage a head hit does when CalcHelmetPenetrate says the helmet stopped it. Cross exe: the caller 0x53dcf0 of
+ * CalcHelmetPenetrate (Cross 0x53d9c0 = 2017 0x5425e0) clears the "apply damage" flag on a stopped head hit (0x53de34), so 0.
  */
 export const HELMET_BLOCKED_DAMAGE = 0;
+
+/**
+ * Equipment <Item>.ProtectionTime (s): the same caller then sets protectUntil (+0xc90) = game time + the head item's
+ * ProtectionTime (0x53db10 -> 0x530ea0, item +0x11e4), and every hit before that time also does no damage (0x53dd7c..0x53dd8b),
+ * whatever part it hits. Every Cross head item with a Defense has ProtectionTime 1 (pef-cross Equipment: 278 x 1, the only 0
+ * is Mask.Skinny_Juno, which has no Defense).
+ */
+export const HELMET_PROTECTION_TIME = 1;
 
 export interface PbHit {
   damage: number;
@@ -170,19 +178,24 @@ export function computeDamage(req: DamageRequest): DamageResult {
   const none: DamageResult = { dealt: 0, killed: false, headshot: false, blocked: true, helmetBlocked: false };
   if (!t.alive || req.now < t.invulnUntil) return none;
   if (req.attacker && req.attacker !== t && req.attacker.team === t.team) return none;
+  if (req.now < (t.helmetProtectUntil ?? 0)) return none;
 
   let dmg: number;
   let helmetBlocked = false;
   if (req.preScaled) {
     // src/weapons already rolled the helmet (pbHitDamage); a head hit on a helmet still knocks it off
     dmg = Math.max(0, Math.round(req.base));
-    if (req.zone === "head" && t.helmet) { t.helmet = false; helmetBlocked = true; }
+    if (req.zone === "head" && t.helmet) {
+      t.helmet = false; helmetBlocked = true;
+      if (dmg === HELMET_BLOCKED_DAMAGE) t.helmetProtectUntil = req.now + HELMET_PROTECTION_TIME;
+    }
   } else {
     const hit = pbHitDamage({
       base: req.base, zone: req.zone, helmet: req.zone === "head" && t.helmet,
       helmetPenetrate01: Math.max(0, Math.min(100, req.helmetPenetrate)) / 100, helmetDefense: actorHelmetDefense(t.id) || undefined,
     });
     if (req.zone === "head" && t.helmet) { t.helmet = false; helmetBlocked = true; }
+    if (hit.helmetBlocked) t.helmetProtectUntil = req.now + HELMET_PROTECTION_TIME;
     dmg = hit.helmetBlocked ? hit.damage : pbCalcDamage(req.zone === "head" ? HEAD_HIT_DAMAGE : req.base * ZoneMultiplier[req.zone], req.falloff ?? 1);
   }
   // Defense Up coupons of the target (Actor.defense, local player only) [INFERIDO: damage x (1 - N%), at least 1]

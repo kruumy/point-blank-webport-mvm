@@ -267,6 +267,8 @@ export interface HitInfo {
   part: number; // CharaHitPart: 14 HEAD, 1 ALL (web: torso), 2 (web convention: limb)
   /** ObjectType in HitIndex bits 0-1: 1 User (server applies damage), 2 UserObject (relayed untouched). */
   objectType?: number;
+  /** HitType in HitIndex bits 17-19 (AllUtils.GetHitHelmet): 3 HelmetProtection = the helmet stopped it */
+  hitEnum?: number;
   weaponId: number;
 }
 
@@ -418,8 +420,8 @@ function readDropInfo(r: PacketReader): WeaponDropInfo {
 }
 
 /** HitIndex bitfield (AllUtils.GetHitType/GetHitPart/GetHitDamageNormal). */
-export function makeHitIndex(victimSlot: number, damage: number, part: number, objectType = 1): number {
-  return ((damage & 0x7ff) << 21 | (part & 63) << 11 | (victimSlot & 0x1ff) << 2 | (objectType & 3)) >>> 0;
+export function makeHitIndex(victimSlot: number, damage: number, part: number, objectType = 1, hitEnum = 0): number {
+  return ((damage & 0x7ff) << 21 | (hitEnum & 7) << 17 | (part & 63) << 11 | (victimSlot & 0x1ff) << 2 | (objectType & 3)) >>> 0;
 }
 
 /** One SubHead.User record: H length | H slot | C 0 | D flags | events (wire order). */
@@ -469,7 +471,7 @@ export function encodeUserAction(slot: number, a: ActionOut): Uint8Array {
       body.writeT(h.start[0]).writeT(h.start[1]).writeT(h.start[2]);
       body.writeT(h.end[0]).writeT(h.end[1]).writeT(h.end[2]);
       body.writeT(h.end[0]).writeT(h.end[1]).writeT(h.end[2]);
-      body.writeH(0).writeH(h.victimSlot).writeD(makeHitIndex(h.victimSlot, h.damage, h.part, h.objectType))
+      body.writeH(0).writeH(h.victimSlot).writeD(makeHitIndex(h.victimSlot, h.damage, h.part, h.objectType, h.hitEnum))
         .writeD(h.weaponId).writeC(0).writeC(0);
     }
   }
@@ -574,7 +576,7 @@ function decodeEvents(r: PacketReader, flags: number, a: ActionIn): void {
       const idx = r.readD();
       const weaponId = r.readD();
       r.skip(2);
-      a.hits.push({ start, end, victimSlot: objectId, damage: idx >>> 21, part: (idx >> 11) & 63, objectType: idx & 3, weaponId });
+      a.hits.push({ start, end, victimSlot: objectId, damage: idx >>> 21, part: (idx >> 11) & 63, objectType: idx & 3, hitEnum: (idx >>> 17) & 7, weaponId });
     }
   }
 }

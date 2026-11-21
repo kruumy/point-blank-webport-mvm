@@ -10,6 +10,7 @@ import { createWeaponModel, weaponDualFire, weaponFamily } from "../weapons/worl
 import { setC4Lcd } from "../weapons/c4Lcd";
 import type { WeaponAnimator } from "../weapons/weaponAnim";
 import { CharAnimator, upperClassOf, type CharAnimInput, type Dir8 } from "./charAnim";
+import { dualTreeOf } from "./charAnimLib";
 import type { Team } from "./types";
 import { applyPbCharaLighting, createPbMtl, disposePbMtl } from "../render/pbLighting";
 import { resolveChara } from "./loadout";
@@ -315,7 +316,9 @@ export class CharVisual {
    * 0x648440, same model, not mirrored). "alt" = the hands take turns, right first (WeaponDualHandGun +0xa550, reset by
    * the reload 0x649c60); "both" = both guns each shot (DualSMG). The upper body plays AttackLeft / AttackBoth.
    */
-  private dual: "alt" | "both" | "melee" | null = null;
+  /** "pair" = two guns in hand but a single-gun class (202025 HK45 Dual, charAnimLib.dualTreeOf): the right one fires, as the 1PV
+   *  (WeaponSystem dualFire null) */
+  private dual: "alt" | "both" | "melee" | "pair" | null = null;
   private weaponObjL: THREE.Object3D | null = null;
   private weaponAnimL: WeaponAnimator | null = null;
   private muzzleNodeL: THREE.Object3D | null = null;
@@ -442,8 +445,10 @@ export class CharVisual {
       // no hand (placeholder body) or a failed model load: forget the key so the next setWeapon mounts it, instead
       // of treating the weapon as already in hand (the hand stayed empty for the rest of the life)
       if (!this.hand) { this.weaponKey = ""; return; }
-      const [inst, dual] = await Promise.all([createWeaponModel(key, fam), weaponDualFire(key)])
-        .catch((e) => { console.warn(`[charModel] weapon ${key}`, e); return [null, null] as const; });
+      const [inst, dual] = await Promise.all([
+        createWeaponModel(key, fam),
+        weaponDualFire(key).then(async (d) => d ?? ((await dualTreeOf(key, this.animSkel)) ? "pair" as const : null)),
+      ]).catch((e) => { console.warn(`[charModel] weapon ${key}`, e); return [null, null] as const; });
       if (tok !== this.weaponTok) return;
       if (!inst) this.weaponKey = "";
       if (this.weaponObj) this.weaponObj.removeFromParent();
@@ -490,7 +495,7 @@ export class CharVisual {
   fire(heavy = false): void {
     let hand: "L" | "both" | undefined;
     // the extension flag on an alternating dual = HK45 Dual crossed (CrossFire): both guns each pull (0x644ee0)
-    if (this.dual === "both" || (this.dual === "alt" && this.extOn)) hand = "both";
+    if (this.dual === "both" || ((this.dual === "alt" || this.dual === "pair") && this.extOn)) hand = "both";
     else if (this.dual === "alt") {
       hand = this.nextLeft ? "L" : undefined;
       this.nextLeft = !this.nextLeft;

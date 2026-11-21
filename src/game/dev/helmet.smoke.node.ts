@@ -47,12 +47,15 @@ const r0 = computeDamage({ target: bare as unknown as Actor, attacker: shooter a
 check("head hit on bare head: nothing pops", !r0.helmetBlocked && r0.dealt === 30);
 const r1 = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 0, zone: "head", helmetPenetrate: 0, falloff: 1, preScaled: true, now: 1 });
 check("helmet stops the headshot (0 dealt) and pops", r1.helmetBlocked && r1.dealt === 0 && !capped.helmet, JSON.stringify(r1));
-const r2 = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 30, zone: "head", helmetPenetrate: 0, falloff: 1, preScaled: true, now: 1 });
+// the block opens HELMET_PROTECTION_TIME (1 s, caller 0x53dcf0): any hit inside it does nothing, whatever the part
+const rp = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 30, zone: "torso", helmetPenetrate: 0, falloff: 1, preScaled: true, now: 1.5 });
+check("hit inside the protection window: 0 dealt, ignored, nothing pops", rp.dealt === 0 && !rp.helmetBlocked && rp.blocked, JSON.stringify(rp));
+const r2 = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 30, zone: "head", helmetPenetrate: 0, falloff: 1, preScaled: true, now: 2.5 });
 check("second head hit: helmet already gone", !r2.helmetBlocked && r2.dealt === 30);
 capped.helmetLost = false;
 check("respawn: equipped helmet is back", capped.helmet);
 // non-preScaled path keeps the exe roll (CalcHelmetPenetrate 0x5425e0): penetrate 0 -> always blocked
-const r3 = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 40, zone: "head", helmetPenetrate: 0, falloff: 1, now: 1 });
+const r3 = computeDamage({ target: capped as unknown as Actor, attacker: shooter as unknown as Actor, base: 40, zone: "head", helmetPenetrate: 0, falloff: 1, now: 5 });
 check("helmet roll (pen 0) blocks, 0 dealt", r3.helmetBlocked && r3.dealt === 0);
 
 // ---- 1b. a default character (parts[0] 0) has no head item: no protection; a bot seat gets the empty loadout, not the
@@ -125,7 +128,7 @@ function decodePng(p: string) {
   for (let y = 0; y < h; y++) { const f = raw[y * (st + 1)], r = raw.subarray(y * (st + 1) + 1, (y + 1) * (st + 1)); for (let x = 0; x < st; x++) { const a = x >= 4 ? out[y * st + x - 4] : 0, up = y ? out[(y - 1) * st + x] : 0, c = x >= 4 && y ? out[(y - 1) * st + x - 4] : 0; let v = r[x]; if (f === 1) v += a; else if (f === 2) v += up; else if (f === 3) v += (a + up) >> 1; else if (f === 4) { const p = a + up - c, pa = Math.abs(p - a), pb = Math.abs(p - up), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? up : c; } out[y * st + x] = v & 255; } }
   return { w, h, a: (x: number, y: number) => out[(y * w + x) * 4 + 3] };
 }
-const tex = decodePng(path.join(PUB, "assets/ui/hud/kill_message.png"));
+const tex = decodePng(path.join(PUB, "assets/ui/cross-hud/hud/kill_message.png"));
 const sp = KILL_MARKS.helmetProtection.sprite!;
 let inside = 0, edge = 0;
 for (let y = sp.y; y < sp.y + sp.h; y++) for (let x = sp.x; x < sp.x + sp.w; x++) {
@@ -135,16 +138,17 @@ for (let y = sp.y; y < sp.y + sp.h; y++) for (let x = sp.x; x < sp.x + sp.w; x++
 }
 check("sprite cell has the art and does not clip it", inside > 2000 && edge === 0, `opaque=${inside} edge=${edge}`);
 
-// ---- 5. helmet-drop-sync: HitData.part (net/battle.ts) round-trips helmetBlocked so a third client (neither
+// ---- 5. helmet-drop-sync: HitData part + HitIndex helmet field (net/battle.ts) round-trip helmetBlocked so a third client (neither
 // shooter nor victim, who each pop locally already) can run the same popHelmet path off the relayed HitEvent.
 for (const zone of ["head", "torso", "limb"] as HitZone[]) {
-  for (const helmetBlocked of [true, false]) {
-    const part = encodeHitPart(zone, helmetBlocked);
-    const back = decodeHitPart(part);
-    check(`part round-trip zone=${zone} helmetBlocked=${helmetBlocked}`, back.zone === zone && back.helmetBlocked === helmetBlocked, `part=${part}`);
+  for (const helmetBlocked of [true, false]) for (const absorbed of [true, false]) {
+    const { part, hitEnum } = encodeHitPart(zone, helmetBlocked, absorbed);
+    const back = decodeHitPart(part, hitEnum);
+    check(`part round-trip zone=${zone} helmetBlocked=${helmetBlocked}`, back.zone === zone && back.helmetBlocked === helmetBlocked, `part=${part} hitEnum=${hitEnum}`);
   }
 }
 check("helmet flag doesn't alias PART_HEAD (14) into another zone", decodeHitPart(14).zone === "head" && !decodeHitPart(14).helmetBlocked);
+check("an older peer's part bit 0x20 still reads as a helmet block", decodeHitPart(14 | 0x20).zone === "head" && decodeHitPart(14 | 0x20).helmetBlocked);
 
 console.log(fails ? `${fails} FAILED` : "all ok");
 process.exit(fails ? 1 : 0);

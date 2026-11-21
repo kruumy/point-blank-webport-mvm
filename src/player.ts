@@ -13,6 +13,7 @@ import { PB_NECK, type NeckBob, type NeckTable } from "./gameplay/pbFpsCam.gener
 import { CLIP_STRIDE } from "./game/charAnim";
 import { KCC_GROUND_PUSH, configurePbKcc, slideOffWalls, touchedGround } from "./gameplay/kcc";
 import type { Input } from "./game/input";
+import type { MapLadder } from "./game/mapProps";
 import { held, pressed } from "./game/keymap";
 import { ACTOR_COLLISION_GROUPS, KCC_QUERY, WORLD_ONLY_QUERY } from "./game/types";
 
@@ -105,6 +106,12 @@ export class Player {
   /** hit slowdown (+0x184 timer, +0x188 rate) */
   private slowLeft = 0;
   private slowRate = 1;
+  /** the map's ladder boxes (game.ts sets them from props.json) */
+  ladders: readonly MapLadder[] = [];
+  /** climbing this frame (CLadderTrigger chara state 0x10) */
+  private climbing = false;
+  private _lq = new THREE.Quaternion();
+  private _lp = new THREE.Vector3();
 
   constructor(
     world: RAPIER.World,
@@ -195,6 +202,18 @@ export class Player {
   isGrounded(): boolean {
     return this.grounded;
   }
+  onLadder(): boolean {
+    return this.climbing;
+  }
+
+  /** the ladder box holding the feet (box centre / rotation / full size; [INFERIDO] the feet point, the exe tests planes with a radius margin) */
+  private ladderAt(x: number, feetY: number, z: number): MapLadder | null {
+    for (const l of this.ladders) {
+      const p = this._lp.set(x - l.pos[0], feetY - l.pos[1], z - l.pos[2]).applyQuaternion(this._lq.set(...l.quat).invert());
+      if (Math.abs(p.x) <= l.size[0] / 2 + PB_CAPSULE.radius && Math.abs(p.y) <= l.size[1] / 2 && Math.abs(p.z) <= l.size[2] / 2 + PB_CAPSULE.radius) return l;
+    }
+    return null;
+  }
   isCrouching(): boolean {
     return this.crouching;
   }
@@ -234,6 +253,7 @@ export class Player {
     this.sinceLanding = 0;
     this.sinceStandUp = Infinity;
     this.slowLeft = 0;
+    this.climbing = false;
     this.takeoffY = feet.y;
     this.yaw = yaw;
     this.pitch = 0;
@@ -341,7 +361,23 @@ export class Player {
         }
       }
       if (apex) this.toApex(feetNow);
-      if (!this.jump) {
+      // CLadderTrigger 0x98a8e0: in the box with forward held the move update copies velocity = ladder axis x the ladder speed
+      // (0x7e4249) and nothing falls; the horizontal input stays so the climber can step off at the top [RECRIADO]. Forward starts a climb
+      // only facing the box (then keeps it, the feet may pass a thin box's centre), back goes down only once on it [INFERIDO], a jump at the foot leaves it
+      const box = flags.move && !flags.hold && !this.jump ? this.ladderAt(pos.x, feetNow, pos.z) : null;
+      const sp = this.silent ? CHARA.ladder.walk : CHARA.ladder.run;
+      const side = held(inp, "left") || held(inp, "right");
+      let climb = 0;
+      if (box && held(inp, "forward") && (this.climbing || fx * (box.pos[0] - pos.x) + fz * (box.pos[2] - pos.z) > 0)) climb = (side ? sp.diagonal : sp.front) + this.titleMove.move;
+      else if (box && held(inp, "back") && this.climbing && !this.grounded) climb = -(sp.back + this.titleMove.move);
+      const lad = climb ? box : null;
+      this.climbing = !!lad;
+      if (lad) {
+        this.jump = null;
+        this.fallT = this.fallPrev = 0;
+        this.takeoffY = feetNow;
+        dy = lad.up[1] * climb * dt;
+      } else if (!this.jump) {
         if (this.grounded && !apex) dy = KCC_GROUND_PUSH * dt * 60; // exe -0.1: see KCC_GROUND_PUSH
         else {
           this.fallT += dt;
@@ -353,7 +389,9 @@ export class Player {
       v.y = dy / dt;
 
       const wasGrounded = this.grounded;
-      const desired = { x: v.x * dt, y: dy, z: v.z * dt };
+      // going down, the back input would walk off the ladder: only the ladder axis moves
+      const hold = climb < 0 ? 0 : 1;
+      const desired = { x: (v.x * hold + (lad?.up[0] ?? 0) * climb) * dt, y: dy, z: (v.z * hold + (lad?.up[2] ?? 0) * climb) * dt };
       this.controller.computeColliderMovement(this.collider, desired, undefined, KCC_QUERY);
       let corrected = this.controller.computedMovement();
       const rising = this.jump !== null && desired.y > 0;
@@ -367,7 +405,7 @@ export class Player {
       // the primary query (which enableAutostep needs intact to climb) actually lost the ground, re-querying from
       // the same start with the already-resolved x/z but a full step-height search down; only the collision probe
       // widens, `dy`/v.y (the exe-accurate push/fall speed) stay untouched so jump/fall fidelity is unaffected.
-      if (!this.grounded && wasGrounded && !this.jump) {
+      if (!this.grounded && wasGrounded && !this.jump && !lad) {
         this.controller.computeColliderMovement(
           this.collider, { x: corrected.x, y: -PB_CAPSULE.maxStepHeight, z: corrected.z }, undefined, KCC_QUERY
         );

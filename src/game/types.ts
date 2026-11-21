@@ -48,6 +48,8 @@ export interface Actor {
   defense?: number;
   /** Game-time (s) until which the actor ignores damage (spawn protection). */
   invulnUntil: number;
+  /** Game-time (s) until which a stopped head hit keeps every hit at 0 damage (damage.ts HELMET_PROTECTION_TIME) */
+  helmetProtectUntil?: number;
   weaponName: string;
   feet(out: THREE.Vector3): THREE.Vector3;
   eye(out: THREE.Vector3): THREE.Vector3;

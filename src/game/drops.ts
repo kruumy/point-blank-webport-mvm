@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { DropField, type DroppedWeapon, type Vec3 } from "../gameplay/pbDrop";
 import { createWeaponModel } from "../weapons/worldModel";
+import { applyPbCharaLighting, createPbMtl, disposePbMtl, type PbMtl } from "../render/pbLighting";
 import { WORLD_ONLY_QUERY } from "./types";
 
 /*
@@ -23,6 +24,8 @@ interface Visual {
   vel: THREE.Vector3;
   resting: boolean;
   mats: THREE.Material[];
+  /** PB chara shader state: light volume at the drop, diffuse alpha = the fade (like CGameCharaMaterialContext::SetAlpha) */
+  mtl: PbMtl;
 }
 
 export class DropVisuals {
@@ -44,7 +47,7 @@ export class DropVisuals {
     root.position.set(pos.x, pos.y, pos.z);
     root.rotation.set(0, yaw + Math.PI / 2, 0);
     this.scene.add(root);
-    const v: Visual = { root, vel: new THREE.Vector3(fx * TOSS_SPEED, TOSS_UP, fz * TOSS_SPEED), resting: false, mats: [] };
+    const v: Visual = { root, vel: new THREE.Vector3(fx * TOSS_SPEED, TOSS_UP, fz * TOSS_SPEED), resting: false, mats: [], mtl: createPbMtl() };
     this.vis.set(w.idx, v);
     const g = (this.gen.get(w.idx) ?? 0) + 1;
     this.gen.set(w.idx, g);
@@ -60,12 +63,10 @@ export class DropVisuals {
       root.add(side);
       m.object.traverse((o) => {
         const mesh = o as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.castShadow = true;
-        const mm = Array.isArray(mesh.material) ? mesh.material.map((x) => x.clone()) : mesh.material.clone();
-        mesh.material = mm;
-        v.mats.push(...(Array.isArray(mm) ? mm : [mm]));
+        if (mesh.isMesh) mesh.castShadow = true;
       });
+      // per-drop materials (the fade sets transparent on them), so the template's are not touched
+      v.mats = applyPbCharaLighting(m.object, v.mtl);
     });
     return w;
   }
@@ -95,6 +96,7 @@ export class DropVisuals {
     if (!v) return;
     this.scene.remove(v.root);
     for (const m of v.mats) m.dispose();
+    disposePbMtl(v.mtl);
     this.vis.delete(idx);
   }
 
@@ -106,6 +108,8 @@ export class DropVisuals {
       const v = this.vis.get(d.idx);
       if (!v) continue;
       if (!v.resting) this.fall(d, v, dt);
+      v.mtl.update(v.root.position, dt);
+      v.mtl.diffuse.value.w = d.alpha;
       if (d.alpha < 1) for (const m of v.mats) {
         m.transparent = true;
         m.opacity = d.alpha;

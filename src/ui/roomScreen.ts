@@ -11,6 +11,7 @@ import { setBattleProgress } from "../game/battleLoading.ts";
 import { discardBattlePrep, runBattlePrep } from "../game/battlePrep.ts";
 import { AVAILABLE_MAPS, MAP_LABELS, loadMapIndex, mapIndexEntry } from "../config.ts";
 import { RoomCountdown, type Rgba } from "./roomCountdown.ts";
+import { TDM_SERVER_MAP_IDS } from "../lobby/core/roomModes.ts";
 import { playUiSound } from "./uiClick.ts";
 import { tOr } from "../lobby/ui/i18n.ts";
 
@@ -32,13 +33,6 @@ export interface RoomPreset {
   /** password (max 4 chars), entry restriction, observer rules byte, random-map stage flag + mask, slot count (ROOM_CREATE_REQ) */
   password?: string; limit?: number; watchRule?: number; flag?: number; randomMaps?: Uint8Array; slots?: number;
 }
-
-/** Server maps valid for Death Match (Matches.xml Match Rule="1"); ROOM_CREATE_REQ itself does not
- * validate maps, but this is the mode the room preset tiles are for. */
-const TDM_SERVER_MAP_IDS = new Set([
-  1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 18, 20, 21, 22, 23, 26, 27, 28, 29, 32, 33, 34, 35, 36, 37, 41, 42, 65, 67, 69,
-  105, 106, 107, 118, 119, 134, 136, 123, 139,
-]);
 
 const DEFAULT_MAP_ID = "nstation";
 

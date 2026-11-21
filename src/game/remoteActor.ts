@@ -153,6 +153,9 @@ export class RemoteActor implements Actor {
       this.helmetLost = false; // respawned: the equipped helmet is back
       this.protectLeft = this.protectTime; // spawn protection starts (Character.pef InvincibleTime)
     }
+    // only "off" is taken live: the states sent before the victim took the hit (and an older peer's) still say false. A snap
+    // (theater seek) takes either; a respawn puts the helmet back above
+    if (s.alive && (s.helmetOff || (snap && s.helmetOff === false))) this.helmetLost = !!s.helmetOff;
     // firing drops the protection (same rule as the local player, game.ts)
     if (s.firing && s.alive) this.protectLeft = 0;
     if (!s.alive && this.alive && s.deathPick !== undefined) this.setDeathPick(s.deathPick);
@@ -181,7 +184,8 @@ export class RemoteActor implements Actor {
     this.target.set(s.pos[0], s.pos[1], s.pos[2]);
     this.targetYaw = s.yaw;
     this.targetPitch = s.pitch ?? 0;
-    this.airborne = s.airborne;
+    // a climber is off the ground but not falling: no jump / fall pose (Cross has no climb clip)
+    this.airborne = s.ladder ? false : s.airborne;
     // the receiver's vel is a position difference over packet arrival times: jittery, it drove the stride rate
     if (s.vel) {
       if (snap) this.vel.set(s.vel[0], s.vel[1], s.vel[2]);
@@ -337,6 +341,11 @@ export class RemoteActor implements Actor {
   }
   /** Muzzle(s) of the last shot: both guns for a DualSMG / crossed HK45 Dual */
   muzzles(): THREE.Vector3[] {
+    return this.visual.muzzles();
+  }
+  /** muzzles() of the pose update() just set (the render has not refreshed the world matrices yet) */
+  muzzlesNow(): THREE.Vector3[] {
+    this.visual.root.updateWorldMatrix(true, false); // getWorldPosition updates the muzzle's own chain below it
     return this.visual.muzzles();
   }
   /** Character model root (for charModel.getBoneHitboxes). */

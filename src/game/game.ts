@@ -10,7 +10,7 @@ import { Bot, type BotHost } from "./bots";
 import { bindWeaponAnim } from "./charAnimLib";
 import { createCharVisual, preloadChara, type CharVisual } from "./charModel";
 import { DEAD_BODY_STATE, DEATH_BLEND_S, deathBone } from "./deathCam";
-import { actorHasBeret, actorHasHelmet, actorHeadgearOn, watchRespawnEquip, type RespawnAckSource } from "./charEquip";
+import { actorEquip, actorHasBeret, actorHasHelmet, actorHeadgearOn, equipKey, watchRespawnEquip, type RespawnAckSource } from "./charEquip";
 import { HelmetDrops } from "./helmetDrop";
 import { RagdollSystem, ragdolls, setRagdollSystem } from "./ragdoll";
 import { computeDamage, rangeFalloff, type RoomRule } from "./damage";
@@ -224,6 +224,8 @@ export class Game implements BotHost {
   private throwSeq = 0;
   private localThrowIdx = new WeakMap<LiveGrenade, number>();
   private remoteThrows = new Map<string, LiveGrenade>();
+  /** remote shots of this frame: flash / tracer wait for the shooter's pose of this frame (frame update, after the remotes) */
+  private remoteShots: (() => void)[] = [];
   /** net: own drops whose position is still streamed (SubHead.DroppedWeapon) until they come to rest */
   private dropStream = new Map<number, { x: number; y: number; z: number; at: number }>();
   weapons!: WeaponSystem;
@@ -362,6 +364,8 @@ export class Game implements BotHost {
   /** ?spectate=1 (F2 launcher, offline): the local player only watches; the enemy team and its HP are watchable (test aid) */
   private offlineSpectate = false;
   private rec: DemoRecorder | null = null;
+  /** head equipment last written to the demo, per actor (recState) */
+  private readonly recEquip = new Map<string, string>();
   private theater = false;
   /** Bomb Mission bots (bombBots): the site the carrier walks to this round, the carrier / defuser and the running hold */
   private botBomb: BotBombDriver<Bot> | null = null;
@@ -562,6 +566,7 @@ export class Game implements BotHost {
     });
     g.match.onPhase((ph) => g.onPhase(ph));
     const mapProps = currentMapProps();
+    g.player.ladders = mapProps?.ladders ?? [];
     if (mapProps) mapProps.onAmbient = (p, s) => g.pbWeapons()?.audio.playAt(`objects/${s.clip}`, p.center, { info: propSoundInfo(s) });
     if (mapProps) mapProps.onBreak = (p, remote) => { g.rec?.add(g.time, { k: "prop", i: p.index }); g.propBroken(p); if (!remote) g.net.sendPropBreak?.(p.index); if (!remote && g.propBreaker) g.propExplosionHurt(g.propBreaker, p); };
     g.match.addActor(g.me);
@@ -826,13 +831,15 @@ export class Game implements BotHost {
   }
 
   private applyHit(attacker: Actor, target: Actor, weapon: string, base: number, pen: number, zone: HitZone, falloff: number, point: THREE.Vector3, preScaled = false, from?: THREE.Vector3, explosion?: boolean): void {
-    this.rec?.add(this.time, { k: "hit", e: { attackerId: attacker.id, victimId: target.id, weapon, zone, baseDamage: base, preScaled, helmetPenetrate: pen, falloff, point: [point.x, point.y, point.z], t: 0 } });
+    // recorded once the helmet roll is known (a replay pops the helmet from it) and before any kill it causes
+    const rec = (helmetBlocked: boolean) => this.rec?.add(this.time, { k: "hit", e: { attackerId: attacker.id, victimId: target.id, weapon, zone, baseDamage: base, preScaled, helmetPenetrate: pen, falloff, point: [point.x, point.y, point.z], t: 0, helmetBlocked } });
     this.noteDeathHit(attacker, target, weapon, base, zone, point, from, explosion);
     if (target.kind === "remote") {
       // Client-authoritative: tell the victim's client; it applies damage and reports the kill.
       const now = this.time;
       const wasAlive = target.alive;
       const res = computeDamage({ target, attacker, base, zone, helmetPenetrate: pen, falloff, preScaled, now, room: this.room }); this.match.addDamage(attacker.id, res.dealt);
+      rec(res.helmetBlocked);
       // the victim's own state decides death: a predicted kill here would flip alive false -> true on the next state,
       // which RemoteActor.apply reads as a respawn (spawn-protection blink + helmet back on the head next to the dropped one)
       target.alive = wasAlive;
@@ -851,12 +858,13 @@ export class Game implements BotHost {
       if (attacker === this.me) this.hud.hitmarker(zone === "head" ? "head" : "hit");
       return;
     }
-    this.applyHitLocal(attacker, target, weapon, base, pen, zone, falloff, point, preScaled, false);
+    this.applyHitLocal(attacker, target, weapon, base, pen, zone, falloff, point, preScaled, false, rec);
   }
 
   /** The damage of a hit lands on an actor this client owns (itself, or a bot it hosts). `fromNet`: a remote player's hit on our bot. */
-  private applyHitLocal(attacker: Actor, target: Actor, weapon: string, base: number, pen: number, zone: HitZone, falloff: number, point: THREE.Vector3, preScaled: boolean, fromNet: boolean): void {
+  private applyHitLocal(attacker: Actor, target: Actor, weapon: string, base: number, pen: number, zone: HitZone, falloff: number, point: THREE.Vector3, preScaled: boolean, fromNet: boolean, rec?: (helmetBlocked: boolean) => void): void {
     const res = computeDamage({ target, attacker, base, zone, helmetPenetrate: pen, falloff, preScaled, now: this.time, room: this.room }); this.match.addDamage(attacker.id, res.dealt);
+    rec?.(res.helmetBlocked);
     // online AI room: the other peers see a hit of ours on a bot as a hit on its slot (helmet pop, kill-feed weapon)
     if (!fromNet && target.kind === "bot" && this.net.mode === "net") {
       this.net.sendHit({ attackerId: attacker.id, victimId: target.id, weapon, zone, baseDamage: base, preScaled, helmetPenetrate: pen, falloff, point: [point.x, point.y, point.z], t: this.time, helmetBlocked: res.helmetBlocked });
@@ -1916,7 +1924,7 @@ export class Game implements BotHost {
       // WeaponSync carries the item id: its weapons.json name (HUD / kill feed / fire sound by name)
       const held = s.weaponId ? this.pbWeapons()?.db.def(s.weaponId) : undefined;
       if (held && held.name !== s.weapon) s = { ...s, weapon: held.name };
-      this.rec?.add(this.time, { k: "state", s });
+      this.recState(s);
       let r = this.remotes.get(s.id);
       if (r) {
         r.fireGap = held?.fireDelay ?? 0;
@@ -1950,9 +1958,14 @@ export class Game implements BotHost {
           if (hit.colliderHandle !== undefined && !hit.actorId && hit.distance <= def.range) this.damageMapProp(hit.colliderHandle, def.params.damage, null);
           this.grazeMe(ra, tEye, tDir, def.range);
           // watched in FPS: his body is hidden, the tracer starts at the arms' muzzle and the flash is observeFire's
-          const fps = this.watchedInFps(ra) ? this.pbWeapons()?.observedMuzzles() : null;
-          (fps ?? ra.muzzles()).forEach((m, i) => this.pbWeapons()?.worldShot(def.id, m, hit.point, i === 0 && hit.distance < Infinity
-            ? { normal: hit.normal, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null, { flash: !fps, tint: this.muzzleTintOfId(ra.id) }));
+          // the state that fires arrives before the body takes this frame's pose: its gun still sat where the last frame drew it
+          // (a raised dual pistol or a sniper's barrel ~0.5 m away), so the flash and tracer start once the remotes are updated
+          const to = hit.point.clone(), impact = hit.distance < Infinity ? { normal: hit.normal?.clone() ?? null, actor: !!hit.actorId, colliderHandle: hit.colliderHandle } : null;
+          this.remoteShots.push(() => {
+            if (this.remotes.get(ra.id) !== ra) return; // left (or was dropped by a seek) before the frame drew it
+            const fps = this.watchedInFps(ra) ? this.pbWeapons()?.observedMuzzles() : null;
+            (fps ?? ra.muzzlesNow()).forEach((m, i) => this.pbWeapons()?.worldShot(def.id, m, to, i === 0 ? impact : null, { flash: !fps, tint: this.muzzleTintOfId(ra.id) }));
+          });
         };
         // the others hear the plant / defuse hold (WM_C4_Take / disarm clip) from the holder's position
         ra.onBombHold = (kind) => {
@@ -2150,12 +2163,25 @@ export class Game implements BotHost {
       running: moving && !this.player.isSilent(),
       moveDir: moveDir8(v, this.player.yaw),
       airborne: this.me.alive && !this.player.isGrounded(),
+      helmetOff: this.me.helmetLost,
+      ladder: this.me.alive && this.player.onLadder(),
       zoomType: this.netAiming && (this.shadowVisual.anim?.zoomCapable ?? false) ? 2 : 0,
       chara: this.localChara,
       t: performance.now(),
     };
     this.net.sendState(st);
-    this.rec?.add(this.time, { k: "state", s: st });
+    this.recState(st);
+  }
+
+  /** a state into the demo, after the actor's head equipment when it changed (5138 per respawn): the theater draws the helmet it pops */
+  private recState(s: PlayerState): void {
+    if (!this.rec) return;
+    const eq = actorEquip(s.id);
+    if (eq && this.recEquip.get(s.id) !== equipKey(eq)) {
+      this.recEquip.set(s.id, equipKey(eq));
+      this.rec.add(this.time, { k: "equip", id: s.id, eq });
+    }
+    this.rec.add(this.time, { k: "state", s });
   }
 
   // ---- Frame ----
@@ -2324,6 +2350,7 @@ export class Game implements BotHost {
       }
     }
     for (const r of this.remotes.values()) r.update(dt);
+    for (const shot of this.remoteShots.splice(0)) shot();
     perfBots.loop += performance.now() - tBots;
 
     // Dropped weapons: lifetime / fall, and the automatic pick-up search (0xa11f40, every 0.25 s)
@@ -2351,7 +2378,7 @@ export class Game implements BotHost {
     if (this.netSendIn <= 0) {
       this.netSendIn = 0.05;
       this.sendState();
-      if (this.rec) for (const b of this.bots) this.rec.add(this.time, { k: "state", s: b.netState() });
+      if (this.rec) for (const b of this.bots) this.recState(b.netState());
     }
     // the room's bots (this client is the match host): one record each, 25 Hz, a hit or a death goes out at once
     if (this.bots.length && this.net.botSendDue?.()) this.net.sendBotStates?.(this.bots.map((b) => b.netState()));
@@ -2460,6 +2487,8 @@ export class Game implements BotHost {
     // grenades, smoke, holes and blasts of the time left behind (same reset as a round start)
     this.pbWeapons()?.resetRound();
     this.remoteThrows.clear();
+    this.remoteShots.length = 0;
+    this.helmetDrops.clear(); // the helmetOff of each state decides the heads; a pop in the replay window drops it again
   }
 
   private dropRemote(id: string): void {

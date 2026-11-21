@@ -78,14 +78,24 @@ export function loadAnim3pv(skel = "swat_male"): Promise<Anim3pvIndex | null> {
 }
 
 /** Pure: AI name for a weapon id/name (null = not in the table). */
+const weaponAi = (ix: Anim3pvIndex, key: string | number): string | undefined => ix.weapons[String(key)] ?? ix.names[norm(String(key))];
+
 export function aiForWeapon(ix: Anim3pvIndex, key: string | number, cls: UpperClass): string {
-  const k = String(key);
-  const hit = ix.weapons[k] ?? ix.names[norm(k)];
+  const hit = weaponAi(ix, key);
   // dual-wield AIs (DualHandGun/..., DualSMG/...) have Left*/Right* layers instead of Idle: bindWeaponAnim merges them
   const A = hit ? ix.ai[hit]?.stances.AttackIdle : undefined;
   if (A?.Idle || (A?.RightIdle && A.LeftIdle)) return hit!;
   const fb = CLASS_FALLBACK_AI[cls];
   return ix.ai[fb] ? fb : Object.keys(ix.ai)[0];
+}
+
+/** The weapon's own 3PV AI is a dual-wield tree (Left/Right layers, no Idle): a gun in each hand even when its class is a
+ *  single one (202025 HK45 Dual: HandGun class, DualHandGun/HK45 tree, as its 1PV). */
+export async function dualTreeOf(key: string | number, skel = "swat_male"): Promise<boolean> {
+  const ix = await loadAnim3pv(skel);
+  const hit = ix ? weaponAi(ix, key) : undefined;
+  const A = hit ? ix!.ai[hit]?.stances.AttackIdle : undefined;
+  return !!(A && !A.Idle && A.RightIdle && A.LeftIdle);
 }
 
 /** Pure: every clip key an AI (both stances) and the lower table need. */

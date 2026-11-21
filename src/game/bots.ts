@@ -296,7 +296,7 @@ export class Bot implements Actor {
       id: this.id, name: this.name, team: this.team, pos: [_c.x, _c.y, _c.z], vel: [this.vel.x, this.vel.y, this.vel.z], yaw: this.yawV, pitch: this.pitchV,
       crouch: this.crouch, alive: this.alive, hp: this.alive ? this.hp : 0, weapon: this.weapon.name, weaponSlot: 0, // no weaponId: the net layer looks the item id up by name (battle.ts WEAPON_IDS)
       firing: this.firingT > 0, torsoAction, moving, running: moving && speed > 3.5, airborne: this.alive && !this.grounded,
-      zoomType: this.zoom ? 2 : 0, bot: true, t: performance.now(),
+      zoomType: this.zoom ? 2 : 0, bot: true, helmetOff: this.helmetLost, t: performance.now(),
     };
   }
 

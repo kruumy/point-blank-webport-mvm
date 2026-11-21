@@ -626,7 +626,7 @@ export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): T
  * Swaps every mesh material under `root` for the PB chara shader bound to `mtl` (a character and its 3rd-person
  * weapon share one PbMtl, like the chara's material context drives both). Already-converted materials are kept.
  */
-export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl): void {
+export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl): THREE.Material[] {
   const done = new Map<THREE.Material, THREE.Material>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -642,6 +642,7 @@ export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl): void {
     };
     mesh.material = Array.isArray(mesh.material) ? mesh.material.map(conv) : conv(mesh.material);
   });
+  return [...done.values()]; // the materials made here (owned by the caller), not the kept PB ones
 }
 
 // ---- light volume (i3World LightVolumeCollision, <Map>_Light.i3s) --------------------------------------------------

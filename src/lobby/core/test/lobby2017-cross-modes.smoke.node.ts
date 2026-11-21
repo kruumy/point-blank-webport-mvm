@@ -41,8 +41,8 @@ check("modeIndex(96, 4, 0) still = Deathmatch Sniper", ROOM_MODES[modeIndex(96, 
 check("modeLabel(32, 0) / modeLabel(80, 0) name the two modes", modeLabel(32, 0) === "HeadHunter" && modeLabel(80, 0) === "Caos");
 
 // ---- rotation: the same maps the server's getMapLimit accepts for the rule (DB mode 8 / 15)
-check("HeadHunter rotation = 10 maps of mode 8", JSON.stringify(HEADHUNTER_MAP_IDS) === "[1,2,4,5,7,9,10,23,29,67]");
-check("Chaos rotation = 10 maps of mode 15", JSON.stringify(CHAOS_MAP_IDS) === "[1,2,4,7,9,10,20,23,42,67]");
+check("HeadHunter rotation = 10 maps of mode 8 + 24 Cross maps", JSON.stringify(HEADHUNTER_MAP_IDS) === "[1,2,4,5,7,9,10,23,29,67,71,38,56,8,76,83,77,66,84,80,70,79,78,57,53,55,54,49,150,151,152,153,154,155]");
+check("Chaos rotation = 10 maps of mode 15 + 24 Cross maps", JSON.stringify(CHAOS_MAP_IDS) === "[1,2,4,7,9,10,20,23,42,67,71,38,56,8,76,83,77,66,84,80,70,79,78,57,53,55,54,49,150,151,152,153,154,155]");
 
 // ---- create window: the special-war rows open the mode, with its own map list
 const ctl = new Lobby2017({ serverUrl: "ws://127.0.0.1:0", username: "test", token: new Uint8Array(), render: () => {}, onBattle: () => {}, onLocalPlay: () => {}, onExit: () => {} });
@@ -64,10 +64,12 @@ check("Bomb Knife killTime = rounds default (0x03)", cr().killTime === 0x03, cr(
 check("the Bomb variant rotation = the plain Bomb list", JSON.stringify(modeStageChoices(bombVariants[0])) === JSON.stringify(stageChoices(true)));
 
 // ---- Custom Mode combo: specials after the Deathmatch presets (existing picks keep their index)
-const special = modeGroups(cr()).special.map((i) => modeText(ROOM_MODES[i]));
+// string keys, not texts: the exported strings can be in any language
+const special = modeGroups(cr()).special.map((i) => ROOM_MODES[i].text);
 check("special combo = Sniper, Shotgun, Faca, HeadHunter, Caos, then the bomb variants",
-  JSON.stringify(special) === JSON.stringify(["Modo Sniper", "Shotgun", "Modo Faca", "HeadHunter", "Caos", "Destruição Sniper", "Destruição Shotgun", "Destruição Faca", "Sabotagem Sniper", "Sabotagem Shotgun", "Sabotagem Faca"]), JSON.stringify(special));
-check("normal list = Deathmatch, Challenge, Destruição, Sabotagem, Defesa", JSON.stringify(modeGroups(cr()).normal.map((i) => modeText(ROOM_MODES[i]))) === '["Deathmatch","Challenge","Destruição","Sabotagem","Defesa"]');
+  JSON.stringify(special) === JSON.stringify(["modeSniper", "modeShotgun", "modeKnife", "modeHeadHunter", "modeChaos", "modeBombSniper", "modeBombShotgun", "modeBombKnife", "modeDestroySniper", "modeDestroyShotgun", "modeDestroyKnife"]), JSON.stringify(special));
+const normal = modeGroups(cr()).normal.map((i) => ROOM_MODES[i].text);
+check("normal list = Deathmatch, Challenge, Destruição, Sabotagem, Defesa", JSON.stringify(normal) === JSON.stringify(["deathmatch", "modeBots", "modeBomb", "modeDestroy", "modeDefence"]), JSON.stringify(normal));
 
 // ---- Cross special-war window: the HeadHunter and Chaos rows are live buttons now
 const rowOf = (m: string) => SPECIAL_WAR.find((r) => r.mode === m);

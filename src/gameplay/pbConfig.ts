@@ -75,13 +75,13 @@ export const PB_CHARA: PbCharacter = {
   // (Ladder01..03). CLadderTrigger update 0x98a8e0 sets chara state 0x10 (0x4ded60) while the climber is in the box with
   // forward input; on 0x10 the move update copies (0x7e4249, not adds) velocity = ladder axes x speed, clamped to the
   // maxSpeed +0x180 (0x7e4573). The bonus +0xc98 is only the title Move_Ability (0x766cbe -> 0x53f8d0), so without that
-  // title the original Cross climber stands still: Cross ladders are not climbable, and 0 is the exe value, not a gap.
-  // The web exports no ladder triggers and has no ladder state, so nothing reads this and nothing climbs a ladder (at a
-  // Cross ladder the web capsule just walks into the wall, same height outcome). Not ported: the freeze in the box while
-  // forward is held, and the slow climb at the title Move_Ability speed.
+  // title the original Cross climber stands still: Cross ladders are not climbable, and 0 is the exe value.
+  // The web climbs them anyway (design choice) at the 3.123 Movement_ladder speeds, run 5.5 / 5 and walk 3.6 / 3.4
+  // [INFERIDO: front = the first value, side / diagonal / back = the second]. The boxes are export-props.mjs `ladders`
+  // (props.json); player.ts climbs along their up axis while forward is held in the box.
   ladder: {
-    run: { front: 0, side: 0, diagonal: 0, back: 0 },
-    walk: { front: 0, side: 0, diagonal: 0, back: 0 },
+    run: { front: 5.5, side: 5, diagonal: 5, back: 5 },
+    walk: { front: 3.6, side: 3.4, diagonal: 3.4, back: 3.4 },
   },
   speedReduction: {
     body: { pct: 0, time: 0 }, arm: { pct: 0, time: 0 }, hand: { pct: 0, time: 0 }, leg: { pct: 0, time: 0 }, foot: { pct: 0, time: 0 },

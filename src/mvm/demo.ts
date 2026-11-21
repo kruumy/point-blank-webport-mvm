@@ -1,3 +1,4 @@
+import type { HeadEquip } from "../game/actorEquip";
 import type { HitEvent, KillEvent, PlayerState, ThrowEvent } from "../game/netAdapter";
 
 /** [RECRIADO] Point Blank has no demo format: a demo here is what a guest of the match receives (net/battle.ts), the
@@ -9,7 +10,9 @@ export type DemoEvent =
   | { k: "hit"; e: HitEvent }
   | { k: "throw"; e: ThrowEvent }
   | { k: "prop"; i: number }
-  | { k: "leave"; id: string };
+  | { k: "leave"; id: string }
+  /** the actor's head items from its 5138 (actorEquip.ts); absent in older demos = bare heads */
+  | { k: "equip"; id: string; eq: HeadEquip };
 /** t = seconds since the first record */
 export type DemoRecord = DemoEvent & { t: number };
 
@@ -19,6 +22,8 @@ export interface DemoHeader {
   deaths?: Record<string, string>;
   /** [RECRIADO] theater edits: character itemId by actor id, over the recorded one */
   charas?: Record<string, number>;
+  /** [RECRIADO] theater edits: head / beret item by actor id over the recorded ones (0 = no item: the character's default helmet) */
+  hats?: Record<string, { head: number; beret: number }>;
 }
 export interface Demo extends DemoHeader { name: string; dur: number; recs: DemoRecord[] }
 
@@ -39,7 +44,11 @@ export class DemoRecorder {
   private count = 0;
   private closed = false;
 
-  constructor(private readonly head: Omit<DemoHeader, "v" | "date">) {
+  private readonly head: Omit<DemoHeader, "v" | "date">;
+
+  // a plain field, not a parameter property: node's type stripping (src/net/test) cannot run those
+  constructor(head: Omit<DemoHeader, "v" | "date">) {
+    this.head = head;
     this.line({ v: 1, date: new Date().toISOString(), ...head });
   }
 

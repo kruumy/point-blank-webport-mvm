@@ -5,6 +5,7 @@ import { DEMO_API, deleteDemo, listDemos, renameDemo, saveDemo, type DemoListing
 import type { DemoNet } from "./demoNet";
 import { Post } from "./post";
 import { charaChoices } from "../game/charModel";
+import { actorEquip, hatChoices } from "../game/charEquip";
 import { brightnessFactor } from "../gameplay/settings";
 import { LookStage, deleteLook, listLooks, listSkies, readLook, writeLook, type Look } from "./looks";
 
@@ -110,6 +111,7 @@ export class Theater {
   /** the body the outline was made for: a model swap replaces it */
   private outlineRoot: THREE.Object3D | null = null;
   private charas: { itemId: number; label: string }[] = [];
+  private hats: { itemId: number; slot: "head" | "beret"; label: string }[] = [];
   private dirty = false;
   private readonly looks: LookStage;
   /** saved looks / maps with a sky; null = not fetched yet */
@@ -474,6 +476,12 @@ export class Theater {
         this.setDirty(true);
         this.seek(this.time); // the seek replays each actor's last state, now with the new character
       }
+      else if (t.name === "hat" && this.editId) {
+        // "" = recorded, "0" = bare head, else "<slot>:<itemId>"
+        const [slot, id] = t.value.split(":");
+        this.net.setHat(this.editId, t.value === "" ? null : { head: slot === "head" ? +id : 0, beret: slot === "beret" ? +id : 0 });
+        this.setDirty(true);
+      }
       else if (t.name === "deathclip" && t.dataset.key) {
         this.net.setDeathClip(t.dataset.key, t.value || null);
         this.setDirty(true);
@@ -717,13 +725,20 @@ export class Theater {
     const death = this.net.deathAt(id, this.time), ch = this.net.charaOf(id);
     if ((a?.charVisual.root ?? null) !== this.outlineRoot) this.setOutline(id); // the model was swapped in
     // redrawn only when what it shows changes: a rebuild would close an open dropdown
-    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}`;
+    const hat = this.net.hatOf(id), worn = actorEquip(id);
+    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}`;
     if (sig === this.editSig) return;
     this.editSig = sig;
     if (!this.charas.length) void charaChoices().then((c) => { this.charas = c; });
+    if (!this.hats.length) void hatChoices().then((h) => { this.hats = h; });
     const rec = ch.edited ? undefined : ch.chara;
     const model = `<div class="hint">Model</div><select name="chara"><option value="">Recorded${rec ? ` (${esc(this.charas.find((c) => c.itemId === rec)?.label ?? String(rec))})` : ""}</option>
       ${this.charas.map((c) => `<option value="${c.itemId}" ${ch.edited && c.itemId === ch.chara ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select>`;
+    const recHat = hat ? undefined : this.hats.find((h) => h.itemId === (worn?.head || worn?.beret));
+    const pickedHat = hat && (hat.head || hat.beret);
+    const hats = `<div class="hint">Hat</div><select name="hat"><option value="">Recorded${recHat ? ` (${esc(recHat.label)})` : ""}</option>
+      <option value="0" ${hat && !pickedHat ? "selected" : ""}>No item (default helmet)</option>
+      ${this.hats.map((h) => `<option value="${h.slot}:${h.itemId}" ${pickedHat === h.itemId ? "selected" : ""}>${esc(h.label)}</option>`).join("")}</select>`;
     let body: string;
     if (!death || !a || a.alive || !anim) body = `<div class="hint">Not in a death animation now. Pause on a death to change it.</div>`;
     else {
@@ -732,7 +747,7 @@ export class Theater {
         <select name="deathclip" data-key="${esc(death.key)}"><option value="">Recorded</option>
         ${clips.map((c) => `<option value="${esc(c)}" ${c === death.clip ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`;
     }
-    el.innerHTML = `<div class="row"><b style="flex:1">${esc(name)}</b><button data-a="focusActor" title="Depth of field: keep this player in focus">Focus</button><button data-a="closeEdit">✕</button></div>${model}${body}`;
+    el.innerHTML = `<div class="row"><b style="flex:1">${esc(name)}</b><button data-a="focusActor" title="Depth of field: keep this player in focus">Focus</button><button data-a="closeEdit">✕</button></div>${model}${hats}${body}`;
   }
 
   /** outline copies of the selected body's meshes, children of each one (same transform, same skeleton) */

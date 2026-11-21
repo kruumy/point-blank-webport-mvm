@@ -31,13 +31,19 @@ export async function loadMaps(): Promise<void> {
   maps.matches = (await pool.query(`SELECT * FROM system_map_matches ORDER BY seq ASC`)).rows.map((x) => ({ id: Number(x.map_id), mode: Number(x.mode_id), limit: Number(x.map_limit), tag: Number(x.tag), name: String(x.name) }));
   maps.rules = (await pool.query(`SELECT * FROM system_map_rules ORDER BY seq ASC`)).rows.map((x) => ({ id: Number(x.mode_id), rule: Number(x.rule), stageOptions: Number(x.stage_options), conditions: Number(x.conditions), name: String(x.name) }));
 }
-/** SystemMapXML.GetMapLimit. */
-export function getMapLimit(mapId: number, rule: number): MapMatch | null {
+/** SystemMapXML.GetMapLimit. With `roomType` the first row whose mode also has that Conditions wins, else the first row of the
+ * rule (the C#); [RECRIADO] so Tutorial 57 in a Deathmatch room gets its Deathmatch row, not the Tutorial row (limit 1). Not
+ * keyed on the stage options: Crack Down's AI.D row (16) would then replace the Deathmatch row (8) every bot room had. */
+export function getMapLimit(mapId: number, rule: number, roomType?: number): MapMatch | null {
+  let byRule: MapMatch | null = null;
   for (const m of maps.matches) {
     if (m.id !== mapId) continue;
-    if (maps.rules.some((r) => r.id === m.mode && r.rule === rule)) return m;
+    const modes = maps.rules.filter((r) => r.id === m.mode && r.rule === rule);
+    if (modes.length === 0) continue;
+    if (roomType === undefined || modes.some((r) => r.conditions === roomType)) return m;
+    byRule ??= m;
   }
-  return null;
+  return byRule;
 }
 
 /**
@@ -258,7 +264,7 @@ export class RoomModel {
 
   /** RoomModel.SetSlotCount. */
   setSlotCount(count: number, isCreate: boolean, isUpdate: boolean): void {
-    const ml = getMapLimit(this.mapId, this.rule);
+    const ml = getMapLimit(this.mapId, this.rule, this.roomType);
     if (!ml) return;
     if (count > ml.limit) count = ml.limit;
     if (this.roomType === RoomCondition.Tutorial) count = 1;

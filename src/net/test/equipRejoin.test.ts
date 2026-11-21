@@ -32,7 +32,8 @@ function setup() {
   const record = (slot: number) => net.onActions([{ slot, flags: 0, posRot: { x: 1, y: 0, z: 2, yaw: 0, pitch: 0, area: 0 }, hp: 100, actionState: { action: 0, value: 0, weaponFlag: 0 } }]);
   return { net, room, slots, asked, equipOf, seen, left, record };
 }
-const tick = () => new Promise((r) => setTimeout(r, 5));
+// immediates run in queue order: this one runs after the 3667 answer requestEquip queued (a short timer could fire first)
+const tick = () => new Promise((r) => setImmediate(r));
 
 test("B learns A's new character when A leaves and re-enters with other equipment", async () => {
   const { net, room, slots, asked, equipOf, seen, left, record } = setup();

@@ -10,6 +10,9 @@
 //                    ad hoc bits 0x0001/0x0002 that the real client neither writes nor understands):
 //                      action bits 0-1  : posture   (0 stand, 1 crouch; 2-3 reserved)
 //                      action bits 2-9  : weaponSlot (equip slot in hand, exe netdata +0x38)
+//                      action bit 5     : AI slot (web extension, FLAG_BOT)
+//                      action bit 6     : helmet off this life (web extension, FLAG_HELMET_OFF)
+//                      action bit 7     : on a ladder (web extension, FLAG_LADDER)
 //                      action bit 8    : airborne (jump / fall; web extension: the receiver has no velocity on the wire and vel.y from
 //                                         position deltas reads stairs as jumps)
 //                      action bit 9    : RMB extension on (weapon slots only use bits 2-4; web extension, not in the original wire)
@@ -154,6 +157,10 @@ const FLAG_RUNNING = 0x8000;
 /** web extension (slots only use bits 2-4): this record is an AI slot simulated by the match host. Every peer learns "this slot is
  *  a bot" from it (no registry on the wire): kills involving a bot come from the dead-state mark, not from Server.Game's DEATH_ACK. */
 const FLAG_BOT = 0x0020;
+/** web extension (slots only use bits 2-4): the helmet-slot accessory popped off this life (PlayerState.helmetOff) */
+const FLAG_HELMET_OFF = 0x0040;
+/** web extension: the sender is climbing a ladder (PlayerState.ladder) */
+const FLAG_LADDER = 0x0080;
 /** kill mark (ActionState.value & 0x7f) of a death with no killer slot (fall, world): killer slot 126 can never be a player */
 const MARK_NO_KILLER = 0x7f;
 /** AI records per datagram (the core relays <= 18 records a datagram; also keeps one under any WebRTC message limit) */
@@ -168,17 +175,20 @@ const PROP_ID_BASE = 0x8000;
 const PART_HEAD = 14;
 const ZONE_PART: Record<HitZone, number> = { head: PART_HEAD, torso: 1, limb: 2 };
 const PART_ZONE_MASK = 0x1f;
-/** HitData.part only ever carries 1/2/14 (web zones) here, so this unused bit rides along for HELMET PROTECTION:
- *  Server.Match relays HitData (ObjectType.UserObject) untouched, so every peer decodes the same popHelmet trigger. */
+/** a part bit no zone uses: the helmet popped off but the hit went through (and what older web peers sent for every pop) */
 const PART_HELMET_BIT = 0x20;
+/** HitIndex bits 17-19 HitType.HelmetProtection: the helmet stopped the hit (0 damage). Web hits are UserObject, which matchCore
+ *  relays before any damage, so only the peers read it */
+const HIT_HELMET_PROTECTION = 3;
 const PART_ZONE = (p: number): HitZone => (p === PART_HEAD ? "head" : p === 2 ? "limb" : "torso");
-/** HitEvent.zone/helmetBlocked <-> HitData.part (see PART_HELMET_BIT above). */
-export const encodeHitPart = (zone: HitZone, helmetBlocked: boolean): number => ZONE_PART[zone] | (helmetBlocked ? PART_HELMET_BIT : 0);
-export const decodeHitPart = (part: number): { zone: HitZone; helmetBlocked: boolean } =>
-  ({ zone: PART_ZONE(part & PART_ZONE_MASK), helmetBlocked: (part & PART_HELMET_BIT) !== 0 });
+/** HitEvent.zone/helmetBlocked <-> HitData part + HitIndex helmet field */
+export const encodeHitPart = (zone: HitZone, helmetBlocked: boolean, absorbed: boolean): { part: number; hitEnum: number } =>
+  ({ part: ZONE_PART[zone] | (helmetBlocked && !absorbed ? PART_HELMET_BIT : 0), hitEnum: helmetBlocked && absorbed ? HIT_HELMET_PROTECTION : 0 });
+export const decodeHitPart = (part: number, hitEnum = 0): { zone: HitZone; helmetBlocked: boolean } =>
+  ({ zone: PART_ZONE(part & PART_ZONE_MASK), helmetBlocked: hitEnum === HIT_HELMET_PROTECTION || (part & PART_HELMET_BIT) !== 0 });
 
 /** PlayerState -> the events every state packet carries (ActionState + PosRotation + HpSync); `mark` = the dead-state kill marker */
-function packState(s: PlayerState, mark: number, bot: boolean): ActionOut {
+export function packState(s: PlayerState, mark: number, bot: boolean): ActionOut {
   const speed = Math.hypot(s.vel[0], s.vel[2]);
   const moving = s.moving ?? speed > 0.15;
   const running = s.running ?? speed > 3.5;
@@ -188,6 +198,8 @@ function packState(s: PlayerState, mark: number, bot: boolean): ActionOut {
     (s.crouch ? POSTURE_CROUCH : 0) |
     ((wslot & 7) << WEAPON_SLOT_SHIFT) |
     (bot ? FLAG_BOT : 0) |
+    (s.helmetOff ? FLAG_HELMET_OFF : 0) |
+    (s.ladder ? FLAG_LADDER : 0) |
     (s.ext ? FLAG_EXT : 0) |
     (s.airborne ? FLAG_AIRBORNE : 0) |
     ((torso & TORSO_MASK) << TORSO_SHIFT) |
@@ -202,13 +214,18 @@ function packState(s: PlayerState, mark: number, bot: boolean): ActionOut {
   };
 }
 
+/** the web-extension state bits of a received ActionState.action (packState) */
+export const stateBits = (act: number, alive: boolean): Pick<PlayerState, "helmetOff" | "ladder"> =>
+  ({ helmetOff: alive && (act & FLAG_HELMET_OFF) !== 0, ladder: alive && (act & FLAG_LADDER) !== 0 });
+
 /** HitEvents -> HitData records (the hit's own weapon, else the one in hand) */
 function toHitInfos(hits: HitEvent[], inHand: number) {
   return hits.map((h) => ({
     start: h.point, end: h.point,
     victimSlot: idSlot(h.victimId),
     damage: Math.max(1, Math.min(2047, Math.round(h.baseDamage * (h.falloff || 1)))),
-    part: encodeHitPart(h.zone, !!h.helmetBlocked),
+    // only a pre-rolled 0 is known to be absorbed; any other pop is sent as "went through"
+    ...encodeHitPart(h.zone, !!h.helmetBlocked, !!h.preScaled && h.baseDamage === 0),
     objectType: OBJECT_USER_OBJECT,
     weaponId: hitWeaponId(h.weapon, inHand),
   })).filter((h) => h.victimSlot >= 0);
@@ -839,7 +856,7 @@ export class PbBattleNet implements NetAdapter {
             if (h.victimSlot >= PROP_ID_BASE && a.slot !== me) for (const cb of this.propBreakCbs) cb(h.victimSlot - PROP_ID_BASE);
             continue;
           }
-          const { zone, helmetBlocked } = decodeHitPart(h.part);
+          const { zone, helmetBlocked } = decodeHitPart(h.part, h.hitEnum);
           this.lastHitBy.set(h.victimSlot, { by: a.slot, weaponId: h.weaponId });
           const e: HitEvent = {
             attackerId: slotId(a.slot), victimId: slotId(h.victimSlot), weapon: weaponName(h.weaponId),
@@ -876,6 +893,7 @@ export class PbBattleNet implements NetAdapter {
         torsoAction: torso,
         ext: alive ? (act & FLAG_EXT) !== 0 : false,
         airborne: alive && (act & FLAG_AIRBORNE) !== 0,
+        ...stateBits(act, alive),
         moving,
         running,
         moveDir: alive ? value & 0x0f : prev?.moveDir ?? 0,
