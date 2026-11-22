@@ -319,6 +319,11 @@ export const AI_GRADE_KEYS = ["J", "I", "H", "G", "F", "E", "D", "C", "B", "A"].
  * entry hides the control (0x7a74b6). The random map (create window with rrCheckRandomMap on: 0x5230e0 -> 0x7a75d0) = cell 26.
  */
 export const MAP_SHAPE = { w: 166, h: 88, cols: 3, perTex: 65, random: 26, atlas: (n: number) => `interface_ui_source_mapimage${n}` } as const;
+export function mapShapeCell(idx: number): { tex: number; u: number; v: number } {
+  const q = Math.floor(idx / MAP_SHAPE.perTex), rest = idx % MAP_SHAPE.perTex;
+  const [tex, cell] = q > 0 && rest !== 0 ? [q + 1, rest - 1] : [1, idx];
+  return { tex, u: (cell % MAP_SHAPE.cols) * (MAP_SHAPE.w + 1) + 1, v: Math.floor(cell / MAP_SHAPE.cols) * (MAP_SHAPE.h + 1) + 1 };
+}
 
 /** Cross Stage.pef (Script.i3Pack Config/Stage.pef) Stage/<name>/_UIShapeIndex, the same in every nation slot; key = stage
  * name in lower case (= the pack name of public/assets/maps/index.json). Lobby (-1) and _N/A left out. */

@@ -2,7 +2,11 @@ import type { Plugin } from "vite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
+import { gunzip } from "node:zlib";
 import { join, resolve } from "node:path";
+import type { DemoInfo } from "../src/mvm/demo.ts";
 
 const ROOT = resolve("mvm");
 const DIRS = { demos: join(ROOT, "demos"), looks: join(ROOT, "looks"), movies: join(ROOT, "movies") };
@@ -35,6 +39,31 @@ function keepAlive(jid: string, job: Job): void {
   job.idle = setTimeout(() => { jobs.delete(jid); job.proc.stdin.end(); }, IDLE_MS);
 }
 const jobs = new Map<string, Job>();
+
+// the demo browser asks for every listed demo: each file is read once per change, not on every open
+const infoCache = new Map<string, { mtime: number; size: number; info: DemoInfo }>();
+const gunzipAsync = promisify(gunzip);
+// async: a long match's demo would otherwise hold up every other dev request while it unpacks
+async function demoInfo(file: string): Promise<DemoInfo> {
+  const st = statSync(file), hit = infoCache.get(file);
+  if (hit && hit.mtime === st.mtimeMs && hit.size === st.size) return hit.info;
+  const lines = (await gunzipAsync(await readFile(file))).toString("utf8").split("\n").filter(Boolean);
+  const head = JSON.parse(lines[0]) as { map: string; mode: string; date: string; pov: string };
+  const players = new Map<string, DemoInfo["players"][number]>();
+  for (let i = 1; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.includes('"k":"state"')) continue;
+    // only a new actor's line is parsed: a match is hundreds of thousands of state lines
+    const id = /"id":"((?:[^"\\]|\\.)*)"/.exec(l)?.[1];
+    if (id === undefined || players.has(JSON.parse(`"${id}"`))) continue;
+    const s = (JSON.parse(l) as { s: { id: string; name: string; team: number } }).s;
+    players.set(s.id, { id: s.id, name: s.name, team: s.team });
+  }
+  const dur = lines.length > 1 ? (JSON.parse(lines[lines.length - 1]) as { t: number }).t : 0;
+  const info = { map: head.map, mode: head.mode, date: head.date, pov: head.pov, dur, players: [...players.values()] };
+  infoCache.set(file, { mtime: st.mtimeMs, size: st.size, info });
+  return info;
+}
 
 function body(req: IncomingMessage): Promise<Buffer> {
   return new Promise((ok, fail) => {
@@ -76,6 +105,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const file = join(dir, name);
     if (m === "GET") {
       if (!existsSync(file)) return send(res, 404);
+      if (kind === "demos" && url.searchParams.has("info")) {
+        try { return send(res, 200, await demoInfo(file)); } catch (e) { return send(res, 422, { error: String(e) }); }
+      }
       res.setHeader("Content-Type", "application/octet-stream");
       createReadStream(file).pipe(res);
       return;
@@ -87,6 +119,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     if (m === "DELETE") {
       if (!existsSync(file)) return send(res, 404);
       rmSync(file);
+      infoCache.delete(file);
       return send(res, 200);
     }
     if (m === "POST") { // rename: ?to=<new name>.pbdemo, never onto another demo
@@ -95,6 +128,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       if (!existsSync(file)) return send(res, 404);
       if (existsSync(join(dir, to))) return send(res, 409, { error: "a demo with that name already exists" });
       renameSync(file, join(dir, to));
+      infoCache.delete(file);
       return send(res, 200, { name: to });
     }
     return send(res, 405);

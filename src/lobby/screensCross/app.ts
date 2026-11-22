@@ -30,7 +30,7 @@ import { UI_CLICK_SELECT, UI_POPUP_CLOSE, UI_POPUP_OPEN, UI_SCROLL_IN, UI_SCROLL
 import { CrossPages } from "./pages/index.ts";
 import { nickCss, setIcon } from "./pages/common.ts";
 import { CROSS_SLIDE_WINDOWS, CrossStage, type CrossPhase, type CrossStep, type CrossTarget } from "./slide.ts";
-import { AI_GRADE_KEYS, CHAT_TAB, CLOCK_MODES, CROSS_CLICK, CROSS_HIDDEN, CROSS_PACKS, CROSS_SOUND, CROSS_TEXT, CROSS_WINDOWS, LEVEL_ICON, MAP_SHAPE, PC_CAFE_SHAPE, RECORD_WIN, ROOM_SELECT_SOUND, ROUND_WIN_MODES, SORT_COLUMN, LIST_MODE, SERVER_CARDS, infoMode, SERVER_CARD_COLS, SERVER_CARD_COLOR, SERVER_KIND, SERVER_TABS, SERVER_TAB_TEXT, type ServerTab, ANNOUNCE_SPEED, GAUGE_LEVELS, expBar, gaugeState, SPECIAL_WAR, STAGE_SHAPE, modeTag } from "./crossMap.ts";
+import { AI_GRADE_KEYS, CHAT_TAB, CLOCK_MODES, CROSS_CLICK, CROSS_HIDDEN, CROSS_PACKS, CROSS_SOUND, CROSS_TEXT, CROSS_WINDOWS, LEVEL_ICON, MAP_SHAPE, PC_CAFE_SHAPE, RECORD_WIN, ROOM_SELECT_SOUND, ROUND_WIN_MODES, SORT_COLUMN, LIST_MODE, SERVER_CARDS, infoMode, SERVER_CARD_COLS, SERVER_CARD_COLOR, SERVER_KIND, SERVER_TABS, SERVER_TAB_TEXT, type ServerTab, ANNOUNCE_SPEED, GAUGE_LEVELS, expBar, gaugeState, SPECIAL_WAR, STAGE_SHAPE, mapShapeCell, modeTag } from "./crossMap.ts";
 import { mapFromRoomMapId, mapIndexEntry } from "../../config.ts";
 import { NICK_COLORS } from "../../game/battleChatModel.ts";
 import { markAtlas, paintMark } from "./clanMarkView.ts";
@@ -1373,9 +1373,7 @@ export class LobbyScreenCross {
     const idx = mapId === "random" ? MAP_SHAPE.random : e && e.mapId === mapId ? STAGE_SHAPE[e.pack.toLowerCase()] ?? -1 : -1;
     gui.show(box, idx >= 0);
     if (idx < 0) return;
-    const q = Math.floor(idx / MAP_SHAPE.perTex), rest = idx % MAP_SHAPE.perTex;
-    const [tex, cell] = q > 0 && rest !== 0 ? [q + 1, rest - 1] : [1, idx];
-    const u = (cell % MAP_SHAPE.cols) * (MAP_SHAPE.w + 1) + 1, v = Math.floor(cell / MAP_SHAPE.cols) * (MAP_SHAPE.h + 1) + 1;
+    const { tex, u, v } = mapShapeCell(idx);
     const key = `${tex}:${u}:${v}`, old = this.mapSprites.get(box);
     if (old?.key !== key) {
       old?.el.remove();

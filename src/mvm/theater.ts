@@ -2,7 +2,10 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import type { Game } from "../game/game";
 import { Campath, unwrap, type CamKey, type CamPose } from "./campath";
-import { DEMO_API, deleteDemo, listDemos, renameDemo, saveDemo, type DemoListing } from "./demo";
+import { DEMO_API, demoInfo, deleteDemo, listDemos, renameDemo, saveDemo, type DemoInfo, type DemoListing } from "./demo";
+import { MAP_SHAPE, STAGE_SHAPE, mapShapeCell } from "../lobby/screensCross/crossMap";
+import { assetUrl } from "../assetMap";
+import { mapIndexEntry } from "../config";
 import type { DemoNet } from "./demoNet";
 import { Post } from "./post";
 import { charaChoices } from "../game/charModel";
@@ -126,6 +129,15 @@ export class Theater {
   /** the dolly camera's place at the playhead, with a pulsing halo */
   private readonly pathHead = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), HEAD_MAT);
   private sel = -1;
+  // whole-path JSON snapshots: a campath is a handful of keys, so diffs would buy nothing
+  private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  // a timeline node drag indexes into the keys an undo would swap out
+  private keyDrag = false;
+  // cached: drawBar runs at 20 Hz and the graph samples the spline once per pixel
+  private speedSig = "";
+  private speedPts: number[] = [];
+  private speedMax = 0;
   private inPt = 0;
   private outPt: number;
   private held = new Set<string>();
@@ -189,7 +201,10 @@ export class Theater {
     this.gizmo.size = 0.8;
     this.gizmo.setSpace("local");
     this.gizmo.addEventListener("objectChange", () => this.gizmoMoved());
-    this.gizmo.addEventListener("dragging-changed", (e) => { if (!e.value) { this.gizmoDragEnd = performance.now(); this.path.unwrapAll(); this.drawSide(); } });
+    this.gizmo.addEventListener("dragging-changed", (e) => {
+      if (e.value) { this.snap(); return; }
+      this.gizmoDragEnd = performance.now(); this.path.unwrapAll(); this.snapEnd(); this.drawSide();
+    });
     this.pathViz.add(this.gizmoObj, this.gizmo.getHelper());
     this.looks = new LookStage(host.game.scene, host.renderer);
     host.game.scene.add(this.pathViz);
@@ -318,9 +333,40 @@ export class Theater {
   }
 
   // ---- campath ----
+  private snap(): void {
+    this.undoStack.push(JSON.stringify(this.path.keys));
+    if (this.undoStack.length > 200) this.undoStack.shift();
+    this.redoStack = [];
+  }
+  /** after it: an edit that changed nothing (a node clicked, a handle grabbed and let go) leaves no step */
+  private snapEnd(): void {
+    if (this.undoStack.at(-1) === JSON.stringify(this.path.keys)) this.undoStack.pop();
+  }
+  private edit(fn: () => void): void { this.snap(); fn(); this.snapEnd(); }
+
+  private history(redo: boolean): void {
+    if (this.gizmo.dragging || this.keyDrag) return;
+    const from = redo ? this.redoStack : this.undoStack, s = from.pop();
+    if (s === undefined) { this.toast(redo ? "Nothing to redo" : "Nothing to undo", 800); return; }
+    (redo ? this.undoStack : this.redoStack).push(JSON.stringify(this.path.keys));
+    const selT = this.path.keys[this.sel]?.t;
+    this.path.keys = JSON.parse(s) as CamKey[];
+    if (this.path.keys[this.sel]?.t !== selT) this.sel = -1; // an add, removal or retime shifted the indices
+    if (this.mode === "dolly" && this.path.keys.length < 2) this.leaveDolly();
+    this.toast(redo ? "Redo" : "Undo", 800);
+    this.drawSide();
+  }
+
+  private removeKey(i: number): void {
+    this.edit(() => this.path.remove(i));
+    this.sel = -1;
+    this.drawSide();
+  }
+
   private addKey(): void {
     const p = this.mode === "free" ? this.free : this.currentPose();
-    const at = this.path.add({ t: this.time, ...p, pos: [...p.pos] as CamKey["pos"] });
+    let at = 0;
+    this.edit(() => (at = this.path.add({ t: this.time, ...p, pos: [...p.pos] as CamKey["pos"] })));
     this.sel = -1; // the insert shifts indices, and a placed node is not picked for editing
     this.toast(`Node ${at + 1} at ${fmt(this.time)}`);
     this.drawSide();
@@ -573,7 +619,7 @@ export class Theater {
       if (b.dataset.tab) { this.tab = b.dataset.tab; this.drawSide(); return; }
       if (b.dataset.id) { this.setMode(this.mode === "third" ? "third" : "pov", b.dataset.id); return; }
       if (b.dataset.key) { const k = this.path.keys[+b.dataset.key]; this.sel = +b.dataset.key; if (k) { this.seek(k.t); this.free = { ...k, pos: [...k.pos] as CamKey["pos"] }; } this.drawSide(); return; }
-      if (b.dataset.del) { this.path.remove(+b.dataset.del); this.sel = -1; this.drawSide(); return; }
+      if (b.dataset.del) { this.removeKey(+b.dataset.del); return; }
       this.action(b.dataset.a!);
     }, sig);
     this.root.addEventListener("change", (e) => {
@@ -605,8 +651,10 @@ export class Theater {
       }
       else if ((t.name === "kfov" || t.name === "kroll") && this.path.keys[this.sel]) {
         const k = this.path.keys[this.sel];
-        if (t.name === "kfov") k.fov = Math.max(5, Math.min(140, +t.value || k.fov));
-        else k.roll = (+t.value || 0) * Math.PI / 180;
+        this.edit(() => {
+          if (t.name === "kfov") k.fov = Math.max(5, Math.min(140, +t.value || k.fov));
+          else k.roll = (+t.value || 0) * Math.PI / 180;
+        });
       }
     }, sig);
     this.root.addEventListener("input", (e) => {
@@ -644,10 +692,11 @@ export class Theater {
       case "BracketRight": this.cycleTarget(1); break;
       case "KeyK": this.addKey(); break;
       case "KeyR": if (this.gizmo.object) { const m = this.gizmo.mode === "rotate" ? "translate" : "rotate"; this.gizmo.setMode(m); this.toast(m === "rotate" ? "Rotate node" : "Move node", 800); } break;
-      case "KeyL": this.path.clear(); this.sel = -1; this.leaveDolly(); this.toast("Campath cleared"); this.drawSide(); break;
+      case "KeyZ": if (e.ctrlKey || e.metaKey) this.history(e.shiftKey); break;
+      case "KeyL": this.edit(() => this.path.clear()); this.sel = -1; this.leaveDolly(); this.toast("Campath cleared"); this.drawSide(); break;
       case "KeyJ": this.action("dolly"); break;
       case "Delete": case "Backspace":
-        if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.path.remove(this.sel); this.sel = -1; this.drawSide(); }
+        if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.removeKey(this.sel); }
         break;
       case "KeyH": this.root.classList.toggle("off"); break;
       case "KeyG": this.action("clean"); break;
@@ -670,7 +719,7 @@ export class Theater {
         this.seek(this.path.start);
         break;
       case "add": this.addKey(); break;
-      case "clear": this.path.clear(); this.sel = -1; this.leaveDolly(); this.drawSide(); break;
+      case "clear": this.edit(() => this.path.clear()); this.sel = -1; this.leaveDolly(); this.drawSide(); break;
       case "pathRange": if (this.path.keys.length > 1) { this.inPt = this.path.start; this.outPt = this.path.end; } break;
       case "fullRange": this.inPt = 0; this.outPt = this.net.demo.dur; break;
       case "render": void this.renderMovie(); break;
@@ -697,8 +746,8 @@ export class Theater {
     const keyAt = (x: number) => this.path.keys.findIndex((k) => Math.abs((k.t / this.net.demo.dur) * cv.clientWidth - x) < 6);
     cv.addEventListener("mousedown", (e) => {
       const i = keyAt(e.offsetX);
-      if (e.button === 2) { if (i >= 0) { this.path.remove(i); this.sel = -1; this.drawSide(); } return; }
-      if (i >= 0 && e.offsetY < cv.clientHeight / 2) { drag = i; this.sel = i; this.drawSide(); return; }
+      if (e.button === 2) { if (i >= 0) this.removeKey(i); return; }
+      if (i >= 0 && e.offsetY < cv.clientHeight / 2) { this.snap(); this.keyDrag = true; drag = i; this.sel = i; this.drawSide(); return; }
       drag = "seek";
       this.seek(tAt(e.offsetX), false);
     }, sig);
@@ -709,7 +758,7 @@ export class Theater {
       else { drag = this.sel = this.path.retime(drag, t); }
     }, sig);
     window.addEventListener("mouseup", () => {
-      if (typeof drag === "number") this.drawSide();
+      if (typeof drag === "number") { this.keyDrag = false; this.snapEnd(); this.drawSide(); }
       else if (drag === "seek") this.seek(this.time);
       drag = null;
     }, sig);
@@ -731,13 +780,34 @@ export class Theater {
     g.fillStyle = "#23262c"; g.fillRect(0, h / 2 - 3, w, 6);
     g.fillStyle = "rgba(240,168,48,.25)"; g.fillRect(X(this.inPt), 0, X(this.outPt) - X(this.inPt), h);
     g.fillStyle = "#c33"; for (const t of this.kills) g.fillRect(X(t) - 0.5, h - 9, 1.5, 7);
-    if (this.path.keys.length > 1) { g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), 4, X(this.path.end) - X(this.path.start), 3); }
+    if (this.path.keys.length > 1) {
+      g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), 4, X(this.path.end) - X(this.path.start), 3);
+      this.drawSpeed(g, w, h, X);
+    }
     this.path.keys.forEach((k, i) => {
       const x = X(k.t);
       g.fillStyle = i === this.sel ? "#fff" : "#5aa0ff";
       g.beginPath(); g.moveTo(x, 2); g.lineTo(x + 5, 8); g.lineTo(x, 14); g.lineTo(x - 5, 8); g.fill();
     });
     g.fillStyle = "#f0a830"; g.fillRect(X(this.time) - 1, 0, 2, h);
+  }
+
+  private drawSpeed(g: CanvasRenderingContext2D, w: number, h: number, X: (t: number) => number): void {
+    const a = this.path.start, b = this.path.end, x0 = Math.floor(X(a)), x1 = Math.ceil(X(b)), sig = `${w}|${JSON.stringify(this.path.keys)}`;
+    if (sig !== this.speedSig) {
+      this.speedSig = sig;
+      this.speedPts = [];
+      for (let x = x0; x <= x1; x++) this.speedPts.push(this.path.speed(Math.min(b, Math.max(a, (x / w) * this.net.demo.dur))));
+      this.speedMax = Math.max(...this.speedPts);
+    }
+    if (this.speedMax <= 1e-6) return;
+    const y = (v: number) => h - 2 - (v / this.speedMax) * (h - 12);
+    g.beginPath(); g.moveTo(x0, h - 2);
+    this.speedPts.forEach((v, i) => g.lineTo(x0 + i, y(v)));
+    g.lineTo(x0 + this.speedPts.length - 1, h - 2);
+    g.fillStyle = "rgba(90,160,255,.16)"; g.fill();
+    g.beginPath(); this.speedPts.forEach((v, i) => (i ? g.lineTo(x0 + i, y(v)) : g.moveTo(x0, y(v))));
+    g.strokeStyle = "rgba(120,180,255,.8)"; g.lineWidth = 1; g.stroke();
   }
 
   private drawSide(): void {
@@ -758,7 +828,7 @@ export class Theater {
         <div class="list">${this.path.keys.map((key, i) => `<div class="item ${i === this.sel ? "on" : ""}" data-key="${i}"><span style="flex:1">#${i + 1} · ${fmt(key.t)} · ${key.fov.toFixed(0)}°</span><button data-del="${i}">✕</button></div>`).join("") || `<div class="hint">No nodes. Move the free camera (F) and press K.</div>`}</div>
         ${k ? `<div class="row"><label>FOV</label><input name="kfov" type="number" min="5" max="140" step="1" value="${k.fov.toFixed(1)}"></div>
         <div class="row"><label>Roll °</label><input name="kroll" type="number" step="1" value="${(k.roll * 180 / Math.PI).toFixed(1)}"></div>` : ""}
-        <div class="hint">Drag a node on the timeline to retime it, right-click to delete it.</div>`;
+        <div class="hint">Drag a node on the timeline to retime it, right-click to delete it. The blue graph under the path is the camera's speed. Ctrl+Z / Ctrl+Shift+Z undo / redo.</div>`;
     } else if (this.tab === "visuals") {
       if (!this.lookNames) void this.fetchLooks();
       const l = this.looks.current, d = this.dof, row = (label: string, html: string) => `<div class="row"><label>${label}</label>${html}</div>`;
@@ -804,7 +874,7 @@ export class Theater {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
-        ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"],
+        ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"], ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo campath edits"],
         ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
         ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
@@ -1020,9 +1090,9 @@ export function pickDemo(): Promise<string | null> {
     ensureCss();
     const root = document.createElement("div");
     root.id = "mvm";
-    root.innerHTML = `<div class="p" style="position:absolute;left:50%;top:12%;transform:translateX(-50%);width:min(560px,94vw);max-height:76%;display:flex;flex-direction:column">
+    root.innerHTML = `<div class="p" style="position:absolute;left:50%;top:8%;transform:translateX(-50%);width:min(720px,94vw);max-height:84%;display:flex;flex-direction:column">
       <div class="row" style="padding:10px 12px;border-bottom:1px solid #333"><b style="flex:1;font-size:14px">Theater · demos</b><button data-a="close">Close</button></div>
-      <div class="row" style="padding:8px 12px 0"><input class="search" placeholder="Search demos" style="flex:1"></div>
+      <div class="row" style="padding:8px 12px 0"><input class="search" placeholder="Search by name, map or player" style="flex:1"></div>
       <div class="body list"><div class="hint">Loading…</div></div>
       <div class="hint" style="padding:0 12px 8px">Right-click a demo to rename or delete it.</div></div>
       <div class="p menu" style="position:fixed;display:none;flex-direction:column;padding:3px;min-width:110px">
@@ -1030,14 +1100,38 @@ export function pickDemo(): Promise<string | null> {
     document.body.appendChild(root);
     const list = root.querySelector(".body")!, search = root.querySelector<HTMLInputElement>(".search")!, menu = root.querySelector<HTMLElement>(".menu")!;
     let demos: DemoListing[] = [], target = "";
+    const infos = new Map<string, DemoInfo | null>();
     const finish = (v: string | null) => { root.remove(); done(v); };
+    const mapLabel = (id: string) => mapIndexEntry(id)?.name ?? id;
     const draw = () => {
-      const q = search.value.trim().toLowerCase(), shown = demos.filter((d) => d.name.toLowerCase().includes(q));
+      const q = search.value.trim().toLowerCase();
+      const shown = demos.filter((d) => {
+        const i = infos.get(d.name);
+        return [d.name, i && mapLabel(i.map), i?.map, ...(i?.players.map((p) => p.name) ?? [])].some((s) => s?.toLowerCase().includes(q));
+      });
       list.innerHTML = shown.length
-        ? shown.map((d) => `<div class="item" data-demo="${esc(d.name)}"><span style="flex:1">${esc(d.name)}</span><span class="hint">${(d.size / 1e6).toFixed(1)} MB</span></div>`).join("")
+        ? shown.map((d) => demoRow(d, infos.get(d.name), mapLabel)).join("")
         : `<div class="hint">${demos.length ? "No demo matches." : "No demos yet. Every match you play is recorded to point-blank-webport/mvm/demos."}</div>`;
     };
-    const load = () => listDemos().then((ds) => { demos = ds; draw(); }).catch((e) => { list.innerHTML = `<div class="hint">Could not list demos: ${esc(String(e))}</div>`; });
+    // the rows show at once; each fills in as the dev server reads its file, a few at a time
+    const fill = async (names: string[]) => {
+      const next = async (): Promise<void> => {
+        const n = names.shift();
+        if (n === undefined || !root.isConnected) return;
+        infos.set(n, await demoInfo(n).catch(() => null));
+        // only the arriving row: rebuilding the list between a press and its release swallows the click
+        const row = list.querySelector(`[data-demo="${window.CSS.escape(n)}"]`);
+        if (search.value.trim()) draw();
+        else if (row) row.outerHTML = demoRow(demos.find((d) => d.name === n)!, infos.get(n), mapLabel);
+        return next();
+      };
+      await Promise.all([next(), next(), next()]);
+    };
+    const load = () => listDemos().then((ds) => {
+      demos = ds;
+      draw();
+      void fill(ds.map((d) => d.name).filter((n) => !infos.has(n)));
+    }).catch((e) => { list.innerHTML = `<div class="hint">Could not list demos: ${esc(String(e))}</div>`; });
     search.addEventListener("input", draw);
     search.addEventListener("keydown", (e) => e.stopPropagation()); // the lobby's own keys stay out of the search
     root.addEventListener("contextmenu", (e) => {
@@ -1067,6 +1161,23 @@ export function pickDemo(): Promise<string | null> {
     void load();
     search.focus();
   });
+}
+
+function demoRow(d: DemoListing, i: DemoInfo | null | undefined, mapLabel: (id: string) => string): string {
+  const shape = i ? STAGE_SHAPE[i.map.toLowerCase()] : undefined;
+  let thumb = "";
+  if (shape !== undefined) {
+    const { tex, u, v } = mapShapeCell(shape);
+    thumb = `<div style="width:${MAP_SHAPE.w}px;height:${MAP_SHAPE.h}px;transform:scale(.6);transform-origin:0 0;background:url(${assetUrl(`/assets/ui/cross/atlas/${MAP_SHAPE.atlas(tex)}.png`)}) -${u}px -${v}px"></div>`;
+  }
+  const players = i ? i.players.map((p) => `<span style="color:${p.team ? "#6a9cf0" : "#e06a5c"};${p.id === i.pov ? "font-weight:bold;text-decoration:underline" : ""}">${esc(p.name)}</span>`).join(", ") : "";
+  const meta = i ? `${esc(mapLabel(i.map))} · ${esc(i.mode)} · ${fmt(i.dur).replace(/\.\d+$/, "")} · ${new Date(i.date).toLocaleString()}` : i === null ? "Could not read this demo" : "Reading…";
+  return `<div class="item" data-demo="${esc(d.name)}" style="align-items:flex-start;gap:10px;padding:6px 8px">
+    <div style="flex:none;width:${Math.round(MAP_SHAPE.w * 0.6)}px;height:${Math.round(MAP_SHAPE.h * 0.6)}px;overflow:hidden;border-radius:3px;background:#1a1c20">${thumb}</div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;gap:8px"><b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.name.replace(/\.pbdemo$/, ""))}</b><span class="hint">${(d.size / 1e6).toFixed(1)} MB</span></div>
+      <div class="hint">${meta}</div>
+      <div style="font-size:11px;line-height:1.35">${players}</div></div></div>`;
 }
 
 function fmt(t: number): string {

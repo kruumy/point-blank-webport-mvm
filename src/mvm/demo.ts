@@ -93,6 +93,15 @@ export class DemoRecorder {
 
 export interface DemoListing { name: string; size: number; mtime: number }
 
+// read from the .pbdemo itself (scripts/mvm-server.ts demoInfo): demos carry no side files
+export interface DemoInfo { map: string; mode: string; date: string; pov: string; dur: number; players: { id: string; name: string; team: number }[] }
+
+export async function demoInfo(name: string): Promise<DemoInfo> {
+  const r = await fetch(`${DEMO_API}/demos/${encodeURIComponent(name)}?info`);
+  if (!r.ok) throw new Error(`demo info ${r.status}`);
+  return r.json() as Promise<DemoInfo>;
+}
+
 export async function listDemos(): Promise<DemoListing[]> {
   const r = await fetch(`${DEMO_API}/demos`);
   if (!r.ok) throw new Error(`demo list ${r.status}`);

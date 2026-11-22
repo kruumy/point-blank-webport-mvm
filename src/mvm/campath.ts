@@ -56,6 +56,13 @@ export class Campath {
     return { pos: [v[0], v[1], v[2]], yaw: v[3], pitch: v[4], roll: v[5], fov: v[6] };
   }
 
+  speed(t: number): number {
+    const K = this.keys;
+    if (K.length < 2 || t < K[0].t || t > K[K.length - 1].t) return 0;
+    const d = 1e-3, t0 = Math.max(K[0].t, t - d), t1 = Math.min(K[K.length - 1].t, t + d), a = this.sample(t0)!, b = this.sample(t1)!;
+    return t1 > t0 ? Math.hypot(b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]) / (t1 - t0) : 0;
+  }
+
   /** per-second slope at key i: central difference inside, one-sided at the ends */
   private tangent(i: number): number[] {
     const K = this.keys, a = K[Math.max(0, i - 1)], b = K[Math.min(K.length - 1, i + 1)];
