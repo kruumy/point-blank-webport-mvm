@@ -42,19 +42,9 @@ export function setFxTextureLoader(f: FxTextureLoader): void {
   texLoader = f;
 }
 const texCache = new Map<string, THREE.Texture>();
-/**
- * NOT ORIGINAL: HD replacements (pb-extract-tools bloodtex/gen.mjs, same layout, x3) of the 64 px blood sheets, taken from the reference port.
- * Key = original path, value = design size (px) of the original sheet, so frameUV can rescale fw/fh.
- * Docs: 
- */
-const BLOOD_HD: Record<string, number> = { "tex/tex_blood_1.png": 128, "tex/tex_blood_2.png": 256 };
-/** billboardFactor cap and max streak length (effect units) of the HD blood particles; raise for longer streaks */
-const BLOOD_STRETCH = 1.5, BLOOD_MAX_LEN = 0.6;
 export function fxTexture(rel: string): THREE.Texture {
-  const key = rel;
-  if (BLOOD_HD[rel]) rel = rel.replace("tex/", "tex/hd/");
-  let t = texCache.get(key);
-  if (!t) texCache.set(key, (t = texLoader(fxUrl(rel))));
+  let t = texCache.get(rel);
+  if (!t) texCache.set(rel, (t = texLoader(fxUrl(rel))));
   return t;
 }
 
@@ -532,17 +522,13 @@ class FxInstance {
     const gw = this.group.matrixWorld;
     const camPos = _c.setFromMatrixPosition(cam.matrixWorld).applyMatrix4(_m.copy(gw).invert());
     if (p.type === "billboard" || p.type === "stretch") {
-      // i3Particle::Drive 0x10175c99 -> AddForBillboard 0x10177c20: strip endpoints spawn->pos (BILLBOARD, exporter
-      // comment) or prev->pos (velocity strip, 0x1017512b); ScaleBillboardFactor scales the (pos-ref) vector from the
-      // spawn anchor, so factor=1 = plain [spawn,pos] trail; blood BloodVertical* set factor=5 for long streaks along
-      // the movement axis. Width = scale.
+      // i3SceneDx Drive draw switch 0x1017546c: BILLBOARD (4) = spawn (+0x44, set at emit 0x10173306) -> pos, no factor
+      // (0x101757b7); only the velocity strip (0x60000002, 0x10175969) scales (pos - ref) by the billboard factor. Width = scale.
       const ref = p.type === "billboard" ? l.spawn : l.prev;
       const a = _q3.copy(ref);
       const b = _tail.subVectors(l.pos, ref);
       if (b.lengthSq() < 1e-12) b.copy(l.dir).multiplyScalar(0.001);
-      // NOT ORIGINAL: the blood streaks (BloodVertical*, factor 5) fly far and smear the HD sheet: shorter factor + length cap
-      if (BLOOD_HD[p.tex ?? ""]) b.multiplyScalar(Math.min(p.billboardFactor, BLOOD_STRETCH)).clampLength(0, BLOOD_MAX_LEN).add(ref);
-      else b.multiplyScalar(p.billboardFactor).add(ref);
+      b.multiplyScalar(p.type === "billboard" ? 1 : p.billboardFactor).add(ref);
       const side = _v.crossVectors(_b.subVectors(b, a), _q2.subVectors(camPos, a)).normalize().multiplyScalar(-s);
       setBasis(l.mesh, gw, side, _b.subVectors(a, b), _a.addVectors(a, b).multiplyScalar(0.5));
       return;
@@ -587,8 +573,7 @@ class FxInstance {
   private frameUV(L: Layer, l: Live) {
     const sq = L.p.seq, img = l.mat.map?.image as { width?: number; height?: number } | undefined;
     if (!sq || !img?.width || !img.height) return;
-    // sq.fw/fh are px of the original sheet; an HD replacement (BLOOD_HD) is k times bigger
-    const base = BLOOD_HD[L.p.tex ?? ""], k = base ? img.width / base : 1, fw = sq.fw * k, fh = sq.fh * k;
+    const fw = sq.fw, fh = sq.fh;
     const cols = Math.max(1, Math.floor(img.width / fw)), fr = sq.start + l.frame;
     const u0 = ((fr % cols) * fw) / img.width, v0 = (Math.floor(fr / cols) * fh) / img.height;
     const du = fw / img.width, dv = fh / img.height;
