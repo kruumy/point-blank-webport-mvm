@@ -157,7 +157,7 @@ $("#setpw").onclick = async () => {
 $("#unlock").onclick = async () => {
   try {
     const r = await api("POST", `/${current.player_id}/unlock-all`);
-    say(`Unlocked: ${r.items} new items, ${r.madePermanent} made permanent, ${r.characters} characters.`, true);
+    say(`Unlocked: ${r.items} new items, ${r.madePermanent} made permanent, ${r.characters} characters, ${r.removed} Dummy copies removed.`, true);
   } catch (err) { say(err.message); }
 };
 

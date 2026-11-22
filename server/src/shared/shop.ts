@@ -351,7 +351,16 @@ async function load(type: number): Promise<void> {
   } catch (e) { log(`Load(1) build: ${(e as Error).message}`); }
 }
 
+/** [RECRIADO] Dummy copies of a weapon the shop also sells, by real weapon: hidden from the shop and unlock-all (D variants are real rank rewards) */
+export const DUMMY_REAL: ReadonlyMap<number, number> = new Map([
+  [104184, 104183], [301062, 301061],
+  [202009, 202003], // [INFERIDO] K5_Dual_Dummy is the client's single K5 = K-5 (HelmetPenetrate 55 vs 38)
+]);
+
 export async function loadShop(): Promise<void> {
+  // databases made before 001_init.sql hid them
+  await pool.query(`UPDATE system_shop SET item_visible = FALSE WHERE item_visible AND item_id = ANY($1::int[])`, [[...DUMMY_REAL.keys()]])
+    .catch((e) => log(`hide dummies: ${(e as Error).message}`));
   await load(1);
   await load(2);
   await loadBattleBoxes();

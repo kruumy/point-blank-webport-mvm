@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { pool } from "../db.ts";
 import { isValidRank } from "../shared/rank.ts";
 import { getIdStatics, getItemCategory, ItemCategory, ItemEquipType } from "../shared/items.ts";
+import { DUMMY_REAL } from "../shared/shop.ts";
 import { nowNum } from "../shared/time.ts";
 import { AccountApiError } from "./accounts/accounts.ts";
 import { hashPassword } from "./accounts/password.ts";
@@ -92,7 +93,7 @@ async function setPassword(id: string, password: unknown): Promise<void> {
 }
 
 /** every visible shop item as permanent (coupons are consumables, not unlocks), plus a character row for each character */
-async function unlockAll(id: string): Promise<{ items: number; madePermanent: number; characters: number }> {
+async function unlockAll(id: string): Promise<{ items: number; madePermanent: number; characters: number; removed: number }> {
   const c = await pool.connect();
   try {
     await c.query("BEGIN");
@@ -119,10 +120,18 @@ async function unlockAll(id: string): Promise<{ items: number; madePermanent: nu
     await c.query(
       `INSERT INTO player_characters(owner_id, id, slot, name, create_date, playtime) SELECT $1, i, s, n, $5, 0 FROM unnest($2::int[], $3::int[], $4::text[]) AS u(i, s, n)`,
       [id, newChars.map((x) => x.item_id), slots, newChars.map((x) => x.item_name), nowNum("yyMMddHHmm")]);
+    // owned Dummy copies go; an equipped one gives its slot to the real weapon, when the account owns it
+    const dummies = [...DUMMY_REAL.keys()], reals = [...DUMMY_REAL.values()];
+    for (const col of ["weapon_primary", "weapon_secondary", "weapon_melee", "weapon_explosive"]) {
+      await c.query(`UPDATE player_equipments e SET ${col} = u.r FROM unnest($2::int[], $3::int[]) AS u(v, r)
+        WHERE e.owner_id=$1 AND e.${col} = u.v AND EXISTS (SELECT 1 FROM player_items p WHERE p.owner_id=$1 AND p.id = u.r)`, [id, dummies, reals]);
+    }
+    const removed = await c.query(`DELETE FROM player_items p WHERE p.owner_id=$1 AND p.id = ANY($2::int[]) AND NOT EXISTS
+      (SELECT 1 FROM player_equipments e WHERE e.owner_id=$1 AND p.id IN (e.weapon_primary, e.weapon_secondary, e.weapon_melee, e.weapon_explosive))`, [id, dummies]);
     // login sends at most 600 + inventory_plus items (limitationIndex): room for all of them
     await c.query(`UPDATE accounts SET inventory_plus = GREATEST(inventory_plus, (SELECT count(*) FROM player_items WHERE owner_id=$1) - 600) WHERE player_id=$1`, [id]);
     await c.query("COMMIT");
-    return { items: fresh.length, madePermanent: upgraded.rowCount ?? 0, characters: newChars.length };
+    return { items: fresh.length, madePermanent: upgraded.rowCount ?? 0, characters: newChars.length, removed: removed.rowCount ?? 0 };
   } catch (e) {
     await c.query("ROLLBACK");
     throw e;
