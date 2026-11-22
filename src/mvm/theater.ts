@@ -646,7 +646,9 @@ export class Theater {
       case "KeyR": if (this.gizmo.object) { const m = this.gizmo.mode === "rotate" ? "translate" : "rotate"; this.gizmo.setMode(m); this.toast(m === "rotate" ? "Rotate node" : "Move node", 800); } break;
       case "KeyL": this.path.clear(); this.sel = -1; this.leaveDolly(); this.toast("Campath cleared"); this.drawSide(); break;
       case "KeyJ": this.action("dolly"); break;
-      case "Delete": if (this.sel >= 0) { this.path.remove(this.sel); this.sel = -1; this.drawSide(); } break;
+      case "Delete": case "Backspace":
+        if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.path.remove(this.sel); this.sel = -1; this.drawSide(); }
+        break;
       case "KeyH": this.root.classList.toggle("off"); break;
       case "KeyG": this.action("clean"); break;
       case "Escape": this.cancelRender = true; break;
@@ -802,7 +804,7 @@ export class Theater {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
-        ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete", "Remove selected node"],
+        ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"],
         ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
         ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
