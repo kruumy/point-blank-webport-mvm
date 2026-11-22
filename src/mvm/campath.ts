@@ -23,7 +23,7 @@ export class Campath {
 
   /** every key's yaw / roll within pi of the key before it: an insert, move or removal can leave two neighbours further apart,
    * and the camera would turn the long way between them */
-  private unwrapAll(): void {
+  unwrapAll(): void {
     for (let i = 1; i < this.keys.length; i++) {
       const k = this.keys[i], p = this.keys[i - 1];
       k.yaw = unwrap(k.yaw, p.yaw);
@@ -64,7 +64,7 @@ export class Campath {
   }
 }
 
-function unwrap(a: number, ref: number): number {
+export function unwrap(a: number, ref: number): number {
   while (a - ref > Math.PI) a -= Math.PI * 2;
   while (a - ref < -Math.PI) a += Math.PI * 2;
   return a;

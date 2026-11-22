@@ -1,6 +1,7 @@
 import * as THREE from "three";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import type { Game } from "../game/game";
-import { Campath, type CamKey, type CamPose } from "./campath";
+import { Campath, unwrap, type CamKey, type CamPose } from "./campath";
 import { DEMO_API, deleteDemo, listDemos, renameDemo, saveDemo, type DemoListing } from "./demo";
 import type { DemoNet } from "./demoNet";
 import { Post } from "./post";
@@ -31,8 +32,33 @@ const LOOK = 0.0025; // rad per mouse px at 70 deg
 // an exact seek replays this much from a reset world at a fixed step: longer than any death, reload or flinch clip
 const WARM = 3, WARM_STEP = 1 / 60;
 // the 3D campath draws over the world (no depth test): a path through a wall stays visible
-const vizMat = (color: number) => new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.85 });
-const PATH_MAT = vizMat(0xf0a830), NODE_MAT = new THREE.MeshBasicMaterial({ color: 0x5aa0ff, depthTest: false, transparent: true });
+const vizMat = (o: THREE.MeshBasicMaterialParameters) => new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false, transparent: true, ...o });
+// path colour runs with time: amber at the first node, blue at the last
+const PATH_A = new THREE.Color(0xf0a830), PATH_B = new THREE.Color(0x5aa0ff);
+const TINT_MAT = vizMat({ vertexColors: true, opacity: 0.9, side: THREE.DoubleSide }), FILL_MAT = vizMat({ color: 0xffffff, opacity: 0.1, side: THREE.DoubleSide });
+const LINE_MAT = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95 });
+const HEAD_MAT = vizMat({ color: 0xffffff }), HALO_MAT = vizMat({ color: 0xffffff, opacity: 0.4 });
+const paint = <G extends THREE.BufferGeometry>(g: G, c: THREE.Color): G =>
+  g.setAttribute("color", new THREE.Float32BufferAttribute(Array.from({ length: g.attributes.position.count }, () => c.toArray()).flat(), 3)) as G;
+function nodeLabel(text: string, c: THREE.Color, cache: Map<string, THREE.SpriteMaterial>): THREE.Sprite {
+  const key = `${text}|${c.getHexString()}`;
+  let mat = cache.get(key);
+  if (!mat) cache.set(key, (mat = new THREE.SpriteMaterial({ map: labelTexture(text, c), depthTest: false, depthWrite: false, transparent: true })));
+  const sp = new THREE.Sprite(mat);
+  sp.scale.setScalar(0.16);
+  return sp;
+}
+function labelTexture(text: string, c: THREE.Color): THREE.CanvasTexture {
+  const cv = document.createElement("canvas"), x = cv.getContext("2d")!;
+  cv.width = cv.height = 64;
+  x.fillStyle = "rgba(14,16,20,.85)"; x.strokeStyle = `#${c.getHexString()}`; x.lineWidth = 5;
+  x.beginPath(); x.arc(32, 32, 27, 0, Math.PI * 2); x.fill(); x.stroke();
+  x.fillStyle = "#fff"; x.font = "bold 30px Segoe UI,Arial,sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(text, 32, 34);
+  return new THREE.CanvasTexture(cv);
+}
+function disposeViz(o: THREE.Object3D): void {
+  o.traverse((x) => (x as THREE.Mesh).geometry?.dispose());
+}
 // demo editor selection: back faces of each mesh pushed out along the skinned normals in view space, scaled by depth so the
 // outline keeps about the same width on screen whatever the model's units or distance
 const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0xf0a830, side: THREE.BackSide });
@@ -44,7 +70,6 @@ vec3 objectNormal = normal;
 mvPosition.xyz += normalize(normalMatrix * objectNormal) * -mvPosition.z * 0.004;
 gl_Position = projectionMatrix * mvPosition;`);
 };
-const SEL_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }), DIR_MAT = vizMat(0x5aa0ff);
 // IWXMVM's capture rates: CoD steps its clock in whole ms, so 1000 / fps is an integer; the high ones are for frame-blended motion blur
 const FRAMERATES = [50, 100, 125, 250, 500, 1000];
 const CODECS: [string, string][] = [["prores4444xq", "ProRes 4444 XQ"], ["prores4444", "ProRes 4444"], ["prores422hq", "ProRes 422 HQ"],
@@ -91,6 +116,15 @@ export class Theater {
   private path = new Campath();
   private readonly pathViz = new THREE.Group();
   private pathSig = "";
+  private readonly pathParts = new THREE.Group();
+  /** move / rotate handles on the selected node; they drive `gizmoObj`, whose pose is written back into the key */
+  private readonly gizmo: TransformControls;
+  private readonly gizmoObj = new THREE.Object3D();
+  private gizmoDragEnd = 0;
+  // a gizmo drag rebuilds the nodes every frame: one canvas texture per label, not per rebuild
+  private readonly labelMats = new Map<string, THREE.SpriteMaterial>();
+  /** the dolly camera's place at the playhead, with a pulsing halo */
+  private readonly pathHead = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), HEAD_MAT);
   private sel = -1;
   private inPt = 0;
   private outPt: number;
@@ -147,7 +181,16 @@ export class Theater {
     this.tl = this.root.querySelector("canvas.tl")!;
     this.wire();
     this.layoutMask();
-    this.pathViz.renderOrder = 999;
+    this.pathHead.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), HALO_MAT));
+    this.pathViz.add(this.pathParts, this.pathHead);
+    this.pathViz.traverse((o) => (o.renderOrder = 999));
+    this.gizmoObj.rotation.order = "YXZ"; // as applyPose
+    this.gizmo = new TransformControls(host.camera, host.renderer.domElement);
+    this.gizmo.size = 0.8;
+    this.gizmo.setSpace("local");
+    this.gizmo.addEventListener("objectChange", () => this.gizmoMoved());
+    this.gizmo.addEventListener("dragging-changed", (e) => { if (!e.value) { this.gizmoDragEnd = performance.now(); this.path.unwrapAll(); this.drawSide(); } });
+    this.pathViz.add(this.gizmoObj, this.gizmo.getHelper());
     this.looks = new LookStage(host.game.scene, host.renderer);
     host.game.scene.add(this.pathViz);
     this.seek(0);
@@ -277,35 +320,99 @@ export class Theater {
   // ---- campath ----
   private addKey(): void {
     const p = this.mode === "free" ? this.free : this.currentPose();
-    this.sel = this.path.add({ t: this.time, ...p, pos: [...p.pos] as CamKey["pos"] });
-    this.toast(`Node ${this.path.keys.length} at ${fmt(this.time)}`);
+    const at = this.path.add({ t: this.time, ...p, pos: [...p.pos] as CamKey["pos"] });
+    this.sel = -1; // the insert shifts indices, and a placed node is not picked for editing
+    this.toast(`Node ${at + 1} at ${fmt(this.time)}`);
     this.drawSide();
   }
 
-  /** the path and its nodes in the world; rebuilt only when a node changes. Hidden while the dolly camera rides it */
+  // hidden while the dolly rides it: the path would sit in front of the lens
   private drawPath3d(): void {
-    const g = this.pathViz, K = this.path.keys;
+    const g = this.pathViz, K = this.path.keys, a = this.path.start, span = Math.max(this.path.end - a, 1e-6);
     g.visible = this.mode !== "dolly" && !this.root.classList.contains("off");
-    const sig = `${this.sel}${JSON.stringify(K)}`;
+    const head = K.length > 1 && this.time >= a && this.time <= a + span ? this.path.sample(this.time) : null;
+    this.pathHead.visible = !!head;
+    if (head) {
+      const s = (performance.now() / 900) % 1;
+      this.pathHead.position.set(...head.pos);
+      this.pathHead.children[0].scale.setScalar(1 + s * 1.6);
+      HALO_MAT.opacity = 0.45 * (1 - s);
+    }
+    const aspect = this.renderOpts.w / this.renderOpts.h, sig = `${this.sel}|${aspect}|${JSON.stringify(K)}`;
+    this.syncGizmo();
     if (sig === this.pathSig) return;
     this.pathSig = sig;
-    for (const c of [...g.children]) { g.remove(c); (c as THREE.Mesh).geometry.dispose(); }
-    const add = (o: THREE.Object3D) => { o.renderOrder = 999; g.add(o); };
+    const P = this.pathParts;
+    for (const c of [...P.children]) { P.remove(c); disposeViz(c); }
+    const add = (o: THREE.Object3D) => { o.traverse((x) => (x.renderOrder = 999)); P.add(o); };
+    const colorAt = (t: number) => PATH_A.clone().lerp(PATH_B, Math.min(1, Math.max(0, (t - a) / span)));
     if (K.length > 1) {
-      const pts: THREE.Vector3[] = [], a = this.path.start, b = this.path.end, n = Math.min(400, K.length * 40);
-      for (let i = 0; i <= n; i++) { const p = this.path.sample(a + (b - a) * i / n); if (p) pts.push(new THREE.Vector3(...p.pos)); }
-      add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), PATH_MAT));
+      // samples evenly spaced in time, so the curve's own parameter is time
+      const n = Math.min(400, K.length * 40), pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= n; i++) { const p = this.path.sample(a + span * i / n); if (p) pts.push(new THREE.Vector3(...p.pos)); }
+      const curve = new THREE.CatmullRomCurve3(pts), seg = pts.length * 2, rad = 6;
+      // a locked-off shot has no length: a tube over it is all NaN
+      if (curve.getLength() > 1e-4) {
+        const tube = new THREE.TubeGeometry(curve, seg, 0.008, rad, false), col: number[] = [];
+        for (let i = 0; i <= seg; i++) { const c = colorAt(a + span * curve.getUtoTmapping(i / seg, 0)); for (let j = 0; j <= rad; j++) col.push(c.r, c.g, c.b); }
+        tube.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+        add(new THREE.Mesh(tube, TINT_MAT));
+      }
     }
     K.forEach((k, i) => {
-      const at = new THREE.Vector3(...k.pos), cp = Math.cos(k.pitch);
-      const node = new THREE.Mesh(new THREE.SphereGeometry(i === this.sel ? 0.1 : 0.07, 10, 8), i === this.sel ? SEL_MAT : NODE_MAT);
-      node.position.copy(at);
-      add(node);
-      const look = at.clone().add(new THREE.Vector3(-Math.sin(k.yaw) * cp, Math.sin(k.pitch), -Math.cos(k.yaw) * cp).multiplyScalar(0.6));
-      add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([at, look]), DIR_MAT));
+      const sel = i === this.sel, c = sel ? new THREE.Color(0xffffff) : colorAt(k.t), d = sel ? 0.42 : 0.3;
+      const hy = d * Math.tan(THREE.MathUtils.degToRad(k.fov) / 2), hx = hy * aspect;
+      const cam = new THREE.Group();
+      cam.position.set(...k.pos);
+      cam.rotation.order = "YXZ"; // as applyPose
+      cam.rotation.set(k.pitch, k.yaw, k.roll);
+      const o = new THREE.Vector3(), [q0, q1, q2, q3] = [[-hx, hy], [hx, hy], [hx, -hy], [-hx, -hy]].map(([x, y]) => new THREE.Vector3(x, y, -d));
+      cam.add(new THREE.LineSegments(paint(new THREE.BufferGeometry().setFromPoints([o, q0, o, q1, o, q2, o, q3, q0, q1, q1, q2, q2, q3, q3, q0]), c), LINE_MAT));
+      cam.add(new THREE.Mesh(new THREE.PlaneGeometry(hx * 2, hy * 2).translate(0, 0, -d), FILL_MAT));
+      cam.add(new THREE.Mesh(paint(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-hx * 0.3, hy * 1.12, -d),
+        new THREE.Vector3(hx * 0.3, hy * 1.12, -d), new THREE.Vector3(0, hy * 1.45, -d)]), c), TINT_MAT));
+      cam.add(new THREE.Mesh(paint(new THREE.SphereGeometry(sel ? 0.05 : 0.035, 12, 8), c), TINT_MAT));
+      const label = nodeLabel(String(i + 1), c, this.labelMats);
+      label.position.set(0, hy * 1.45 + 0.13, -d);
+      cam.add(label);
+      add(cam);
     });
   }
 
+
+  private syncGizmo(): void {
+    const k = this.path.keys[this.sel], tc = this.gizmo;
+    if (!k || !this.pathViz.visible) { if (tc.object) tc.detach(); return; }
+    if (!tc.dragging) { // mid-drag the handles own the pose
+      this.gizmoObj.position.set(...k.pos); this.gizmoObj.rotation.set(k.pitch, k.yaw, k.roll);
+    }
+    if (tc.object !== this.gizmoObj) tc.attach(this.gizmoObj);
+  }
+
+  private gizmoMoved(): void {
+    const k = this.path.keys[this.sel], o = this.gizmoObj;
+    if (!k) return;
+    k.pos = [o.position.x, o.position.y, o.position.z];
+    if (this.gizmo.mode !== "rotate") return; // a move leaves the angles exactly as they were
+    const e = new THREE.Euler().setFromQuaternion(o.quaternion, "YXZ");
+    // past vertical YXZ returns the same turn as (pi - x, y + pi, z + pi): undo that, then stop short of vertical as the free camera does
+    if (Math.abs(e.x) > 1 && Math.abs(unwrap(e.y, k.yaw) - k.yaw) > Math.PI / 2) e.set(Math.sign(e.x) * Math.PI - e.x, e.y + Math.PI, e.z + Math.PI);
+    k.yaw = unwrap(e.y, k.yaw); k.pitch = THREE.MathUtils.clamp(e.x, -1.55, 1.55); k.roll = unwrap(e.z, k.roll);
+    o.rotation.set(k.pitch, k.yaw, k.roll);
+  }
+
+  private nodeAt(x: number, y: number): number {
+    if (!this.pathViz.visible) return -1;
+    const r = this.host.renderer.domElement.getBoundingClientRect(), v = new THREE.Vector3();
+    let best = -1, bestD = 16 * 16;
+    this.path.keys.forEach((k, i) => {
+      v.set(...k.pos).project(this.host.camera);
+      if (v.z > 1) return; // behind the camera
+      const dx = (v.x + 1) / 2 * r.width + r.left - x, dy = (1 - v.y) / 2 * r.height + r.top - y, d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    return best;
+  }
 
   // ---- render ----
   private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "" };
@@ -342,6 +449,7 @@ export class Theater {
     this.openEdit(null);
     this.rendering = true;
     this.pathViz.visible = false;
+    this.gizmo.detach(); // its invisible pickers still take drags; the next frame() puts it back
     this.cancelRender = false;
     this.playing = false;
     this.root.classList.add("off", "rendering");
@@ -449,7 +557,15 @@ export class Theater {
       this.toast(e.altKey ? `Roll ${(this.free.roll * 180 / Math.PI).toFixed(0)}°` : `FOV ${this.free.fov.toFixed(0)}°`, 800);
     }, { passive: false, ...sig });
     cv.addEventListener("contextmenu", (e) => e.preventDefault(), sig);
-    cv.addEventListener("click", (e) => !this.rendering && this.openEdit(this.actorAt(e.clientX, e.clientY), e.clientX, e.clientY), sig);
+    cv.addEventListener("click", (e) => {
+      // the click that ends a handle drag is not a pick
+      if (this.rendering || this.gizmo.dragging || performance.now() - this.gizmoDragEnd < 150) return;
+      const node = this.nodeAt(e.clientX, e.clientY);
+      if (node >= 0) { this.sel = node; this.drawSide(); return; }
+      const id = this.actorAt(e.clientX, e.clientY);
+      if (!id && this.sel >= 0) { this.sel = -1; this.drawSide(); }
+      this.openEdit(id, e.clientX, e.clientY);
+    }, sig);
 
     this.root.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del]");
@@ -527,6 +643,7 @@ export class Theater {
       case "BracketLeft": this.cycleTarget(-1); break;
       case "BracketRight": this.cycleTarget(1); break;
       case "KeyK": this.addKey(); break;
+      case "KeyR": if (this.gizmo.object) { const m = this.gizmo.mode === "rotate" ? "translate" : "rotate"; this.gizmo.setMode(m); this.toast(m === "rotate" ? "Rotate node" : "Move node", 800); } break;
       case "KeyL": this.path.clear(); this.sel = -1; this.leaveDolly(); this.toast("Campath cleared"); this.drawSide(); break;
       case "KeyJ": this.action("dolly"); break;
       case "Delete": if (this.sel >= 0) { this.path.remove(this.sel); this.sel = -1; this.drawSide(); } break;
@@ -686,6 +803,7 @@ export class Theater {
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
         ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete", "Remove selected node"],
+        ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
         ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
     }
@@ -884,7 +1002,12 @@ export class Theater {
     this.ac.abort();
     this.root.remove();
     this.pathViz.removeFromParent();
-    for (const c of this.pathViz.children) (c as THREE.Mesh).geometry.dispose();
+    // r169 TransformControls.dispose() calls this.traverse, which a Controls lacks: unhook it and free the helper here
+    this.gizmo.disconnect();
+    this.gizmo.getHelper().removeFromParent();
+    this.gizmo.getHelper().traverse((o) => { (o as THREE.Mesh).geometry?.dispose(); ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose(); });
+    disposeViz(this.pathViz);
+    for (const m of this.labelMats.values()) { m.map?.dispose(); m.dispose(); }
     document.body.classList.remove("mvm-clean");
   }
 }
