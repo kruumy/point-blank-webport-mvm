@@ -253,7 +253,6 @@ export class Game implements BotHost {
   private shotKills = new ShotKills();
   private propBlastSeq = 0;
   private netSendIn = 0;
-  private firing = false;
   private onMatchEnd: (() => void) | null;
   private onLeave: ((reason?: "away") => void) | null;
   /** respawn coupon of the local player (PbItemEffects.respawnCut) */
@@ -1903,7 +1902,6 @@ export class Game implements BotHost {
   // ---- Weapons / net wiring ----
   private wireWeapons(): void {
     this.weapons.onFire((e) => {
-      this.firing = true;
       this.lastFire.set(this.me.id, this.time);
       this.lastHeavy = !!e.heavy;
       this.me.invulnUntil = Math.min(this.me.invulnUntil, this.time); // firing drops spawn protection
@@ -2179,7 +2177,8 @@ export class Game implements BotHost {
       weaponId: this.pbWeapons()?.getHudState().id || undefined,
       weaponSlot: ws.slot,
       ext: this.pbWeapons()?.getHudState().ext,
-      firing: this.firing,
+      // what a guest decodes (net/battle.ts): the demo records this state, and the one-frame shot flag missed most sends
+      firing: torsoAction === "fire",
       torsoAction,
       heavy: torsoAction === "fire" && this.lastHeavy,
       moving,
@@ -2219,7 +2218,6 @@ export class Game implements BotHost {
     this.ambient?.update(dt, this.me.alive ? this.me.feet(this._w) : null);
     const inp = this.input;
     const live = this.match.live;
-    this.firing = false;
 
     // Player
     if (this.me.alive) {
