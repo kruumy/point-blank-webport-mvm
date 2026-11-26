@@ -221,7 +221,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
   const applyRes = (s: GameSettings) => {
     if (!s.dynamicRes) dynLevel = DYN_STEPS.length - 1;
     renderer.setPixelRatio(renderRatio(renderer, s) * DYN_STEPS[dynLevel]);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(app.clientWidth, app.clientHeight); // the window, or the theater's viewport
   };
   let dynN = 0, dynSum = 0, dynCpuSum = 0, dynGood = 0, dynHold = 5, dynLastUp = 0, dynFloorMs = Infinity;
   /** every ~1 s: mean frame time vs the monitor's refresh period (estimated from the best window seen, snapped to common rates);
@@ -251,8 +251,10 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
   const unsubRes = onSettings(applyRes);
   const unsubBrightness = onSettings((s) => { renderer.domElement.style.filter = s.brightness === 50 ? "" : `brightness(${brightnessFactor(s)})`; });
 
+  // declared before the listener: a resize while the match loads must not hit it uninitialised
+  let theater: Theater | null = null;
   window.addEventListener("resize", () => {
-    if (theater?.busyRendering) return; // it puts the window's size back when done
+    if (theater) return; // it fits the canvas to its viewport (theater.ts layout)
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -337,7 +339,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
   let raf = 0;
   let lastStep = performance.now(); // last simulated frame (rAF or the hidden-tab timer below)
   let lastCpu = 0; // ms of JS this frame (update + step + render submit), read by dynTick on the next frame
-  const theater = opts.theater ? new Theater(opts.theater, {
+  theater = opts.theater ? new Theater(opts.theater, {
     game, renderer, camera,
     simulate(dt) {
       world.timestep = dt;

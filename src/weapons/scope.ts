@@ -22,10 +22,11 @@ export class ScopeOverlay {
     if (typeof document === "undefined") return;
     const el = document.createElement("canvas");
     el.dataset.weaponScope = "";
-    el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:40;";
-    document.body.appendChild(el);
+    el.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:40;";
+    // the game stage: the window, or the theater's viewport
+    (document.getElementById("app") ?? document.body).appendChild(el);
     this.el = el;
-    if (typeof addEventListener === "function") addEventListener("resize", () => this.visible && this.draw());
+    if (typeof ResizeObserver === "function") new ResizeObserver(() => this.visible && this.draw()).observe(el);
   }
 
   /** the weapon in hand (resets the level on change) */
@@ -67,7 +68,7 @@ export class ScopeOverlay {
   private draw(): void {
     const el = this.el;
     if (!el) return;
-    const W = innerWidth, H = innerHeight, s = this.info;
+    const W = el.clientWidth, H = el.clientHeight, s = this.info;
     // the dot sub-rect is part of the key: weapons share one HUD texture with different dots (Cross enum 7 Scope_P90: the dot only when the weapon is neither
     // WeaponP90Ext nor WeaponDotLaser, SetSniperScope 0x7369b7), and an equal key skipped the redraw: the old dot stayed painted on the canvas
     const key = `${W}x${H}:${s?.hud}:${s?.dot?.join(",") ?? ""}`;

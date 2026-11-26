@@ -42,9 +42,14 @@ export class NameTags {
   /** HUD option "show ally nick" (g_d80ba8+0xbc) */
   showAllies = true;
 
+  /** the game stage's size: the window, or the theater's viewport */
+  private w = window.innerWidth;
+  private h = window.innerHeight;
+
   constructor() {
-    this.root.style.cssText = "position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:4";
-    document.body.appendChild(this.root);
+    this.root.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4";
+    (document.getElementById("app") ?? document.body).appendChild(this.root);
+    new ResizeObserver(([e]) => { this.w = e.contentRect.width; this.h = e.contentRect.height; }).observe(this.root);
   }
 
   /** pickEnemy: the enemy under the crosshair within weapon reach (world-occluded), or null. gm: a GM observing (both teams). */
@@ -98,7 +103,7 @@ export class NameTags {
     if (el.dataset.bg !== bg) { el.dataset.bg = bg; el.style.background = bg; el.style.width = el.style.height = wh; }
     const d = Math.trunc(dist);
     // transform moves the tag on the compositor: left/top rewrites forced a layout pass for every name, every frame
-    const sx = (this.v.x * 0.5 + 0.5) * window.innerWidth, sy = (-this.v.y * 0.5 + 0.5) * window.innerHeight;
+    const sx = (this.v.x * 0.5 + 0.5) * this.w, sy = (-this.v.y * 0.5 + 0.5) * this.h;
     // normal 0x74fc60: lifted by trunc(distance) px; GM 0x74fe00: no lift; badge: 24x24 at (x - 12, y - 10)
     const x = Math.round((cell ? sx - 12 : sx) * 10) / 10;
     const y = Math.round((cell ? sy - 10 : gm ? sy : sy - (d > 9000 ? 0 : d)) * 10) / 10;

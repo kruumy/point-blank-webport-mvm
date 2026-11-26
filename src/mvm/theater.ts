@@ -35,7 +35,7 @@ type Mode = "pov" | "third" | "free" | "dolly";
 const SPEEDS = [0.05, 0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.5, 2, 4, 8];
 const SKIP = 5; // s per arrow press
 // the timeline: ruler height, kill marker height, px between ruler labels (px); the closest zoom (s)
-const TL_RULER = 13, TL_MARK = 7, TL_LABEL = 64, MIN_VIEW = 0.5;
+const TL_RULER = 18, TL_MARK = 12, TL_LABEL = 64, MIN_VIEW = 0.5;
 const RULER_STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
 /** red, blue, no team (the world) */
 const TEAM_CSS = ["#e0503f", "#4a8ef0", "#9a9a9a"];
@@ -72,7 +72,21 @@ const ICON = {
   focus: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>',
   reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  camera: '<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10.5l6-3.5v10l-6-3.5z"/>',
+  campath: '<circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="6" r="2.2"/><path d="M7.2 18C14 18 10 6 16.8 6"/>',
+  visuals: '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  render: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
+  controls: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7.5 14h9"/>',
+  play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" stroke="none"/>',
+  back: '<path d="M19 5v14L9 12z" fill="currentColor"/><path d="M5 5v14"/>',
+  fwd: '<path d="M5 5v14l10-7z" fill="currentColor"/><path d="M19 5v14"/>',
+  loop: '<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>',
 };
+const TABS = { camera: "Camera", campath: "Campath", visuals: "Visuals", render: "Render", controls: "Controls" };
+const MODES: [Mode, string, string][] = [["pov", "POV", "First person (F2)"], ["third", "Third", "Third person (F3)"], ["free", "Free", "Free camera (F)"], ["dolly", "Dolly", "Ride the campath (J)"]];
+// common output sizes; the viewport takes the picked one's shape
+const SIZES: [number, number, string][] = [[1280, 720, "720p"], [1920, 1080, "1080p"], [2560, 1440, "1440p"], [3840, 2160, "4K UHD"], [1440, 1080, "4:3"], [1080, 1350, "Portrait 4:5"], [1080, 1920, "Vertical 9:16"]];
 const icon = (k: keyof typeof ICON, size = 14) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const TEAM = [{ name: "Red", color: "#d33a2c" }, { name: "Blue", color: "#2c6fd3" }];
@@ -167,64 +181,102 @@ const CODECS: [string, string][] = [["prores4444xq", "ProRes 4444 XQ"], ["prores
   ["prores422", "ProRes 422"], ["prores422lt", "ProRes 422 LT"]];
 
 const CSS = `
-#mvm{position:fixed;inset:0;pointer-events:none;font:12px/1.4 Segoe UI,Arial,sans-serif;color:#ddd;z-index:50;user-select:none}
-#mvm.off>*:not(.mvm-toast):not(.mvm-mask):not(.prog){display:none}#mvm.rendering .mvm-mask{display:none}
-#mvm .prog{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(560px,90vw);padding:8px 10px;flex-direction:column;gap:6px}
-#mvm.rendering .prog{display:flex}#mvm.rendering .prev{display:none!important}#mvm .prog .pbar{height:5px;border-radius:3px;background:#2a2e35;overflow:hidden}
-#mvm .prog .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d2321f,#f0a830)}
-#mvm .prog .ptext{display:flex;gap:10px;font-variant-numeric:tabular-nums}#mvm .prog .ptext b{color:#f0a830}
-#mvm .foot{flex:none;padding:8px;border-top:1px solid #333;display:flex;flex-direction:column;gap:6px}#mvm .foot:empty{display:none}
-#mvm .mvm-mask{position:absolute;box-shadow:0 0 0 100vmax rgba(10,10,12,.6);outline:1px solid rgba(255,255,255,.25)}
-#mvm .p{pointer-events:auto;background:rgba(18,20,24,.92);border:1px solid #333;border-radius:4px}
-#mvm button,#mvm select,#mvm input{font:inherit;color:#eee;background:#2a2e35;border:1px solid #444;border-radius:3px;padding:2px 7px}
-#mvm button:hover{background:#3a404a}#mvm button.on{background:#c47f12;border-color:#e09a2a;color:#111}
-#mvm .top{position:absolute;left:8px;top:8px;padding:5px 9px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 310px)}
-#mvm>:not(.mvm-mask){zoom:var(--ui-zoom,1)}#mvm .zoom{display:flex}#mvm .zoom button{border-radius:0;min-width:24px}
-#mvm .zoom button:first-child{border-radius:3px 0 0 3px}#mvm .zoom button:last-child{border-radius:0 3px 3px 0}#mvm .zoom button+button{margin-left:-1px}
-#mvm .zoom [data-a="zoomReset"]{min-width:46px;font-variant-numeric:tabular-nums}
-#mvm .side{position:absolute;right:8px;top:8px;width:270px;max-height:calc(100% - 120px);display:flex;flex-direction:column}
-#mvm .tabs{display:flex;border-bottom:1px solid #333}#mvm .tabs button{flex:1;border:0;border-radius:0;background:none}
-#mvm .tabs button.on{background:#2a2e35;color:#f0a830}
-#mvm .body{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:6px}#mvm .body>*{flex-shrink:0}
-#mvm .row{display:flex;gap:6px;align-items:center}#mvm .row>label{flex:0 0 70px;color:#999}
-#mvm .list{display:flex;flex-direction:column;gap:2px}
-#mvm .item{display:flex;gap:6px;padding:2px 5px;border-radius:3px;cursor:pointer;align-items:center}
-#mvm .item:hover{background:#2a2e35}#mvm .item.on{background:#3d3220}
-#mvm .dot{width:8px;height:8px;border-radius:50%}
-#mvm .bar{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 8px;display:flex;flex-direction:column;gap:5px}
-#mvm .ctl{display:flex;gap:8px;align-items:center}#mvm .time{font-family:Consolas,monospace;min-width:120px}
-#mvm canvas.tl{width:100%;height:48px;cursor:pointer;display:block}
-#mvm .tltip{position:absolute;bottom:calc(100% + 4px);display:none;padding:3px 7px;background:rgba(18,20,24,.95);border:1px solid #444;border-radius:3px;white-space:nowrap;pointer-events:none;font-size:11px}
-#mvm .keys td{padding:1px 6px}#mvm .keys td:first-child{color:#f0a830;font-family:Consolas,monospace;white-space:nowrap}
-#mvm .mvm-toast{position:absolute;left:50%;top:40%;transform:translateX(-50%);padding:10px 16px;font-size:14px}
-#mvm .hint{color:#888}
-#mvm .edit{position:absolute;width:264px;flex-direction:column;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.5)}
+#mvm{--bg1:#171a1e;--bg2:#1f2328;--bg3:#2a2f35;--ln:#2b3036;--tx:#d6dae0;--mu:#878f99;--am:#f2a93b;--amd:#3b2f1b;--rec:#e2452f;
+  position:fixed;inset:0;pointer-events:none;font:12.5px/1.45 Bahnschrift,"Segoe UI",system-ui,sans-serif;color:var(--tx);z-index:50;user-select:none;font-variant-numeric:tabular-nums}
+body.mvm-on{background:#0d0f12}body.mvm-on #app{overflow:hidden}
+#mvm.off>:not(.mvm-toast):not(.prog){display:none}#mvm.rendering .prev{display:none!important}
+#mvm>.shell,#mvm>.edit{zoom:var(--ui-zoom,1)}
+#mvm .p{pointer-events:auto;background:var(--bg1);border:1px solid var(--ln);border-radius:6px}
+#mvm button,#mvm select,#mvm input{font:inherit;color:var(--tx);background:var(--bg2);border:1px solid var(--ln);border-radius:4px;padding:3px 8px;outline:none}
+#mvm button:hover{background:var(--bg3)}#mvm button.on{background:var(--am);border-color:var(--am);color:#1a1408}
+#mvm :is(button,select,input):focus-visible{box-shadow:0 0 0 2px rgba(242,169,59,.55)}
+#mvm input[type=range]{accent-color:var(--am);padding:0;border:0;background:none}#mvm input[type=color]{padding:1px 2px;width:32px;height:24px}
+#mvm .hint{color:var(--mu)}#mvm .grow{flex:1}
+#mvm .shell{position:absolute;inset:0;display:grid;grid-template:"bar bar bar" 38px "stage side rail" minmax(0,1fr) "dock dock dock" auto/minmax(0,1fr) 300px 54px}
+#mvm .shell>.p{border:0;border-radius:0}
+#mvm .shell>.mbar{grid-area:bar;display:flex;align-items:center;gap:12px;padding:0 10px 0 14px;border-bottom:1px solid var(--ln)}
+#mvm .brand{font-weight:600;color:var(--am)}#mvm .dname{font-weight:600;max-width:46ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mvm .zoom{display:flex}#mvm .zoom button{border-radius:0;min-width:26px}
+#mvm .zoom button:first-child{border-radius:4px 0 0 4px}#mvm .zoom button:last-child{border-radius:0 4px 4px 0}#mvm .zoom button+button{margin-left:-1px}
+#mvm .zoom [data-a="zoomReset"]{min-width:48px}
+#mvm .stage{grid-area:stage;display:flex;flex-direction:column;min-width:0;min-height:0}
+#mvm .slate{pointer-events:auto;display:flex;align-items:center;gap:8px;padding:10px 16px 0;min-width:0}
+#mvm .seg{display:flex}#mvm .seg button{border-radius:0;margin-left:-1px;min-width:52px}
+#mvm .seg button:first-child{border-radius:4px 0 0 4px;margin-left:0}#mvm .seg button:last-child{border-radius:0 4px 4px 0}
+#mvm .slate select{max-width:180px}
+#mvm .spec{display:flex;gap:12px;color:var(--mu);white-space:nowrap}
+#mvm .view{flex:1;min-height:0;margin:12px 16px 16px}
+#mvm .frame{position:fixed;pointer-events:none;outline:1px solid rgba(255,255,255,.07)}
+#mvm .frame i{position:absolute;width:16px;height:16px;border:0 solid var(--am)}
+#mvm .frame i:nth-child(1){left:-7px;top:-7px;border-width:2px 0 0 2px}#mvm .frame i:nth-child(2){right:-7px;top:-7px;border-width:2px 2px 0 0}
+#mvm .frame i:nth-child(3){right:-7px;bottom:-7px;border-width:0 2px 2px 0}#mvm .frame i:nth-child(4){left:-7px;bottom:-7px;border-width:0 0 2px 2px}
+#mvm .frame.pv i{border-color:#7fb3ff}
+#mvm .prev{display:flex;gap:8px;align-items:center;padding:2px 3px 2px 10px;border:1px solid #4a74b0;border-radius:4px;background:#1a2433;white-space:nowrap}
+#mvm .prev b{color:#9cc4ff;font-weight:600}#mvm .prev button{padding:0 6px;background:none;border:0}
+#mvm .shell>.side{grid-area:side;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--ln)}
+#mvm .ttl{margin:0;padding:13px 14px 9px;font-size:15px;font-weight:600}
+#mvm .body{padding:4px 14px 14px;overflow:auto;display:flex;flex-direction:column;gap:7px;min-height:0}#mvm .body>*{flex-shrink:0}
+#mvm .foot{flex:none;padding:10px 14px 14px;border-top:1px solid var(--ln);display:flex;flex-direction:column;gap:7px}#mvm .foot:empty{display:none}
+#mvm .shell>.rail{grid-area:rail;display:flex;flex-direction:column;gap:2px;padding:8px 5px;border-left:1px solid var(--ln);background:#14171a}
+#mvm .rail button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0 5px;border:0;border-radius:5px;background:none;color:var(--mu);font-size:10.5px}
+#mvm .rail button:hover{background:var(--bg2);color:var(--tx)}#mvm .rail button.on{background:var(--amd);color:var(--am)}
+#mvm .shell>.dock{grid-area:dock;border-top:1px solid var(--ln);padding:7px 14px 12px;display:flex;flex-direction:column;gap:7px}
+#mvm .ctl{display:flex;align-items:center;gap:5px}
+#mvm .tp{width:30px;height:28px;padding:0;display:grid;place-items:center}#mvm .tp.play{width:40px}
+#mvm .tc{font-size:20px;font-weight:600;margin-left:10px;min-width:84px}
+#mvm .spd{position:relative;margin-left:10px}#mvm .speed{width:54px;padding:1px 0;text-align:center;border-radius:9px;background:none;color:var(--mu)}#mvm .speed.on{color:var(--am);border-color:var(--am);background:none}
+#mvm .spop{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);width:250px;padding:10px 12px 9px;display:flex;flex-direction:column;gap:6px;z-index:2;box-shadow:0 10px 28px rgba(0,0,0,.5)}
+#mvm .spop[hidden]{display:none}#mvm .spop b{font-size:18px;font-weight:600}#mvm .spop input{width:100%;margin:2px 0}
+#mvm .sticks{position:relative;height:16px;margin:0 8px;font-size:11px}#mvm .sticks button{position:absolute;transform:translateX(-50%);padding:0 3px;border:0;background:none;color:var(--mu)}
+#mvm .sticks button:hover{color:var(--tx)}
+#mvm .range{display:flex;gap:14px;color:var(--mu)}#mvm .range b{color:var(--tx);font-weight:400}
+#mvm .tracks{display:grid;grid-template-columns:96px minmax(0,1fr)}
+#mvm .lanes{display:grid;grid-template-rows:18px 1fr 1fr;color:var(--mu);font-size:11.5px}
+#mvm .lanes span{display:flex;align-items:center;gap:6px;border-top:1px solid var(--ln)}#mvm .lanes span:first-child{border:0}
+#mvm .lanes i{font-style:normal;color:#5d646d}
+#mvm .tlwrap{position:relative;min-width:0}
+#mvm canvas.tl{width:100%;height:84px;cursor:pointer;display:block;border-radius:3px;background:#121417}
+#mvm .tltip{position:absolute;bottom:calc(100% + 4px);display:none;padding:4px 8px;background:var(--bg1);border:1px solid var(--ln);border-radius:4px;white-space:nowrap;pointer-events:none;font-size:11.5px}
+#mvm .row{display:flex;gap:6px;align-items:center}#mvm .row>label{flex:0 0 74px;color:var(--mu)}
+#mvm .hd{font-weight:600;margin-top:6px;padding-top:9px;border-top:1px solid var(--ln)}
+#mvm .list{display:flex;flex-direction:column;gap:1px}
+#mvm .item{display:flex;gap:7px;padding:3px 6px;border-radius:4px;cursor:pointer;align-items:center}
+#mvm .item:hover{background:var(--bg2)}#mvm .item.on{background:var(--amd)}
+#mvm .dot{width:8px;height:8px;border-radius:50%;flex:none}
+#mvm .keys{border-collapse:collapse}#mvm .keys td{padding:3px 6px;vertical-align:top;border-top:1px solid #22262b}
+#mvm .keys td:first-child{color:var(--am);font-weight:600;white-space:nowrap}
+#mvm .mvm-toast{position:fixed;left:var(--vx,50%);top:var(--vy,40%);transform:translateX(-50%);padding:8px 16px;font-size:14px;background:rgba(23,26,30,.94)}
+#mvm .prog{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(560px,90vw);padding:9px 12px;flex-direction:column;gap:7px}
+#mvm.rendering .prog{display:flex}#mvm .prog .pbar{height:5px;border-radius:3px;background:var(--bg3);overflow:hidden}
+#mvm .prog .pbar i{display:block;height:100%;width:0;background:var(--rec)}
+#mvm .prog .ptext{display:flex;gap:12px}#mvm .prog .ptext b{color:var(--am)}
+#mvm .edit{position:absolute;width:264px;flex-direction:column;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,.55)}
 #mvm .edit select,#mvm .edit input{width:100%;min-width:0;box-sizing:border-box}
 #mvm .ed-head{display:flex;align-items:center;gap:2px;padding:8px 6px 8px 10px;border-left:3px solid var(--team);cursor:move;user-select:none;background:linear-gradient(90deg,color-mix(in srgb,var(--team) 24%,transparent),transparent 75%)}
 #mvm .ed-id{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
-#mvm .ed-id b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#mvm .ed-id span{font-size:11px;color:#8b9099}
-#mvm .ed-id i{font-style:normal;color:#f0a830}
+#mvm .ed-id b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#mvm .ed-id span{font-size:11px;color:var(--mu)}
+#mvm .ed-id i{font-style:normal;color:var(--am)}
 #mvm .ic{flex:none;width:26px;height:26px;padding:0;display:grid;place-items:center;background:none;border-color:transparent;color:#9aa0a8}
-#mvm .ic:hover{color:#fff}#mvm .ic.on{color:#f0a830;background:#3d3220;border-color:#c47f12}
-#mvm .ed-sec{padding:7px 10px 9px;border-top:1px solid #2a2d33;display:flex;flex-direction:column;gap:5px}
-#mvm .ed-sec h6{margin:0;font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#6c717a}
+#mvm .ic:hover{color:#fff}#mvm .ic.on{color:var(--am);background:var(--amd);border-color:#c47f12}
+#mvm .ed-sec{padding:7px 10px 9px;border-top:1px solid var(--ln);display:flex;flex-direction:column;gap:5px}
+#mvm .ed-sec h6{margin:0;font-size:11.5px;font-weight:600;color:var(--mu)}
 #mvm .fld{display:grid;grid-template-columns:78px minmax(0,1fr);align-items:center;gap:6px}
 #mvm .fld>span{color:#9aa0a8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#mvm .fld.ed>span{color:#f0a830}#mvm .fld.ed>span::before{content:"";display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:50%;background:#f0a830;vertical-align:middle}
+#mvm .fld.ed>span{color:var(--am)}#mvm .fld.ed>span::before{content:"";display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:50%;background:var(--am);vertical-align:middle}
 #mvm .fld.ed select,#mvm .fld.ed input{border-color:#8a5c12}
-#mvm .ed-foot{padding:5px 6px 5px 10px;border-top:1px solid #2a2d33;display:flex;align-items:center;gap:6px;font-size:11px;color:#8b9099}
+#mvm .ed-foot{padding:5px 6px 5px 10px;border-top:1px solid var(--ln);display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mu)}
 #mvm .ed-foot span{flex:1}#mvm .ed-foot button{display:flex;align-items:center;gap:4px;padding:2px 8px}
 #mvm .item .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #mvm .item .wr{flex:none;width:22px;height:20px;padding:0;display:grid;place-items:center;background:none;border-color:transparent;color:#6c717a;opacity:.55}
-#mvm .item:hover .wr{opacity:1}#mvm .item .wr:hover{color:#fff;background:#3a404a}
-#mvm .item .wr.has{color:#f0a830;opacity:1}#mvm .item.editing .wr{color:#111;background:#c47f12;opacity:1}
-#mvm .sect{display:flex;gap:6px;align-items:center;margin-top:6px;color:#f0a830}#mvm .sect .hint{flex:1}
-#mvm .sect button{padding:0 6px;font-size:11px}
-#mvm .passes{display:flex;flex-direction:column;border:1px solid #30333a;border-radius:4px;overflow:hidden;background:#15171b}
+#mvm .item:hover .wr{opacity:1}#mvm .item .wr:hover{color:#fff;background:var(--bg3)}
+#mvm .item .wr.has{color:var(--am);opacity:1}#mvm .item.editing .wr{color:#111;background:#c47f12;opacity:1}
+#mvm .sect{display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:600}#mvm .sect .hint{flex:1;font-weight:400}
+#mvm .sect button{padding:0 7px;font-size:11px;font-weight:400}
+#mvm .passes{display:flex;flex-direction:column;border:1px solid var(--ln);border-radius:5px;overflow:hidden;background:#15181b}
 #mvm .pass{display:flex;align-items:center;gap:7px;padding:5px 4px 5px 7px;cursor:pointer;border-top:1px solid #23262c}
 #mvm .pass{position:relative}#mvm .pass.joined{border-top-color:transparent}#mvm .pass.joined .recdot,#mvm .pass.joined .eye{visibility:hidden}
-#mvm .link{position:absolute;left:4px;top:-8px;z-index:1;width:15px;height:15px;padding:0;display:grid;place-items:center;border-radius:50%;background:#15171b;border:1px solid #30333a;color:#5c616b}
-#mvm .link:hover{color:#ddd;background:#2a2e35}#mvm .link.on{color:#f0a830;border-color:#c47f12;background:#3d3220}
+#mvm .link{position:absolute;left:4px;top:-8px;z-index:1;width:15px;height:15px;padding:0;display:grid;place-items:center;border-radius:50%;background:#15181b;border:1px solid var(--ln);color:#5c616b}
+#mvm .link:hover{color:#ddd;background:var(--bg3)}#mvm .link.on{color:var(--am);border-color:#c47f12;background:var(--amd)}
 #mvm .pass:first-child{border-top:0}#mvm .pass:hover{background:#1f2227}#mvm .pass.rec{background:#2a2217}#mvm .pass.rec:hover{background:#33291b}
 #mvm .recdot{flex:none;width:11px;height:11px;border-radius:50%;border:2px solid #4c5059;box-sizing:border-box}
 #mvm .pass.rec .recdot{border-color:#ff7262;background:radial-gradient(circle at 35% 35%,#ff8a7a,#d2321f)}
@@ -232,19 +284,16 @@ const CSS = `
 #mvm .pass:not(.rec) .sw{opacity:.55}#mvm .pass.na{cursor:default}#mvm .pass.na>:not(.link){opacity:.4}#mvm .pass.na:hover{background:none}
 #mvm .nm{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 #mvm .nm b{font-weight:600;color:#9aa0a8}#mvm .pass.rec .nm b{color:#f2f2f2}
-
 #mvm .eye{flex:none;display:flex;align-items:center;gap:3px;border:0;background:none;padding:3px 5px;color:#5c616b}
-#mvm .eye:hover{background:#2f333b;color:#ccc}#mvm .eye.on{color:#f0a830;background:#3d3220}
-#mvm .eye kbd{font:10px Consolas,monospace;color:inherit;opacity:.8}
-#mvm .pass-opt{display:flex;align-items:center;gap:6px;padding:0 8px 6px 45px;color:#999;background:inherit}
+#mvm .eye:hover{background:#2f333b;color:#ccc}#mvm .eye.on{color:#9cc4ff;background:#1a2433}
+#mvm .eye kbd{font:inherit;font-size:10.5px;color:inherit;opacity:.8}
+#mvm .pass-opt{display:flex;align-items:center;gap:6px;padding:0 8px 6px 45px;color:var(--mu);background:inherit}
 #mvm .pass-opt input{width:60px}
-#mvm .files{font:11px/1.4 Consolas,monospace;color:#9aa3ad;background:#121418;border:1px solid #2a2d33;border-radius:3px;padding:4px 6px;display:flex;flex-direction:column;gap:3px}
+#mvm .files{font-size:11.5px;color:#9aa3ad;background:#121418;border:1px solid var(--ln);border-radius:4px;padding:5px 7px;display:flex;flex-direction:column;gap:3px}
 #mvm .files>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc}
 #mvm .files>span{display:flex;flex-wrap:wrap;gap:3px}#mvm .files>span>i{font-style:normal;background:#23262c;border-radius:2px;padding:0 4px}
-#mvm .go{padding:6px;font-weight:600;background:#b8301f;border-color:#e05040;color:#fff}#mvm .go:hover{background:#d03a27}
+#mvm .go{padding:7px;font-weight:600;background:var(--rec);border-color:#f06a55;color:#fff;display:flex;align-items:center;justify-content:center;gap:7px}#mvm .go:hover{background:#f0553d}
 #mvm .go[disabled]{opacity:.45;pointer-events:none}
-#mvm .prev{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);padding:4px 6px 4px 10px;display:flex;gap:8px;align-items:center;border-color:#c47f12}
-#mvm .prev b{color:#f0a830}#mvm .prev button{padding:0 6px}
 `;
 
 /** [RECRIADO] Movie theater: demo playback with a rewindable timeline, POV / third-person / free / dolly cameras, keyframed
@@ -289,6 +338,11 @@ export class Theater {
   private readonly ac = new AbortController();
   private readonly root = document.createElement("div");
   private readonly tl: HTMLCanvasElement;
+  /** the game's own stage (canvas, HUD), framed into the viewport slot at the output's shape */
+  private readonly app = document.getElementById("app")!;
+  private readonly slot: HTMLElement;
+  private appStyle: string | null = null;
+  private readonly slotSeen = new ResizeObserver(() => this.layout());
   private tab = "camera";
   private kills: number[];
   private readonly killRecs: { t: number; e: KillEvent }[];
@@ -337,28 +391,43 @@ export class Theater {
     this.savedEdits = demoEdits(demo);
     ensureCss();
     this.root.id = "mvm";
-    this.root.innerHTML = `<div class="mvm-mask"></div>
-      <div class="p top"><span class="zoom" title="UI size"><button data-a="zoomOut">−</button><button data-a="zoomReset" title="Back to 100%"></button><button data-a="zoomIn">+</button></span>
-        <b>${esc(demo.name)}</b><span class="hint">${esc(demo.map)} · ${fmt(demo.dur)}</span>
-        <button data-a="exit">Exit</button>
-        <button data-a="save" class="on" style="display:none">Save changes</button><button data-a="discard" style="display:none">Discard changes</button></div>
+    this.root.innerHTML = `<div class="shell">
+      <header class="p mbar"><span class="brand">Theater</span><span class="dname" title="${esc(demo.name)}">${esc(demo.name.replace(/\.pbdemo$/, ""))}</span>
+        <span class="hint">${esc(mapIndexEntry(demo.map)?.name ?? demo.map)}</span><span class="hint">${fmt(demo.dur)}</span><span class="grow"></span>
+        <button data-a="save" class="on" style="display:none">Save changes</button><button data-a="discard" style="display:none">Discard</button>
+        <span class="zoom" title="UI size"><button data-a="zoomOut">−</button><button data-a="zoomReset" title="Back to 100%"></button><button data-a="zoomIn">+</button></span>
+        <button data-a="exit">Exit</button></header>
+      <section class="stage"><div class="slate">
+        <span class="seg">${MODES.map(([m, t, tip]) => `<button data-a="${m}" title="${tip}">${t}</button>`).join("")}</span>
+        <select name="watch" title="Player to watch ([ / ])"></select><span class="grow"></span>
+        <div class="prev" style="display:none"></div><span class="spec" title="Output size (Render tab)"></span></div>
+        <div class="view"></div></section>
+      <aside class="p side"><h2 class="ttl"></h2><div class="body"></div><div class="foot"></div></aside>
+      <nav class="p rail">${Object.entries(TABS).map(([t, l]) => `<button data-tab="${t}" title="${l}">${icon(t as keyof typeof ICON, 18)}${l === "Controls" ? "Keys" : l}</button>`).join("")}</nav>
+      <footer class="p dock"><div class="ctl">
+        <button class="tp" data-a="back" title="Skip back (←)">${icon("back", 14)}</button><button class="tp play" data-a="play" title="Play / pause (Space)"></button>
+        <button class="tp" data-a="fwd" title="Skip forward (→)">${icon("fwd", 14)}</button><button class="tp" data-a="loop" title="Loop the in / out range (O)">${icon("loop", 15)}</button>
+        <span class="tc"></span><span class="hint">/ ${fmt(demo.dur)}</span><span class="spd"><button class="speed" data-a="speed" title="Playback speed (↑ / ↓)"></button>
+          <div class="p spop" hidden><div><b class="sval"></b> <span class="hint">playback speed</span></div>
+            <input type="range" name="speed" min="0" max="${SPEEDS.length - 1}" step="1" aria-label="Playback speed">
+            <div class="sticks">${[0.1, 0.5, 1, 2, 8].map((v) => `<button data-speed="${SPEEDS.indexOf(v)}" style="left:${(SPEEDS.indexOf(v) / (SPEEDS.length - 1)) * 100}%">${v}×</button>`).join("")}</div>
+            <span class="hint">Preview only: a render always runs at game time.</span></div></span>
+        <span class="grow"></span><span class="range" title="In / out points (B / N)"></span></div>
+        <div class="tracks"><div class="lanes"><span></span><span>Campath <i class="nk"></i></span><span>Kills <i>${this.kills.length}</i></span></div>
+          <div class="tlwrap"><canvas class="tl"></canvas><div class="tltip"></div></div></div></footer></div>
+      <div class="frame"><i></i><i></i><i></i><i></i></div>
       <div class="p edit" style="display:none"></div>
-      <div class="p prev" style="display:none"></div>
-      <div class="p side"><div class="tabs">${["camera", "campath", "visuals", "render", "controls"].map((t) => `<button data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-        <div class="body"></div><div class="foot"></div></div>
-      <div class="p prog"><div class="ptext"></div><div class="pbar"><i></i></div></div>
-      <div class="p bar"><div class="ctl">
-        <button data-a="back">⏮</button><button data-a="play"></button><button data-a="fwd">⏭</button><button data-a="loop" title="Loop the in / out range (O)">⟲</button>
-        <span class="time"></span><span class="speed"></span><span class="hint mode"></span>
-        <span style="flex:1"></span><span class="hint range"></span></div>
-        <canvas class="tl"></canvas><div class="tltip"></div></div>`;
-    document.getElementById("app")!.appendChild(this.root);
+      <div class="p prog"><div class="ptext"></div><div class="pbar"><i></i></div></div>`;
+    document.body.appendChild(this.root);
+    document.body.classList.add("mvm-on");
+    this.appStyle = this.app.getAttribute("style");
     this.tl = this.root.querySelector("canvas.tl")!;
+    this.slot = this.root.querySelector(".view")!;
     let z = 1;
     try { z = Number(localStorage.getItem(ZOOM_KEY)); } catch { /* no storage: 100% */ }
     this.setZoom(ZOOMS.includes(z) ? z : 1);
     this.wire();
-    this.layoutMask();
+    this.layout();
     this.pathHead.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), HALO_MAT));
     this.pathViz.add(this.pathParts, this.pathHead);
     this.pathViz.traverse((o) => (o.renderOrder = 999));
@@ -380,9 +449,6 @@ export class Theater {
     this.setMode("pov", demo.pov);
     this.drawSide();
   }
-
-  /** a movie render owns the canvas size and the camera (main.ts resize waits) */
-  get busyRendering(): boolean { return this.rendering; }
 
   // ---- frame ----
   /** one rAF frame (main.ts animate); during a render the render loop steps the world itself */
@@ -503,6 +569,7 @@ export class Theater {
     // arms mounted now start cold (no shot or reload under way): the exact seek's replay brings them up to this moment
     if (m === "pov") this.seek(this.time);
     this.drawSide();
+    this.drawSlate();
   }
 
   /** dolly off: the free camera where the dolly is now, same time */
@@ -648,17 +715,23 @@ export class Theater {
   }
 
   // ---- render ----
-  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["world"] as PassName[], joined: ["players", "effects", "viewmodel"] as PassName[], depthRange: 50 };
+  private renderOpts = { w: 1920, h: 1080, fps: 250, codec: "prores422lt", name: "", passes: ["world"] as PassName[], joined: ["players", "effects", "viewmodel"] as PassName[], depthRange: 50 };
 
-  /** the part of the window the render keeps: the output size fitted inside it, centred */
-  private frameBox(): { x: number; y: number; w: number; h: number } {
-    const W = window.innerWidth, H = window.innerHeight, o = this.renderOpts, s = Math.min(W / o.w, H / o.h);
-    return { x: (W - o.w * s) / 2, y: (H - o.h * s) / 2, w: o.w * s, h: o.h * s };
-  }
-
-  private layoutMask(): void {
-    const b = this.frameBox(), st = this.root.querySelector<HTMLElement>(".mvm-mask")!.style;
-    st.left = `${b.x}px`; st.top = `${b.y}px`; st.width = `${b.w}px`; st.height = `${b.h}px`;
+  /** [RECRIADO] the game's stage at the output's shape in the viewport slot (the window with the UI hidden): the preview is the render's frame */
+  private layout(): void {
+    const o = this.renderOpts, r = this.root.classList.contains("off") ? new DOMRect(0, 0, innerWidth, innerHeight) : this.slot.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const k = Math.min(r.width / o.w, r.height / o.h), w = Math.max(2, Math.floor(o.w * k)), h = Math.max(2, Math.floor(o.h * k));
+    const box = { position: "fixed", left: `${Math.round(r.left + (r.width - w) / 2)}px`, top: `${Math.round(r.top + (r.height - h) / 2)}px`, width: `${w}px`, height: `${h}px` };
+    Object.assign(this.app.style, box);
+    Object.assign(this.root.querySelector<HTMLElement>(".frame")!.style, box);
+    this.root.style.setProperty("--vx", `${Math.round(r.left + r.width / 2)}px`);
+    this.root.style.setProperty("--vy", `${Math.round(r.top + (r.height - h) / 2) + 16}px`);
+    const { renderer, camera } = this.host, cv = renderer.domElement;
+    if (this.rendering) { cv.style.width = `${w}px`; cv.style.height = `${h}px`; return; } // the drawing buffer stays the output's
+    renderer.setSize(w, h);
+    camera.aspect = o.w / o.h;
+    camera.updateProjectionMatrix();
   }
 
   private async renderMovie(): Promise<void> {
@@ -688,10 +761,11 @@ export class Theater {
     this.root.classList.add("off", "rendering");
     void audio.suspend(); // sounds would play at the render's crawl
     renderer.setPixelRatio(1);
-    // exactly the unmasked box of the window's view, whatever the output aspect (fov stays the window's)
-    const box = this.frameBox();
-    camera.setViewOffset(window.innerWidth, window.innerHeight, box.x, box.y, box.w, box.h);
+    // the viewport already has the output's shape: only the drawing buffer grows to it
     renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    this.layout();
     // the HUD laid out for the output size, as the game lays it out for its window
     const hudRoot = passes.some((p) => (p === "default" ? this.layersOf("world") : this.layersOf(p)).includes("hud")) ? document.getElementById("pbhud") : null;
     hudRoot?.style.setProperty("inset", "auto");
@@ -755,9 +829,7 @@ export class Theater {
       void audio.resume();
       for (const k of ["inset", "width", "height"]) hudRoot?.style.removeProperty(k);
       renderer.setPixelRatio(ratio);
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth / window.innerHeight; // a resize meanwhile was held back (busyRendering)
-      camera.clearViewOffset();
+      this.layout();
       const saved = `${ends[0].file}${ends.length > 1 ? ` + ${ends.length - 1} more pass${ends.length > 2 ? "es" : ""}` : ""}`;
       // a failed render keeps its own error on screen
       if (ok) this.toast(!bad ? `${this.cancelRender ? "Stopped early, saved" : "Saved"} ${saved}` : `ffmpeg failed: ${bad.log ?? bad.status}`, 8000);
@@ -819,6 +891,7 @@ export class Theater {
   private previewLabel(): void {
     const el = this.root.querySelector<HTMLElement>(".prev")!;
     el.style.display = this.preview === "default" ? "none" : "flex";
+    this.root.querySelector(".frame")!.classList.toggle("pv", this.preview !== "default");
     el.innerHTML = `<span class="hint">Previewing</span><b>${this.rendering || this.heads(this.preview) ? this.passLabel(this.preview) : PASS_INFO[this.preview].label}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
   }
 
@@ -846,7 +919,8 @@ export class Theater {
     }, { capture: true, ...sig });
     window.addEventListener("keyup", (e) => { this.held.delete(e.code); e.stopImmediatePropagation(); }, { capture: true, ...sig });
     window.addEventListener("blur", () => { this.held.clear(); this.looking = false; }, sig);
-    window.addEventListener("resize", () => this.layoutMask(), sig);
+    window.addEventListener("resize", () => this.layout(), sig); // the slot's observer misses it with the UI hidden
+    this.slotSeen.observe(this.slot);
     // no browser zoom (Ctrl + wheel, pinch): it would resize the frame; the UI has its own zoom
     window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { capture: true, passive: false, ...sig });
     const cv = this.host.renderer.domElement;
@@ -901,8 +975,9 @@ export class Theater {
       el.addEventListener("lostpointercapture", () => el.removeEventListener("pointermove", move), { once: true, ...sig });
     }, sig);
     this.root.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-edit],[data-id],[data-key],[data-del],[data-eye],[data-join],[data-pass]");
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-edit],[data-id],[data-key],[data-del],[data-eye],[data-join],[data-pass],[data-speed]");
       if (!b) return;
+      if (b.dataset.speed) { this.speedIdx = +b.dataset.speed; this.drawBar(); return; }
       if (b.dataset.eye) { this.setPreview(b.dataset.eye as PassName); return; }
       if (b.dataset.join) {
         const l = b.dataset.join as PassName, o = this.renderOpts, rec = this.recorded().includes(this.passOf(l)), split = o.joined.includes(l);
@@ -935,7 +1010,14 @@ export class Theater {
       const t = e.target as HTMLInputElement | HTMLSelectElement;
       const o = this.renderOpts;
       // even sizes: the 4:2:2 ProRes profiles halve the width of the colour planes
-      if (t.name === "w" || t.name === "h") { const v = Math.max(16, Math.min(t.name === "w" ? 7680 : 4320, Math.round(+t.value / 2) * 2 || 2)); o[t.name] = v; t.value = String(v); this.layoutMask(); }
+      if (t.name === "w" || t.name === "h") { const v = Math.max(16, Math.min(t.name === "w" ? 7680 : 4320, Math.round(+t.value / 2) * 2 || 2)); o[t.name] = v; t.value = String(v); this.layout();
+        // the preset follows without a redraw, which would eat the click that blurred this field
+        const sz = this.root.querySelector<HTMLSelectElement>('[name="size"]');
+        if (sz) { sz.value = `${o.w}x${o.h}`; if (sz.selectedIndex < 0) sz.value = ""; }
+      }
+      else if (t.name === "size" && t.value) { [o.w, o.h] = t.value.split("x").map(Number); this.layout(); this.drawSide(); }
+      else if (t.name === "watch") { t.blur(); this.setMode(this.mode === "third" ? "third" : "pov", t.value); } // focus kept would swallow the theater's keys
+      else if (t.name === "speed") t.blur(); // the drag's end; on input it would cut the drag short
       else if (t.name === "fps") o.fps = +t.value;
       else if (t.name === "codec") { o.codec = t.value; this.drawSide(); } // the mattes' notes and swatches follow the alpha
       else if (t.name === "povfov") this.setPovFov(t.value === "" ? null : +t.value || null);
@@ -978,8 +1060,11 @@ export class Theater {
         });
       }
     }, sig);
+    // the speed slider closes on a click anywhere else, the viewport included
+    window.addEventListener("pointerdown", (e) => { if (!(e.target as Element).closest?.(".spd")) this.root.querySelector<HTMLElement>(".spop")!.hidden = true; }, sig);
     this.root.addEventListener("input", (e) => {
       const t = e.target as HTMLInputElement, k = t.dataset.look as keyof Look | undefined, d = t.dataset.dof as keyof Dof | undefined;
+      if (t.name === "speed") { this.speedIdx = +t.value; this.drawBar(); return; }
       if (k) this.looks.set({ [k]: typeof this.looks.base[k] === "number" ? +t.value || 0 : t.value });
       else if (d) this.dof[d] = +t.value || 0;
       else return;
@@ -1022,7 +1107,7 @@ export class Theater {
       case "Delete": case "Backspace":
         if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.removeKey(this.sel); }
         break;
-      case "KeyH": this.root.classList.toggle("off"); break;
+      case "KeyH": this.root.classList.toggle("off"); this.layout(); break;
       case "Escape": this.cancelRender = true; break;
     }
   }
@@ -1050,6 +1135,7 @@ export class Theater {
       case "passesDefault": Object.assign(this.renderOpts, { passes: ["world"], joined: ["players", "effects", "viewmodel"] }); this.drawSide(); break;
       case "passesAll": this.renderOpts.passes = [...PASSES]; this.drawSide(); break;
       case "render": void this.renderMovie(); break;
+      case "speed": { const pop = this.root.querySelector<HTMLElement>(".spop")!; pop.hidden = !pop.hidden; this.drawBar(); break; }
       case "save": void this.save(); break;
       case "discard": if (window.confirm("Discard your unsaved demo changes?")) this.discard(); break;
       case "zoomOut": this.setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(this.uiZoom) - 1)]); break;
@@ -1109,7 +1195,7 @@ export class Theater {
     // the ruler only moves the playhead
     // both handles at one x: the cursor's side picks, or the range could never open to the right
     const edge = y < TL_RULER ? null : near(this.outPt) && (!near(this.inPt) || x > this.tlX(this.inPt, w)) ? "out" as const : near(this.inPt) ? "in" as const : null;
-    const kills = y >= h - TL_MARK - 8 ? this.killRecs.filter((k) => near(k.t)) : [];
+    const kills = y >= TL_RULER + (h - TL_RULER) / 2 ? this.killRecs.filter((k) => near(k.t)) : [];
     return { key, edge, kills };
   }
 
@@ -1181,24 +1267,33 @@ export class Theater {
   // ---- UI ----
   private drawBar(): void {
     const q = (s: string) => this.root.querySelector<HTMLElement>(s)!;
-    q('[data-a="play"]').textContent = this.playing ? "❚❚" : "▶";
+    const play = q('[data-a="play"]'), ic = this.playing ? "pause" : "play";
+    if (play.dataset.ic !== ic) { play.dataset.ic = ic; play.innerHTML = icon(ic, 16); }
     q('[data-a="loop"]').classList.toggle("on", this.loop);
-    q(".time").textContent = `${fmt(this.time)} / ${fmt(this.net.demo.dur)}`;
-    q(".speed").textContent = `${SPEEDS[this.speedIdx]}x`;
-    q(".mode").textContent = { pov: "First person", third: "Third person", free: "Free camera", dolly: "Dolly" }[this.mode];
-    q(".range").textContent = `In ${fmt(this.inPt)} · Out ${fmt(this.outPt)}`;
+    q(".tc").textContent = fmt(this.time);
+    const speed = `${SPEEDS[this.speedIdx]}×`, pop = q(".spop"), slider = q('[name="speed"]') as HTMLInputElement;
+    q(".speed").textContent = q(".sval").textContent = speed;
+    q(".speed").classList.toggle("on", !pop.hidden);
+    if (+slider.value !== this.speedIdx) slider.value = String(this.speedIdx);
+    const range = `<span>In <b>${fmt(this.inPt)}</b></span><span>Out <b>${fmt(this.outPt)}</b></span>`, rEl = q(".range");
+    if (rEl.dataset.v !== range) { rEl.dataset.v = range; rEl.innerHTML = range; }
+    q(".nk").textContent = String(this.path.keys.length);
+    this.drawSlate();
     const cv = this.tl, w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1, dur = this.net.demo.dur;
     // the playhead playing across the right edge of a zoomed view: its next page (a view panned elsewhere stays)
     const span = this.view.b - this.view.a, crossed = this.playing && span < dur && this.barT <= this.view.b && this.time > this.view.b;
     this.barT = this.time;
     if (crossed) { this.setView(span, this.time, 0.05); return; }
     if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    // the campath lane over the kills lane
     const g = cv.getContext("2d")!, X = (t: number) => this.tlX(t, w), R = TL_RULER, mid = R + (h - R) / 2;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     this.drawRuler(g, w);
-    g.fillStyle = "#23262c"; g.fillRect(0, mid - 3, w, 6);
-    g.fillStyle = "rgba(240,168,48,.25)"; g.fillRect(X(this.inPt), R, X(this.outPt) - X(this.inPt), h - R);
+    g.fillStyle = "rgba(255,255,255,.025)"; g.fillRect(0, mid, w, h - mid);
+    g.fillStyle = "#2b3036"; g.fillRect(0, mid, w, 1);
+    // outside the in / out range dimmed: the whole demo in range shows plain
+    g.fillStyle = "rgba(0,0,0,.4)"; g.fillRect(0, R, X(this.inPt), h - R); g.fillRect(X(this.outPt), R, w - X(this.outPt), h - R);
     for (const [t, d] of [[this.inPt, 1], [this.outPt, -1]] as const) { // bracket handles
       const x = Math.round(X(t)) + 0.5;
       g.strokeStyle = "#f0a830"; g.lineWidth = 2; g.beginPath(); g.moveTo(x + 4 * d, R + 1); g.lineTo(x, R + 1); g.lineTo(x, h - 1); g.lineTo(x + 4 * d, h - 1); g.stroke();
@@ -1222,11 +1317,11 @@ export class Theater {
       g.globalAlpha = 1;
     }
     if (this.path.keys.length > 1) {
-      g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), R + 4, X(this.path.end) - X(this.path.start), 3);
+      g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), R + 3, X(this.path.end) - X(this.path.start), 3);
       this.drawSpeed(g, w, h, X);
     }
     this.path.keys.forEach((k, i) => {
-      const x = X(k.t), y = R + 8;
+      const x = X(k.t), y = (R + mid) / 2;
       g.fillStyle = i === this.sel ? "#fff" : "#5aa0ff";
       g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 5, y); g.lineTo(x, y + 6); g.lineTo(x - 5, y); g.fill();
     });
@@ -1241,13 +1336,13 @@ export class Theater {
     const { a, b } = this.view, pps = w / (b - a), dur = this.net.demo.dur;
     const step = RULER_STEPS.find((s) => s * pps >= TL_LABEL) ?? RULER_STEPS[RULER_STEPS.length - 1];
     const minor = step / (step * pps >= 5 * 8 ? 5 : 2);
-    g.fillStyle = "#16181c"; g.fillRect(0, 0, w, TL_RULER);
+    g.fillStyle = "#14171a"; g.fillRect(0, 0, w, TL_RULER);
     if (b - a < dur) { g.fillStyle = "rgba(240,168,48,.5)"; g.fillRect((a / dur) * w, TL_RULER - 2, Math.max(2, ((b - a) / dur) * w), 2); }
-    g.font = "9px Consolas,monospace"; g.textBaseline = "top";
+    g.font = "10px Bahnschrift,Segoe UI,sans-serif"; g.textBaseline = "top";
     for (let i = Math.ceil(a / minor - 1e-9); i * minor <= b + 1e-9; i++) {
       const t = i * minor, x = Math.round((t - a) * pps) + 0.5, major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
-      g.fillStyle = "#555"; g.fillRect(x, major ? 2 : TL_RULER - 6, 1, major ? TL_RULER - 4 : 3);
-      if (major) { g.fillStyle = "#999"; g.fillText(rulerLabel(t, step), x + 3, 1); }
+      g.fillStyle = "#4a5058"; g.fillRect(x, major ? 2 : TL_RULER - 6, 1, major ? TL_RULER - 4 : 3);
+      if (major) { g.fillStyle = "#8a929c"; g.fillText(rulerLabel(t, step), x + 4, 4); }
     }
   }
 
@@ -1262,10 +1357,10 @@ export class Theater {
       this.speedMax = Math.max(...this.speedPts);
     }
     if (this.speedMax <= 1e-6) return;
-    const top = TL_RULER + 10, y = (v: number) => h - 2 - (v / this.speedMax) * (h - 2 - top);
-    g.beginPath(); g.moveTo(x0, h - 2);
+    const top = TL_RULER + 8, bot = TL_RULER + (h - TL_RULER) / 2 - 1, y = (v: number) => bot - (v / this.speedMax) * (bot - top);
+    g.beginPath(); g.moveTo(x0, bot);
     this.speedPts.forEach((v, i) => g.lineTo(x0 + i, y(v)));
-    g.lineTo(x0 + this.speedPts.length - 1, h - 2);
+    g.lineTo(x0 + this.speedPts.length - 1, bot);
     g.fillStyle = "rgba(90,160,255,.16)"; g.fill();
     g.beginPath(); this.speedPts.forEach((v, i) => (i ? g.lineTo(x0 + i, y(v)) : g.moveTo(x0, y(v))));
     g.strokeStyle = "rgba(120,180,255,.8)"; g.lineWidth = 1; g.stroke();
@@ -1274,18 +1369,18 @@ export class Theater {
   private drawSide(): void {
     this.previewLabel();
     for (const b of this.root.querySelectorAll<HTMLElement>("[data-tab]")) b.classList.toggle("on", b.dataset.tab === this.tab);
+    this.root.querySelector(".ttl")!.textContent = TABS[this.tab as keyof typeof TABS];
     const body = this.root.querySelector(".body")!, foot = this.root.querySelector(".foot")!;
     // a redraw of the same tab (a click in it) keeps its scroll; another tab starts at the top
     const scroll = this.drawnTab === this.tab ? body.scrollTop : 0;
     this.drawnTab = this.tab;
     foot.innerHTML = ""; // the render tab's, kept in view under its scrolling body
-    const m = this.mode, o = this.renderOpts;
+    const o = this.renderOpts;
     const btn = (a: string, t: string, on = false) => `<button data-a="${a}" class="${on ? "on" : ""}">${t}</button>`;
-    const head = (t: string) => `<div class="hint" style="color:#f0a830;margin-top:4px">${t}</div>`;
+    const head = (t: string) => `<div class="hd">${t}</div>`;
     if (this.tab === "camera") {
       const cur = this.host.game.observedId;
-      body.innerHTML = `<div class="row">${btn("pov", "POV", m === "pov")}${btn("third", "Third", m === "third")}${btn("free", "Free", m === "free")}${btn("dolly", "Dolly", m === "dolly")}</div>
-        <div class="row"><label>POV FOV</label><input name="povfov" type="number" min="5" max="140" step="1" placeholder="game" value="${this.povFov ?? ""}" style="width:60px"></div>
+      body.innerHTML = `<div class="row"><label>POV FOV</label><input name="povfov" type="number" min="5" max="140" step="1" placeholder="game" value="${this.povFov ?? ""}" style="width:60px"></div>
         <div class="hint">Players (click to watch, [ / ] to cycle)</div>
         <div class="list">${this.net.roster().map((a) => { const n = this.editsOf(a.id); return `<div class="item ${a.id === cur ? "on" : ""} ${a.id === this.editId ? "editing" : ""}" data-id="${esc(a.id)}"><span class="dot" style="background:${TEAM[a.team ? 1 : 0].color}"></span><span class="who">${esc(a.name)}</span><button class="wr ${n ? "has" : ""}" data-edit="${esc(a.id)}" title="Edit ${esc(a.name)}${n ? ` (${n} change${n > 1 ? "s" : ""})` : ""}">${icon("wrench", 13)}</button></div>`; }).join("")}</div>
         <div class="hint">Free camera: hold right mouse to look, WASD / Q E to move, wheel = FOV, Alt + wheel = roll.</div>`;
@@ -1342,7 +1437,7 @@ export class Theater {
             <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye ? "Back to the default view" : `Preview ${info.label} alone in the viewport`} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
           + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
       };
-      body.innerHTML = `${head("Output")}
+      body.innerHTML = `<div class="row"><label>Size</label><select name="size" style="flex:1;min-width:0"><option value="">Custom</option>${SIZES.map(([w, h, l]) => `<option value="${w}x${h}" ${w === o.w && h === o.h ? "selected" : ""}>${l}  ${w} × ${h}</option>`).join("")}</select></div>
         <div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="flex:1;min-width:0"> ×
           <input name="h" type="number" min="16" max="4320" step="2" value="${o.h}" style="flex:1;min-width:0"></div>
         <div class="row"><label>FPS</label><select name="fps">${FRAMERATES.map((f) => `<option ${f === o.fps ? "selected" : ""}>${f}</option>`).join("")}</select></div>
@@ -1354,7 +1449,7 @@ export class Theater {
       foot.innerHTML = `<div class="sect" style="margin-top:0">Range<span class="hint">${fmt(this.inPt)} – ${fmt(this.outPt)} · ${frames} frames</span></div>
         <div class="row">${btn("setIn", "Set in (B)")}${btn("setOut", "Set out (N)")}${btn("pathRange", "Campath")}</div>
         ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${this.layersOf(p).join("-")}`}.mov</i>`).join("")}</span></div>` : ""}
-        <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `● Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
+        <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `${icon("render", 14)}Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
     } else {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["Ctrl + ← / →", "Pause and step one demo tick (hold to keep stepping)"], ["B / N", "Set in / out point"], ["O", "Loop the in / out range"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
@@ -1367,6 +1462,18 @@ export class Theater {
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
     }
     body.scrollTop = scroll;
+  }
+
+  /** the bar over the viewport: camera mode, the watched player, the output size it frames */
+  private drawSlate(): void {
+    for (const b of this.root.querySelectorAll<HTMLElement>(".seg [data-a]")) b.classList.toggle("on", b.dataset.a === this.mode);
+    const sel = this.root.querySelector<HTMLSelectElement>('[name="watch"]')!, roster = this.net.roster(), cur = this.host.game.observedId ?? "";
+    const names = roster.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join("");
+    // rebuilt only when a name changes: a rebuild would close it open
+    if (sel.dataset.v !== names) { sel.dataset.v = names; sel.innerHTML = names; }
+    if (sel.value !== cur && roster.some((a) => a.id === cur)) sel.value = cur;
+    const o = this.renderOpts, spec = `<span>${o.w} × ${o.h}</span><span>${o.fps} fps</span>`, el = this.root.querySelector<HTMLElement>(".spec")!;
+    if (el.dataset.v !== spec) { el.dataset.v = spec; el.innerHTML = spec; }
   }
 
   // ---- demo editor ----
@@ -1712,7 +1819,10 @@ export class Theater {
     document.getElementById("pbhud")?.style.removeProperty("opacity");
     this.cancelRender = true;
     this.ac.abort();
+    this.slotSeen.disconnect();
     this.root.remove();
+    document.body.classList.remove("mvm-on");
+    if (this.appStyle === null) this.app.removeAttribute("style"); else this.app.setAttribute("style", this.appStyle);
     this.pathViz.removeFromParent();
     // r169 TransformControls.dispose() calls this.traverse, which a Controls lacks: unhook it and free the helper here
     this.gizmo.disconnect();
