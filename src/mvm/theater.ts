@@ -7,7 +7,9 @@ import { MAP_SHAPE, STAGE_SHAPE, mapShapeCell } from "../lobby/screensCross/cros
 import { assetUrl } from "../assetMap";
 import { mapIndexEntry } from "../config";
 import type { DemoNet } from "./demoNet";
-import { Post } from "./post";
+import { Post, type DofParams } from "./post";
+import { ALPHA_PASSES, PASSES, Passes, type PassFrame, type PassName } from "./passes";
+import { renderOnTop } from "../render/onTop";
 import { charaChoices } from "../game/charModel";
 import { actorEquip, hatChoices } from "../game/charEquip";
 import { brightnessFactor } from "../gameplay/settings";
@@ -75,12 +77,46 @@ gl_Position = projectionMatrix * mvPosition;`);
 };
 // IWXMVM's capture rates: CoD steps its clock in whole ms, so 1000 / fps is an integer; the high ones are for frame-blended motion blur
 const FRAMERATES = [50, 100, 125, 250, 500, 1000];
+// the render tab's pass list: what each file holds (alpha = the format keeps a matte) and a swatch of what it looks like
+// 30 x 20 pictures: a street with a crate (world), a player, a first-person gun; the mattes over a checkerboard where the
+// format keeps alpha, else over the green they are keyed on
+const WORLD_SVG = `<rect width="30" height="11" fill="#a9c8e4"/><rect y="8" width="30" height="3" fill="#cadded"/>
+  <path d="M0 11V7h4V5h3v6h2V6h4v5h3V8h3v3z" fill="#8193a6"/><rect y="11" width="30" height="9" fill="#7d6e52"/>
+  <path d="M15 11L8 20M15 11l7 9" stroke="#9a8866" stroke-width=".8"/><path d="M0 5.5l5 1.6v9.2L0 18.5z" fill="#6f6152"/>
+  <path d="M21 9h7v8h-7z" fill="#a8743f"/><path d="M21 9h7v1.3h-7z" fill="#c78d52"/><path d="M21 10.3l7 6.7m0-6.7l-7 6.7" stroke="#87592e" stroke-width=".6"/>`;
+const PLAYER_SVG = `<path d="M12.6 13.4h2.2l-.4 5.8h-1.9zm2.6 0h2.2l.3 5.8h-1.9z" fill="#36414f"/>
+  <path d="M12.2 8.3q2.8-1.5 5.6 0l.5 5.3h-6.6zm0 .2l-1.7 4.7 1.4.4 1.2-3.9zm5.6 0l1.7 4.7-1.4.4-1.2-3.9z" fill="#b94a3c"/>
+  <circle cx="15" cy="5.3" r="2.2" fill="#e2b48c"/><path d="M12.8 5a2.2 2.2 0 0 1 4.4 0q-2.2-1.3-4.4 0z" fill="#4a3426"/>`;
+const GUN_SVG = `<path d="M30 13.6L16.2 8.1l-1.1 1.6L28.6 17z" fill="#5d636d"/><path d="M30 13.6L16.2 8.1l.3-.6 13.5 5.2z" fill="#949ba6"/>
+  <path d="M23.3 12.1l-1.5 4 1.9.8 1.3-3.7z" fill="#454a52"/><path d="M23.6 15.6q2.2-1.7 4.4.3l2 1.1V20h-7.2z" fill="#d9a77e"/>
+  <path d="M26 17.6l4-1.1V20h-5z" fill="#4b5a44"/>`;
+const CHECK_SVG = Array.from({ length: 24 }, (_, i) => `<rect x="${(i % 6) * 5}" y="${Math.floor(i / 6) * 5}" width="5" height="5" fill="${(i % 6 + Math.floor(i / 6)) % 2 ? "#2e3036" : "#4a4d55"}"/>`).join("");
+const svg = (inner: string) => `<svg viewBox="0 0 30 20" width="30" height="20">${inner}</svg>`;
+const matteSvg = (alpha: boolean, inner: string) => svg((alpha ? CHECK_SVG : `<rect width="30" height="20" fill="#14b814"/>`) + inner);
+/** swatch: an svg, or a CSS background */
+const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => string; swatch: (alpha: boolean) => string }> = {
+  default: { label: "Default", note: () => "The frame as you see it",
+    swatch: () => svg(`${WORLD_SVG}<g transform="translate(-3.5 2.6) scale(.82)">${PLAYER_SVG}</g><g transform="translate(9 6) scale(.7)">${GUN_SVG}</g>`) },
+  world: { label: "World", note: () => "Map only: no players or effects", swatch: () => svg(WORLD_SVG) },
+  players: { label: "Players", note: (a) => (a ? "Alpha matte" : "On green screen"), swatch: (a) => matteSvg(a, PLAYER_SVG) },
+  viewmodel: { label: "Viewmodel", note: (a) => `Arms and gun · ${a ? "alpha matte" : "on green"}`, swatch: (a) => matteSvg(a, GUN_SVG) },
+  effects: { label: "Effects", note: (a) => `Flashes, smoke, tracers ${a ? "· premultiplied alpha" : "on black"}`,
+    swatch: () => "radial-gradient(circle at 55% 50%,#fff6d0 0 9%,#ffb84a 20%,rgba(255,120,20,.35) 38%,transparent 58%),#050505" },
+  depth: { label: "Depth", note: () => "16-bit · white near, black far", swatch: () => "linear-gradient(90deg,#f2f2f2,#101010)" },
+  normals: { label: "Normals", note: () => "Surface direction, view space", swatch: () => "linear-gradient(135deg,#9a80ff,#7f7fff 35%,#80ffa8 70%,#ff9a80)" },
+};
+const EYE = `<svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.6 7-4.6S15 8 15 8s-2.6 4.6-7 4.6S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/></svg>`;
 const CODECS: [string, string][] = [["prores4444xq", "ProRes 4444 XQ"], ["prores4444", "ProRes 4444"], ["prores422hq", "ProRes 422 HQ"],
   ["prores422", "ProRes 422"], ["prores422lt", "ProRes 422 LT"]];
 
 const CSS = `
 #mvm{position:fixed;inset:0;pointer-events:none;font:12px/1.4 Segoe UI,Arial,sans-serif;color:#ddd;z-index:50;user-select:none}
-#mvm.off>*:not(.mvm-toast):not(.mvm-mask){display:none}#mvm.rendering .mvm-mask{display:none}
+#mvm.off>*:not(.mvm-toast):not(.mvm-mask):not(.prog){display:none}#mvm.rendering .mvm-mask{display:none}
+#mvm .prog{display:none;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(560px,90vw);padding:8px 10px;flex-direction:column;gap:6px}
+#mvm.rendering .prog{display:flex}#mvm.rendering .prev{display:none!important}#mvm .prog .pbar{height:5px;border-radius:3px;background:#2a2e35;overflow:hidden}
+#mvm .prog .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#d2321f,#f0a830)}
+#mvm .prog .ptext{display:flex;gap:10px;font-variant-numeric:tabular-nums}#mvm .prog .ptext b{color:#f0a830}
+#mvm .foot{flex:none;padding:8px;border-top:1px solid #333;display:flex;flex-direction:column;gap:6px}#mvm .foot:empty{display:none}
 #mvm .mvm-mask{position:absolute;box-shadow:0 0 0 100vmax rgba(10,10,12,.6);outline:1px solid rgba(255,255,255,.25)}
 #mvm .p{pointer-events:auto;background:rgba(18,20,24,.92);border:1px solid #333;border-radius:4px}
 #mvm button,#mvm select,#mvm input{font:inherit;color:#eee;background:#2a2e35;border:1px solid #444;border-radius:3px;padding:2px 7px}
@@ -89,7 +125,7 @@ const CSS = `
 #mvm .side{position:absolute;right:8px;top:8px;width:270px;max-height:calc(100% - 120px);display:flex;flex-direction:column}
 #mvm .tabs{display:flex;border-bottom:1px solid #333}#mvm .tabs button{flex:1;border:0;border-radius:0;background:none}
 #mvm .tabs button.on{background:#2a2e35;color:#f0a830}
-#mvm .body{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+#mvm .body{padding:8px;overflow:auto;display:flex;flex-direction:column;gap:6px}#mvm .body>*{flex-shrink:0}
 #mvm .row{display:flex;gap:6px;align-items:center}#mvm .row>label{flex:0 0 70px;color:#999}
 #mvm .list{display:flex;flex-direction:column;gap:2px}
 #mvm .item{display:flex;gap:6px;padding:2px 5px;border-radius:3px;cursor:pointer;align-items:center}
@@ -102,6 +138,30 @@ const CSS = `
 #mvm .mvm-toast{position:absolute;left:50%;top:40%;transform:translateX(-50%);padding:10px 16px;font-size:14px}
 #mvm .hint{color:#888}
 #mvm .edit{position:absolute;width:240px;padding:8px;display:flex;flex-direction:column;gap:6px}#mvm .edit select{width:100%}
+#mvm .sect{display:flex;gap:6px;align-items:center;margin-top:6px;color:#f0a830}#mvm .sect .hint{flex:1}
+#mvm .sect button{padding:0 6px;font-size:11px}
+#mvm .passes{display:flex;flex-direction:column;border:1px solid #30333a;border-radius:4px;overflow:hidden;background:#15171b}
+#mvm .pass{display:flex;align-items:center;gap:7px;padding:5px 4px 5px 7px;cursor:pointer;border-top:1px solid #23262c}
+#mvm .pass:first-child{border-top:0}#mvm .pass:hover{background:#1f2227}#mvm .pass.rec{background:#2a2217}#mvm .pass.rec:hover{background:#33291b}
+#mvm .recdot{flex:none;width:11px;height:11px;border-radius:50%;border:2px solid #4c5059;box-sizing:border-box}
+#mvm .pass.rec .recdot{border-color:#ff7262;background:radial-gradient(circle at 35% 35%,#ff8a7a,#d2321f)}
+#mvm .sw{flex:none;width:30px;height:20px;border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.12)}#mvm .sw svg{display:block}
+#mvm .pass:not(.rec) .sw{opacity:.55}#mvm .pass.na{opacity:.4;cursor:default}#mvm .pass.na:hover{background:none}
+#mvm .nm{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+#mvm .nm b{font-weight:600;color:#9aa0a8}#mvm .pass.rec .nm b{color:#f2f2f2}
+
+#mvm .eye{flex:none;display:flex;align-items:center;gap:3px;border:0;background:none;padding:3px 5px;color:#5c616b}
+#mvm .eye:hover{background:#2f333b;color:#ccc}#mvm .eye.on{color:#f0a830;background:#3d3220}
+#mvm .eye kbd{font:10px Consolas,monospace;color:inherit;opacity:.8}
+#mvm .pass-opt{display:flex;align-items:center;gap:6px;padding:0 8px 6px 45px;color:#999;background:inherit}
+#mvm .pass-opt input{width:60px}
+#mvm .files{font:11px/1.4 Consolas,monospace;color:#9aa3ad;background:#121418;border:1px solid #2a2d33;border-radius:3px;padding:4px 6px;display:flex;flex-direction:column;gap:3px}
+#mvm .files>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#ccc}
+#mvm .files>span{display:flex;flex-wrap:wrap;gap:3px}#mvm .files>span>i{font-style:normal;background:#23262c;border-radius:2px;padding:0 4px}
+#mvm .go{padding:6px;font-weight:600;background:#b8301f;border-color:#e05040;color:#fff}#mvm .go:hover{background:#d03a27}
+#mvm .go[disabled]{opacity:.45;pointer-events:none}
+#mvm .prev{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);padding:4px 6px 4px 10px;display:flex;gap:8px;align-items:center;border-color:#c47f12}
+#mvm .prev b{color:#f0a830}#mvm .prev button{padding:0 6px}
 body.mvm-clean #app>*:not(canvas):not(#mvm),body.mvm-clean>:not(#app){visibility:hidden}
 `;
 
@@ -166,6 +226,10 @@ export class Theater {
   private lookName = "";
   /** depth of field: made on first use; the cursor over the canvas (0..1, origin bottom left) and the player in focus */
   private post: Post | null = null;
+  private passes: Passes | null = null;
+  /** the pass the viewport shows (render tab); a render always draws the default one there */
+  private preview: PassName = "default";
+  private drawnTab = "";
   private readonly mouseUv = new THREE.Vector2(0.5, 0.5);
   private dofActor: string | null = null;
   private dofZ = 10;
@@ -182,8 +246,10 @@ export class Theater {
         <button data-a="clean">Hide HUD (G)</button><button data-a="exit">Exit</button>
         <button data-a="save" class="on" style="display:none">Save changes</button></div>
       <div class="p edit" style="display:none"></div>
+      <div class="p prev" style="display:none"></div>
       <div class="p side"><div class="tabs">${["camera", "campath", "visuals", "render", "controls"].map((t) => `<button data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-        <div class="body"></div></div>
+        <div class="body"></div><div class="foot"></div></div>
+      <div class="p prog"><div class="ptext"></div><div class="pbar"><i></i></div></div>
       <div class="p bar"><div class="ctl">
         <button data-a="back">⏮</button><button data-a="play"></button><button data-a="fwd">⏭</button>
         <span class="time"></span><span class="speed"></span><span class="hint mode"></span>
@@ -314,6 +380,7 @@ export class Theater {
   private setMode(m: Mode, id?: string): void {
     if ((m === "free" || m === "dolly") && this.mode !== "free" && this.mode !== "dolly") this.free = this.currentPose();
     this.mode = m;
+    if (m !== "pov" && this.preview === "viewmodel") this.setPreview("default"); // no gun to show outside first person
     this.host.game.observe(m === "pov" ? "fps" : m === "third" ? "third" : "fly", id);
     this.drawSide();
   }
@@ -461,7 +528,7 @@ export class Theater {
   }
 
   // ---- render ----
-  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "" };
+  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["default"] as PassName[], depthRange: 50 };
 
   /** the part of the window the render keeps: the output size fitted inside it, centred */
   private frameBox(): { x: number; y: number; w: number; h: number } {
@@ -479,17 +546,17 @@ export class Theater {
     const { w, h, fps } = this.renderOpts;
     const a = this.inPt, b = this.outPt;
     if (b - a < 0.1) { this.toast("Set an in / out range first (B / N)"); return; }
-    // <demo or file name>_<player>_pov|third or _cine; the server appends the first free number
-    const who = this.net.roster().find((p) => p.id === this.host.game.observedId)?.name ?? "player";
-    const tag = this.mode === "pov" || this.mode === "third" ? `_${who}_${this.mode}` : "_cine";
-    const name = `${this.renderOpts.name || this.net.demo.name.replace(/\.pbdemo$/, "")}${tag}`.replace(/[^\w.-]/g, "_");
-    const start = await fetch(`${DEMO_API}/render/start`, { method: "POST", body: JSON.stringify({ w, h, fps, codec: this.renderOpts.codec, name }) });
+    const name = this.movieName();
+    const passes = this.recorded();
+    if (!passes.length) { this.toast("Pick at least one pass"); return; }
+    const streams = passes.map((p) => ({ name: p, input: p === "depth" ? "gray16le" : "rgba", alpha: ALPHA_PASSES.includes(p) && this.alphaFormat() }));
+    const start = await fetch(`${DEMO_API}/render/start`, { method: "POST", body: JSON.stringify({ w, h, fps, codec: this.renderOpts.codec, name, passes: streams }) });
     if (start.status === 503) {
       window.alert("Rendering needs ffmpeg, and none was found on PATH.\n\nInstall it (for example: winget install Gyan.FFmpeg), then restart start_server.cmd.");
       return;
     }
     if (!start.ok) { this.toast(`Render failed to start: ${await start.text()}`); return; }
-    const { id } = await start.json() as { id: string };
+    const { jobs } = await start.json() as { jobs: { id: string; file: string }[] };
     const { renderer, camera } = this.host;
     const ratio = renderer.getPixelRatio(), audio = THREE.AudioContext.getContext();
     this.openEdit(null);
@@ -505,34 +572,56 @@ export class Theater {
     const box = this.frameBox();
     camera.setViewOffset(window.innerWidth, window.innerHeight, box.x, box.y, box.w, box.h);
     renderer.setSize(w, h, false);
-    const gl = renderer.getContext(), px = new Uint8Array(w * h * 4), step = 1 / fps; // game time, like IWXMVM: the playback speed is a preview setting only
+    const step = 1 / fps; // game time, like IWXMVM: the playback speed is a preview setting only
     const frames = Math.round((b - a) / step);
-    // the preview's brightness is a CSS filter on the canvas (main.ts) that readPixels never sees [INFERIDO: brightness() scales the sRGB bytes]
-    const bf = brightnessFactor(), shade = new Uint8ClampedArray(px.buffer);
+    const bf = brightnessFactor(), passer = (this.passes ??= new Passes(renderer));
     let ok = true;
     const inflight: Promise<void>[] = [];
-    const t0 = performance.now();
+    // frames drawn whose pixels are still coming off the GPU
+    const reading: { n: number; bytes: Promise<Uint8Array<ArrayBuffer>[]> }[] = [];
+    const send = async (f: (typeof reading)[number]) => {
+      const all = await f.bytes;
+      all.forEach((bytes, k) => {
+        // a Blob body uploads ~8x faster than the typed array itself in Chromium
+        inflight.push(fetch(`${DEMO_API}/render/frame?id=${jobs[k].id}&n=${f.n}`, { method: "POST", body: new Blob([bytes]) }).then(async (r) => {
+          if (!r.ok && ok) { ok = false; this.toast(`Render failed: ${(await r.json().catch(() => ({}))).error ?? r.status}`, 0); }
+        }).catch((e: unknown) => { if (ok) { ok = false; this.toast(`Render failed: ${String(e)}`, 0); } }));
+      });
+      // ffmpeg's own pace holds the rest back
+      while (inflight.length >= 2 * jobs.length) await inflight.shift();
+    };
+    const t0 = performance.now(), bar = this.root.querySelector<HTMLElement>(".prog .pbar i")!, text = this.root.querySelector<HTMLElement>(".prog .ptext")!;
+    bar.style.width = "0";
+    text.textContent = "Starting…";
     try {
       this.seek(a); // the exact seek: the in point looks as it did in the preview
       for (let i = 0; i < frames && ok && !this.cancelRender; i++) {
-        if (i) this.step(step);
-        else { this.host.simulate(0); this.updateCamera(0); this.draw(step); }
-        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
-        if (bf !== 1) for (let j = 0; j < shade.length; j += 4) { shade[j] *= bf; shade[j + 1] *= bf; shade[j + 2] *= bf; }
-        // a Blob body (a copy, so px is free again) uploads ~8x faster than the typed array itself in Chromium
-        inflight.push(fetch(`${DEMO_API}/render/frame?id=${id}&n=${i}`, { method: "POST", body: new Blob([px]) }).then(async (r) => {
-          if (!r.ok && ok) { ok = false; this.toast(`Render failed: ${(await r.json().catch(() => ({}))).error ?? r.status}`, 0); }
-        }).catch((e: unknown) => { if (ok) { ok = false; this.toast(`Render failed: ${String(e)}`, 0); } }));
-        // the next frames render while these upload; ffmpeg's own pace holds the rest back
-        if (inflight.length >= 3) await inflight.shift();
-        const fps = (i + 1) / ((performance.now() - t0) / 1000);
-        this.toast(`Rendering ${i + 1} / ${frames} · ${fps.toFixed(1)} fps  (Esc cancels)`, 0);
+        if (i) this.advance(step);
+        else { this.host.simulate(0); this.updateCamera(0); }
+        // every pass from this one simulated frame: the files line up exactly
+        // on screen: the previewed pass when it is recorded, else the first one (1 - 7 switch it while it renders)
+        const shown = passes.includes(this.preview) ? this.preview : passes[0];
+        reading.push({ n: i, bytes: Promise.all(passer.capture(passes, this.passFrame(), bf, () => this.drawFrame(step), shown)) });
+        // the GPU draws the next frame while this one's pixels come back and upload
+        if (reading.length > 2) await send(reading.shift()!);
+        const fps = (i + 1) / ((performance.now() - t0) / 1000), left = Math.round((frames - i - 1) / fps);
+        bar.style.width = `${((i + 1) / frames) * 100}%`;
+        text.innerHTML = `<span>Frame <b>${i + 1}</b> / ${frames}</span><span>${fps.toFixed(1)} fps</span><span>${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</span>
+          <span style="flex:1"></span><span class="hint">Showing ${PASS_INFO[shown].label}${passes.length > 1 ? ` (${passes.map((p) => PASSES.indexOf(p) + 1).join(" ")})` : ""} · Esc stops</span>`;
       }
+      // a cancel keeps the frames already drawn, so every file ends on the same frame
+      while (ok && reading.length) await send(reading.shift()!);
       await Promise.all(inflight);
+    } catch (e) {
+      if (ok) { ok = false; this.toast(`Render failed: ${String(e)}`, 0); }
     } finally {
+      for (const f of reading) f.bytes.catch(() => {}); // dropped with the failed render
       // a cancel still finishes the file: every frame sent so far has been written in order (inflight awaited above)
-      const end = await fetch(`${DEMO_API}/render/${ok ? "end" : "abort"}?id=${id}`, { method: "POST" });
-      const res = await end.json().catch(() => ({})) as { file?: string; log?: string };
+      const ends = await Promise.all(jobs.map(async (j) => {
+        const e = await fetch(`${DEMO_API}/render/${ok ? "end" : "abort"}?id=${j.id}`, { method: "POST" }).catch(() => null);
+        return { ok: !!e?.ok, status: e?.status, ...(await e?.json().catch(() => ({})) as { file?: string; log?: string }) };
+      }));
+      const bad = ends.find((e) => !e.ok);
       this.rendering = false;
       this.root.classList.remove("off", "rendering");
       void audio.resume();
@@ -540,18 +629,41 @@ export class Theater {
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth / window.innerHeight; // a resize meanwhile was held back (busyRendering)
       camera.clearViewOffset();
-      this.toast(end.ok && ok ? `${this.cancelRender ? "Stopped early, saved" : "Saved"} ${res.file}` : `ffmpeg failed: ${res.log ?? end.status}`, 8000);
+      const saved = `${ends[0].file}${ends.length > 1 ? ` + ${ends.length - 1} more pass${ends.length > 2 ? "es" : ""}` : ""}`;
+      // a failed render keeps its own error on screen
+      if (ok) this.toast(!bad ? `${this.cancelRender ? "Stopped early, saved" : "Saved"} ${saved}` : `ffmpeg failed: ${bad.log ?? bad.status}`, 8000);
     }
   }
 
-  /** one fixed render step: demo clock, world, camera, frame */
-  private step(dt: number): void {
+  /** the passes a render records: the viewmodel only in POV, the one mode that draws the gun */
+  private recorded(): PassName[] {
+    return PASSES.filter((p) => this.renderOpts.passes.includes(p) && (p !== "viewmodel" || this.mode === "pov"));
+  }
+
+  /** <file name or demo>_<player>_pov|third, or _cine; the server appends the first free number, then _<pass> */
+  private movieName(): string {
+    const who = this.net.roster().find((p) => p.id === this.host.game.observedId)?.name ?? "player";
+    const tag = this.mode === "pov" || this.mode === "third" ? `_${who}_${this.mode}` : "_cine";
+    return `${this.renderOpts.name || this.net.demo.name.replace(/\.pbdemo$/, "")}${tag}`.replace(/[^\w.-]/g, "_");
+  }
+
+  /** the viewport's pass; the shown one again = back to default. While rendering: recorded passes only, kept afterwards */
+  private setPreview(p: PassName): void {
+    if ((this.rendering && !this.recorded().includes(p)) || (p === "viewmodel" && this.mode !== "pov")) return;
+    this.preview = p === this.preview && !this.rendering ? "default" : p;
+    const el = this.root.querySelector<HTMLElement>(".prev")!;
+    el.style.display = this.preview === "default" ? "none" : "flex";
+    el.innerHTML = `<span class="hint">Previewing</span><b>${PASS_INFO[this.preview].label}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
+    if (this.tab === "render") this.drawSide();
+  }
+
+  /** one fixed render step: demo clock, world, camera (the passes draw it) */
+  private advance(dt: number): void {
     this.time += dt;
     this.net.advance(this.time);
     this.host.game.poseRemotes(this.net.poses(this.time));
     this.host.simulate(dt);
     this.updateCamera(dt);
-    this.draw(dt);
   }
 
   // ---- input ----
@@ -563,7 +675,7 @@ export class Theater {
       if ((e.target as HTMLElement).closest?.("input,select")) return;
       e.stopImmediatePropagation();
       e.preventDefault();
-      if (this.rendering && e.code !== "Escape") return; // the clock and camera stay the render's
+      if (this.rendering && e.code !== "Escape" && !/^Digit[1-7]$/.test(e.code)) return; // the clock and camera stay the render's
       this.held.add(e.code);
       if (!e.repeat) this.key(e);
     }, { capture: true, ...sig });
@@ -614,8 +726,15 @@ export class Theater {
     }, sig);
 
     this.root.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del]");
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del],[data-eye],[data-pass]");
       if (!b) return;
+      if (b.dataset.eye) { this.setPreview(b.dataset.eye as PassName); return; }
+      if (b.dataset.pass) {
+        const p = b.dataset.pass as PassName, o = this.renderOpts;
+        o.passes = PASSES.filter((x) => (x === p ? !o.passes.includes(p) : o.passes.includes(x)));
+        this.drawSide();
+        return;
+      }
       if (b.dataset.tab) { this.tab = b.dataset.tab; this.drawSide(); return; }
       if (b.dataset.id) { this.setMode(this.mode === "third" ? "third" : "pov", b.dataset.id); return; }
       if (b.dataset.key) { const k = this.path.keys[+b.dataset.key]; this.sel = +b.dataset.key; if (k) { this.seek(k.t); this.free = { ...k, pos: [...k.pos] as CamKey["pos"] }; } this.drawSide(); return; }
@@ -628,9 +747,10 @@ export class Theater {
       // even sizes: the 4:2:2 ProRes profiles halve the width of the colour planes
       if (t.name === "w" || t.name === "h") { const v = Math.max(16, Math.min(t.name === "w" ? 7680 : 4320, Math.round(+t.value / 2) * 2 || 2)); o[t.name] = v; t.value = String(v); this.layoutMask(); }
       else if (t.name === "fps") o.fps = +t.value;
-      else if (t.name === "codec") o.codec = t.value;
+      else if (t.name === "codec") { o.codec = t.value; this.drawSide(); } // the mattes' notes and swatches follow the alpha
       else if (t.name === "povfov") this.setPovFov(t.value === "" ? null : +t.value || null);
-      else if (t.name === "name") o.name = t.value;
+      else if (t.name === "name") { o.name = t.value; const el = this.root.querySelector(".files>div"); if (el) el.textContent = `${this.movieName()}#`; } // a redraw here would eat the click that blurred it
+      else if (t.name === "depthrange") { o.depthRange = Math.max(1, +t.value || 50); t.value = String(o.depthRange); }
       else if (t.name === "lookname") this.lookName = t.value;
       else if (t.name === "dofactor") this.dofActor = t.value || null;
       else if (t.name === "chara" && this.editId) {
@@ -677,14 +797,16 @@ export class Theater {
   }
 
   private key(e: KeyboardEvent): void {
+    const digit = /^Digit([1-7])$/.exec(e.code);
+    if (digit) { this.setPreview(PASSES[+digit[1] - 1]); return; }
     switch (e.code) {
       case "Space": this.action("play"); break;
       case "ArrowUp": this.speedIdx = Math.min(SPEEDS.length - 1, this.speedIdx + 1); break;
       case "ArrowDown": this.speedIdx = Math.max(0, this.speedIdx - 1); break;
       case "ArrowLeft": this.skip(-1); break;
       case "ArrowRight": this.skip(1); break;
-      case "KeyB": this.inPt = Math.min(this.time, this.outPt); this.toast(`In ${fmt(this.inPt)}`); break;
-      case "KeyN": this.outPt = Math.max(this.time, this.inPt); this.toast(`Out ${fmt(this.outPt)}`); break;
+      case "KeyB": this.action("setIn"); break;
+      case "KeyN": this.action("setOut"); break;
       case "KeyF": this.setMode("free"); break;
       case "F2": this.setMode("pov"); break;
       case "F3": this.setMode("third"); break;
@@ -720,8 +842,11 @@ export class Theater {
         break;
       case "add": this.addKey(); break;
       case "clear": this.edit(() => this.path.clear()); this.sel = -1; this.leaveDolly(); this.drawSide(); break;
-      case "pathRange": if (this.path.keys.length > 1) { this.inPt = this.path.start; this.outPt = this.path.end; } break;
-      case "fullRange": this.inPt = 0; this.outPt = this.net.demo.dur; break;
+      case "pathRange": if (this.path.keys.length > 1) { this.inPt = this.path.start; this.outPt = this.path.end; } this.drawSide(); break;
+      case "setIn": this.inPt = Math.min(this.time, this.outPt); this.toast(`In ${fmt(this.inPt)}`); if (this.tab === "render") this.drawSide(); break;
+      case "setOut": this.outPt = Math.max(this.time, this.inPt); this.toast(`Out ${fmt(this.outPt)}`); if (this.tab === "render") this.drawSide(); break;
+      case "passesDefault": this.renderOpts.passes = ["default"]; this.drawSide(); break;
+      case "passesAll": this.renderOpts.passes = [...PASSES]; this.drawSide(); break;
       case "render": void this.renderMovie(); break;
       case "clean": document.body.classList.toggle("mvm-clean"); break;
       case "save": void this.save(); break;
@@ -812,9 +937,14 @@ export class Theater {
 
   private drawSide(): void {
     for (const b of this.root.querySelectorAll<HTMLElement>("[data-tab]")) b.classList.toggle("on", b.dataset.tab === this.tab);
-    const body = this.root.querySelector(".body")!;
+    const body = this.root.querySelector(".body")!, foot = this.root.querySelector(".foot")!;
+    // a redraw of the same tab (a click in it) keeps its scroll; another tab starts at the top
+    const scroll = this.drawnTab === this.tab ? body.scrollTop : 0;
+    this.drawnTab = this.tab;
+    foot.innerHTML = ""; // the render tab's, kept in view under its scrolling body
     const m = this.mode, o = this.renderOpts;
     const btn = (a: string, t: string, on = false) => `<button data-a="${a}" class="${on ? "on" : ""}">${t}</button>`;
+    const head = (t: string) => `<div class="hint" style="color:#f0a830;margin-top:4px">${t}</div>`;
     if (this.tab === "camera") {
       const cur = this.host.game.observedId;
       body.innerHTML = `<div class="row">${btn("pov", "POV", m === "pov")}${btn("third", "Third", m === "third")}${btn("free", "Free", m === "free")}${btn("dolly", "Dolly", m === "dolly")}</div>
@@ -839,7 +969,6 @@ export class Theater {
       };
       const num = (k: keyof Look, step: number) => `<input type="number" data-look="${k}" min="0" step="${step}" value="${l[k]}" style="width:70px">`;
       const opts = (k: keyof Look, list: [string | number, string][]) => `<select data-look="${k}" style="flex:1;min-width:0">${list.map(([v, t]) => `<option value="${v}" ${v === l[k] ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
-      const head = (t: string) => `<div class="hint" style="color:#f0a830;margin-top:4px">${t}</div>`;
       body.innerHTML = `<div class="row"><select name="looksel" style="flex:1;min-width:0">${(this.lookNames ?? []).map((n) => `<option ${n === this.lookName ? "selected" : ""}>${esc(n)}</option>`).join("") || "<option value=\"\">No saved looks</option>"}</select>${btn("lookLoad", "Load")}${btn("lookDel", "✕")}</div>
         <div class="row"><input name="lookname" placeholder="Look name" value="${esc(this.lookName)}" style="flex:1;min-width:0">${btn("lookSave", "Save")}${btn("lookReset", "Map default")}</div>
         ${head("World")}${row("Lit areas", color("worldLitColor") + slider("worldLit", 0, 3, 0.05))}
@@ -862,23 +991,39 @@ export class Theater {
         ${d.mode ? row("Aperture", slider("aperture", 0, 5, 0.05, "dof")) + row("Near blur", slider("near", 0, 3, 0.05, "dof")) + row("Far blur", slider("far", 0, 3, 0.05, "dof")) + row("Max blur", slider("maxBlur", 0, 5, 0.05, "dof")) : ""}
         <div class="hint">Right-click a control to reset it. Looks are saved to point-blank-webport/mvm/looks.</div>`;
     } else if (this.tab === "render") {
-      body.innerHTML = `<div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="width:70px"> ×
-          <input name="h" type="number" min="16" max="4320" step="2" value="${o.h}" style="width:70px"></div>
+      const alpha = this.alphaFormat(), on = this.recorded(), name = this.movieName();
+      const span = Math.max(0, this.outPt - this.inPt), frames = Math.round(span * o.fps);
+      const pass = (p: PassName, i: number) => {
+        const info = PASS_INFO[p], rec = on.includes(p), eye = this.preview === p, na = p === "viewmodel" && this.mode !== "pov";
+        return `<div class="pass${rec ? " rec" : ""}${na ? " na" : ""}" ${na ? "" : `data-pass="${p}"`} title="${na ? "First person (POV) only" : `${info.note(alpha)} · ${rec ? "recorded, click to leave it out" : "click to record it"}`}">
+            <span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
+            <span class="nm"><b>${info.label}</b></span>
+            <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye && p !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
+          + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
+      };
+      body.innerHTML = `${head("Output")}
+        <div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="flex:1;min-width:0"> ×
+          <input name="h" type="number" min="16" max="4320" step="2" value="${o.h}" style="flex:1;min-width:0"></div>
         <div class="row"><label>FPS</label><select name="fps">${FRAMERATES.map((f) => `<option ${f === o.fps ? "selected" : ""}>${f}</option>`).join("")}</select></div>
-        <div class="row"><label>Format</label><select name="codec">${CODECS.map(([v, l]) => `<option value="${v}" ${v === o.codec ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="row"><label>File</label><input name="name" placeholder="${esc(this.net.demo.name.replace(/\.pbdemo$/, ""))}" value="${esc(o.name)}"></div>
-        <div class="row">${btn("pathRange", "Range = path")}${btn("fullRange", "Whole demo")}</div>
-        <div class="hint">Renders the in / out range (B / N) with the current camera, in real time (1 s of demo = 1 s of video). Saved to point-blank-webport/mvm/movies.</div>
-        <div class="row">${btn("render", "Render")}</div>`;
+        <div class="row"><label>Format</label><select name="codec" style="flex:1;min-width:0">${CODECS.map(([v, l]) => `<option value="${v}" ${v === o.codec ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="row"><label>File</label><input name="name" placeholder="${esc(this.net.demo.name.replace(/\.pbdemo$/, ""))}" value="${esc(o.name)}" style="flex:1;min-width:0"></div>
+        <div class="sect" title="Every pass comes from the same frames, so the files line up exactly">Passes<span class="hint">${on.length} recorded</span>${btn("passesDefault", "Default only")}${btn("passesAll", "All")}</div>
+        <div class="passes">${PASSES.map(pass).join("")}</div>
+        <div class="hint">Click a pass to record it. The eye or 1 – ${PASSES.length} shows it.</div>`;
+      foot.innerHTML = `<div class="sect" style="margin-top:0">Range<span class="hint">${fmt(this.inPt)} – ${fmt(this.outPt)} · ${frames} frames</span></div>
+        <div class="row">${btn("setIn", "Set in (B)")}${btn("setOut", "Set out (N)")}${btn("pathRange", "Campath")}</div>
+        ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${p}`}.mov</i>`).join("")}</span></div>` : ""}
+        <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `● Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
     } else {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
         ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"], ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo campath edits"],
         ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
-        ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
+        ["1 – 7", "Preview a render pass (again: back to the default view)"], ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
     }
+    body.scrollTop = scroll;
   }
 
   // ---- demo editor ----
@@ -959,14 +1104,27 @@ export class Theater {
   // ---- looks ----
   /** the frame, through the depth of field when it is on; the first-person gun and the campath stay sharp on top */
   private draw(dt: number): void {
+    const p = this.rendering ? "default" : this.preview;
+    if (p === "default") { this.drawFrame(dt); return; }
+    (this.passes ??= new Passes(this.host.renderer)).show(p, this.passFrame(), () => this.drawFrame(dt));
+    renderOnTop(this.host.renderer, [this.pathViz].filter((o) => o.visible), this.host.camera); // the campath stays editable over the preview
+  }
+
+  /** the default pass: the frame, through the depth of field when it is on (which also moves the focus) */
+  private drawFrame(dt: number): void {
     const d = this.dof;
     if (!d.mode) { this.host.render(); return; }
     this.post ??= new Post(this.host.renderer);
     if (d.mode === 3) this.dofZ = this.actorDepth(this.dofTarget()) ?? this.dofZ; // held while the player is gone
-    this.post.render(this.host.game.scene, this.host.camera, {
+    this.post.render(this.host.game.scene, this.host.camera, this.dofParams(dt), [...this.host.camera.children, this.pathViz]);
+  }
+
+  private dofParams(dt: number): DofParams {
+    const d = this.dof;
+    return {
       focus: d.mode === 1 ? d.focus : this.dofZ, focusUv: d.mode === 2 ? this.mouseUv : null, focusLerp: 1 - Math.exp(-d.speed * dt),
       aperture: d.aperture / 100, maxBlur: d.maxBlur / 100, near: d.near, far: d.far,
-    }, [...this.host.camera.children, this.pathViz]);
+    };
   }
 
   /** an arrow skip: SKIP s, stopping at the first death, dolly node or in / out point on the way */
@@ -977,6 +1135,24 @@ export class Theater {
       if (dir > 0 ? s > t + eps && s < to : s < t - eps && s > to) to = s;
     }
     this.seek(to);
+  }
+
+  /** this frame, split for the passes */
+  private passFrame(): PassFrame {
+    const cam = this.host.camera;
+    const dof: PassFrame["dof"] = this.dof.mode ? (color, depth, target, matte) => this.post?.blur(color, depth, cam, this.dofParams(0), target, matte) : null;
+    // the edit outline writes depth: it would show in the depth and normals
+    return { scene: this.host.game.scene, camera: cam, players: this.players(), viewmodel: cam.children, editor: [this.pathViz, ...this.outline], depthRange: this.renderOpts.depthRange, alpha: this.alphaFormat(), dof };
+  }
+
+  /** the ProRes 4444 profiles carry an alpha plane */
+  private alphaFormat(): boolean {
+    return this.renderOpts.codec.startsWith("prores4444");
+  }
+
+  /** the player models in the scene (alive or ragdolled) */
+  private players(): THREE.Object3D[] {
+    return [...this.host.game.actors()].flatMap((a) => (a.visualRoot?.parent ? [a.visualRoot] : []));
   }
 
   /** the focused player: the one picked, else the watched one */
@@ -1070,6 +1246,7 @@ export class Theater {
     this.setOutline(null);
     this.looks.dispose();
     this.post?.dispose();
+    this.passes?.dispose();
     this.cancelRender = true;
     this.ac.abort();
     this.root.remove();

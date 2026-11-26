@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { fxTexture, type WeaponEffects } from "./effects";
 import { laserDotWhileScoped, weaponFx, weaponFxInfo } from "./sights";
+import { markFx } from "../render/layers";
 
 /**
  * Laser sight of the WeaponDotLaser class (pef ClassMeta; CDotLazer at weapon +0xa540, 2017 exe):
@@ -47,6 +48,7 @@ export function createLaserBeam(): THREE.Mesh {
   if (tex) m.map = fxTexture(tex);
   const mesh = new THREE.Mesh(g, m);
   mesh.name = "LaserBeam";
+  markFx(mesh);
   mesh.frustumCulled = false;
   mesh.renderOrder = 7;
   return mesh;

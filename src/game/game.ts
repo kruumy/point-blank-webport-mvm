@@ -82,6 +82,7 @@ import type { RoomClient, RoundEndInfo } from "../net/roomClient";
 import type { MissionClient } from "../net/missionClient";
 import { missionLines, newlyDone, taskSnapshot, type TaskSnapshot } from "./pbHud/missionHud";
 import { FONTS } from "../lobby/ui/assets.ts";
+import { FX_LAYER } from "../render/layers";
 
 export interface GameDeps {
   scene: THREE.Scene;
@@ -2786,7 +2787,7 @@ export class Game implements BotHost {
 
   /** The observed player's own body (helmet, cap...) stays out of his first-person view: layer 1 is not rendered by the camera (actors reset root.visible every frame). */
   private hideBody(t: Actor, hide: boolean): void {
-    t.visualRoot?.traverse((o) => { if (o.layers.mask !== (hide ? 2 : 1)) o.layers.set(hide ? 1 : 0); });
+    t.visualRoot?.traverse((o) => { const l = hide ? 1 : o.userData.fx ? FX_LAYER : 0; if (o.layers.mask !== 1 << l) o.layers.set(l); });
   }
 
   /** `a` is the player watched through his own eyes right now (body hidden, the arms on screen are his) */

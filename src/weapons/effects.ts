@@ -7,6 +7,7 @@ import {
 import { smokeField, type SmokeSphere } from "./throwables";
 import type { Family } from "./types";
 import { applyPbCharaLighting, PB_VIEWER_MTL } from "../render/pbLighting";
+import { markFx } from "../render/layers";
 
 /**
  * Weapon FX with the 2017 client's own data (pb-extract-tools export-weaponfx.mjs -> public/assets/weapons/fx):
@@ -238,8 +239,13 @@ function setCorners(g: THREE.BufferGeometry, rgb: THREE.Color | null, a: number 
   (g.attributes.color as THREE.BufferAttribute).needsUpdate = true;
 }
 function takeQuad(L: Layer): THREE.Mesh {
-  const q = QUAD_POOL.get(L.p)?.pop();
-  if (q) return q;
+  const mesh = QUAD_POOL.get(L.p)?.pop() ?? newQuad(L);
+  // decal layers (bullet holes, blood marks) stay with the world; set on every take: a pooled quad may come back from under a hidden body (layer 1)
+  if (L.p.life < 1e6) markFx(mesh);
+  else mesh.layers.set(0);
+  return mesh;
+}
+function newQuad(L: Layer): THREE.Mesh {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(QUAD.slice(), 3));
   g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]), 2));
@@ -653,6 +659,7 @@ function releaseStrip(s: Strip): void {
 function stripMesh(mat: THREE.MeshBasicMaterial, s: Strip): THREE.Mesh {
   const g = takeStripGeometry();
   const m = new THREE.Mesh(g, mat);
+  markFx(m);
   m.frustumCulled = false;
   m.matrixAutoUpdate = false;
   m.renderOrder = 6;

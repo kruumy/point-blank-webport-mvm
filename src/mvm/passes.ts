@@ -1,0 +1,282 @@
+import * as THREE from "three";
+import { QUAD_VS, canvasTarget } from "./post";
+import { withHidden } from "../render/onTop";
+import { FX_LAYER } from "../render/layers";
+
+export const PASSES = ["default", "world", "players", "viewmodel", "effects", "depth", "normals"] as const;
+export type PassName = (typeof PASSES)[number];
+// passes with an alpha channel where the format keeps one (players and gun: coverage; effects: what smoke covers)
+export const ALPHA_PASSES: readonly PassName[] = ["players", "viewmodel", "effects"];
+
+/** one simulated frame, split by what each pass keeps */
+export interface PassFrame {
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  players: THREE.Object3D[];
+  viewmodel: THREE.Object3D[];
+  /** in no pass: the campath and its handles */
+  editor: THREE.Object3D[];
+  /** depth: white at the camera, black from this distance (m) on */
+  depthRange: number;
+  /** the output format keeps alpha (ProRes 4444): mattes go there instead of onto green */
+  alpha: boolean;
+  /** the default pass's depth of field (post.ts Post.blur); null = off. Never on depth / normals: they are data */
+  dof: ((color: THREE.Texture, depth: THREE.Texture, target: THREE.WebGLRenderTarget, matte: Matte) => void) | null;
+}
+
+/** a colour pass's alpha: 0 opaque, 1 coverage (players, gun), 2 light (smoke covers, flashes only add); 1 and 2 premultiplied */
+export type Matte = 0 | 1 | 2;
+
+// key 0 as drawn, 1 over green, 2 opaque, 3 over a checker; gain: main.ts's CSS brightness, unseen by a read back [INFERIDO: brightness() scales the sRGB bytes]
+const OUT_FS = /* glsl */ `
+uniform sampler2D t;
+uniform float gain, key, straight;
+varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(t, vUv);
+  if (straight > 0.5 && c.a > 0.0) c.rgb /= c.a;
+  vec3 rgb = min(c.rgb * gain, 1.0);
+  vec3 chk = mod(floor(gl_FragCoord.x / 12.0) + floor(gl_FragCoord.y / 12.0), 2.0) < 1.0 ? vec3(0.3, 0.31, 0.34) : vec3(0.2, 0.21, 0.23);
+  gl_FragColor = key > 2.5 ? vec4(min(rgb + (1.0 - c.a) * chk, 1.0), 1.0) : key > 1.5 ? vec4(rgb, 1.0)
+    : key > 0.5 ? vec4(min(rgb + (1.0 - c.a) * vec3(0.0, 1.0, 0.0), 1.0), 1.0) : vec4(rgb, c.a);
+}`;
+
+// the gun's own depth where it drew (its target is cleared to far), else the world's: on top, like in the default pass
+const DEPTH_GLSL = /* glsl */ `
+#include <packing>
+uniform sampler2D tDepth, tVm;
+uniform float near, far;
+varying vec2 vUv;
+float rawDepth(vec2 uv) { float v = texture2D(tVm, uv).x; return v < 1.0 ? v : texture2D(tDepth, uv).x; }
+`;
+
+const DEPTH_FS = DEPTH_GLSL + /* glsl */ `
+uniform float range, pack;
+uniform vec2 size;
+float lin(vec2 uv) { return 1.0 - clamp(-perspectiveDepthToViewZ(rawDepth(uv), near, far) / range, 0.0, 1.0); }
+vec2 le16(float v) { float q = floor(v * 65535.0 + 0.5); return vec2(mod(q, 256.0), floor(q / 256.0)) / 255.0; }
+void main() {
+  if (pack < 0.5) { gl_FragColor = vec4(vec3(lin(vUv)), 1.0); return; }
+  // grey16le as it comes off the GPU: each texel of the half-width target holds two pixels, low byte first
+  float x = floor(gl_FragCoord.x) * 2.0;
+  gl_FragColor = vec4(le16(lin(vec2((x + 0.5) / size.x, vUv.y))), le16(lin(vec2((x + 1.5) / size.x, vUv.y))));
+}`;
+
+// [RECRIADO] view-space normals rebuilt from the depth: they match it exactly (alpha-tested leaves too); faces, not smoothed normals
+const NORMAL_FS = DEPTH_GLSL + /* glsl */ `
+uniform mat4 projInv;
+uniform vec2 texel;
+vec3 viewPos(vec2 uv) {
+  vec4 p = projInv * vec4(vec3(uv, rawDepth(uv)) * 2.0 - 1.0, 1.0);
+  return p.xyz / p.w;
+}
+// of the two neighbours, the one on the same surface: across a depth edge the other would bend the normal
+vec3 side(vec3 c, vec2 uv, vec2 d) {
+  vec3 a = viewPos(uv + d) - c, b = c - viewPos(uv - d);
+  return abs(a.z) < abs(b.z) ? a : b;
+}
+void main() {
+  if (rawDepth(vUv) >= 1.0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  vec3 c = viewPos(vUv), n = normalize(cross(side(c, vUv, vec2(texel.x, 0.0)), side(c, vUv, vec2(0.0, texel.y))));
+  gl_FragColor = vec4(n * 0.5 + 0.5, 1.0);
+}`;
+
+const quadMat = (fragmentShader: string, uniforms: Record<string, THREE.IUniform>, extra: THREE.ShaderMaterialParameters = {}) =>
+  new THREE.ShaderMaterial({ vertexShader: QUAD_VS, fragmentShader, uniforms, depthTest: false, depthWrite: false, ...extra });
+const depthUniforms = () => ({ tDepth: { value: null }, tVm: { value: null }, near: { value: 0.1 }, far: { value: 1000 } });
+
+type Bytes = Uint8Array<ArrayBuffer>;
+
+/** [RECRIADO] effects' alpha as coverage: alpha-blended (smoke) covers, additive (flashes) adds light at 0; returns the undo (shared materials) */
+function fxCoverage(scene: THREE.Scene): () => void {
+  const saved = new Map<THREE.Material, [THREE.Blending, THREE.BlendingSrcFactor, THREE.BlendingDstFactor, number | null, number | null]>();
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material;
+    if (!(o.layers.mask & (1 << FX_LAYER)) || !(m instanceof THREE.Material) || !m.transparent || saved.has(m)) return;
+    const rgb: [THREE.BlendingSrcFactor, THREE.BlendingDstFactor] | null = m.blending === THREE.NormalBlending ? [THREE.SrcAlphaFactor, THREE.OneMinusSrcAlphaFactor]
+      : m.blending === THREE.AdditiveBlending ? [THREE.SrcAlphaFactor, THREE.OneFactor] : m.blending === THREE.CustomBlending ? [m.blendSrc, m.blendDst] : null;
+    if (!rgb) return;
+    saved.set(m, [m.blending, m.blendSrc, m.blendDst, m.blendSrcAlpha, m.blendDstAlpha]);
+    const cover = rgb[1] === THREE.OneMinusSrcAlphaFactor;
+    m.blending = THREE.CustomBlending;
+    [m.blendSrc, m.blendDst] = rgb;
+    m.blendSrcAlpha = cover ? THREE.OneFactor : THREE.ZeroFactor;
+    m.blendDstAlpha = cover ? THREE.OneMinusSrcAlphaFactor : THREE.OneFactor;
+  });
+  return () => { for (const [m, [b, s, d, sa, da]] of saved) { m.blending = b; m.blendSrc = s; m.blendDst = d; m.blendSrcAlpha = sa; m.blendDstAlpha = da; } };
+}
+
+/** [RECRIADO] the theater's render passes (IWXMVM-style streams): all from one simulated frame, the world drawn once for all */
+export class Passes {
+  private readonly def: THREE.WebGLRenderTarget;
+  private readonly geo: THREE.WebGLRenderTarget;
+  private readonly vm: THREE.WebGLRenderTarget;
+  // a colour pass after the depth of field
+  private readonly soft: THREE.WebGLRenderTarget;
+  private readonly out = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  private readonly half = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
+  private readonly outMat = quadMat(OUT_FS, { t: { value: null }, gain: { value: 1 }, key: { value: 2 }, straight: { value: 0 } });
+  private readonly depthMat = quadMat(DEPTH_FS, { ...depthUniforms(), range: { value: 50 }, pack: { value: 0 }, size: { value: new THREE.Vector2() } });
+  private readonly normalMat = quadMat(NORMAL_FS, { ...depthUniforms(), projInv: { value: new THREE.Matrix4() }, texel: { value: new THREE.Vector2() } });
+  // alpha = 1 where the stencil says a kept object drew, the colour left as it is
+  private readonly matteMat = quadMat("void main() { gl_FragColor = vec4(1.0); }", {}, {
+    blending: THREE.CustomBlending, blendSrc: THREE.ZeroFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor,
+    stencilWrite: true, stencilFunc: THREE.EqualStencilFunc, stencilRef: 1,
+  });
+  private readonly quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.outMat);
+  private readonly cam = new THREE.OrthographicCamera();
+  private readonly size = new THREE.Vector2();
+  private readonly clear = new THREE.Color();
+
+  constructor(private readonly r: THREE.WebGLRenderer) {
+    this.def = canvasTarget(r);
+    this.geo = canvasTarget(r, true);
+    this.vm = canvasTarget(r, true);
+    this.soft = canvasTarget(r);
+    this.quad.frustumCulled = false;
+  }
+
+  /** one pass on the canvas; `drawDefault` runs only for the depth of field, whose focus the default frame moves */
+  show(pass: Exclude<PassName, "default">, f: PassFrame, drawDefault: () => void): void {
+    this.run([pass], f, null, drawDefault, pass);
+  }
+
+  /** every pass of this frame; the bytes (rgba, grey16le for depth) come back while the next frames draw. `monitor` goes on the canvas */
+  capture(passes: readonly PassName[], f: PassFrame, gain: number, drawDefault: () => void, monitor: PassName): Promise<Bytes>[] {
+    return this.run(passes, f, gain, drawDefault, monitor);
+  }
+
+  private run(passes: readonly PassName[], f: PassFrame, gain: number | null, drawDefault: () => void, monitor: PassName): Promise<Bytes>[] {
+    const read = gain !== null;
+    const r = this.r, { scene, camera } = f, has = (p: PassName) => passes.includes(p), reads = new Map<PassName, Promise<Bytes>>();
+    r.getDrawingBufferSize(this.size);
+    const { x: w, y: h } = this.size;
+    for (const t of [this.def, this.geo, this.vm, this.soft, this.out]) if (t.width !== w || t.height !== h) t.setSize(w, h);
+    if (this.half.width !== Math.ceil(w / 2) || this.half.height !== h) this.half.setSize(Math.ceil(w / 2), h);
+    // pass = read the target back as that pass's file; null = only drawn (the canvas)
+    const emit = (pass: PassName | null, mat: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null) => {
+      this.quad.material = mat;
+      r.setRenderTarget(target);
+      r.render(this.quad, this.cam);
+      // the GPU copies the pixels out in order, so the target is free for the next pass at once
+      if (target && pass) reads.set(pass, r.readRenderTargetPixelsAsync(target, 0, 0, target.width, target.height, new Uint8Array(target.width * target.height * 4)) as Promise<Bytes>);
+    };
+    // no alpha: mattes keyed on green, effects over black (their light adds, a key would not); straight alpha for editors, effects stay premultiplied
+    const image = (pass: PassName, t: THREE.Texture, matte: Matte) => {
+      const u = this.outMat.uniforms;
+      u.t.value = t;
+      if (read) {
+        u.gain.value = gain; u.key.value = !matte ? 2 : f.alpha ? 0 : matte === 1 ? 1 : 2; u.straight.value = f.alpha && matte === 1 ? 1 : 0;
+        emit(pass, this.outMat, this.out);
+      }
+      if (pass === monitor) {
+        u.gain.value = 1; u.key.value = !matte ? 2 : f.alpha ? 3 : matte === 1 ? 1 : 2; u.straight.value = 0;
+        emit(null, this.outMat, null);
+      }
+    };
+    // a colour pass through the depth of field, by the depth now in geo
+    const soft = (t: THREE.Texture, matte: Matte): THREE.Texture => {
+      if (!f.dof) return t;
+      f.dof(t, this.geo.depthTexture!, this.soft, matte);
+      return this.soft.texture;
+    };
+    // the clear colour is set at each clear: drawing the scene leaves three's on its opaque background colour
+    const clear = (color = true, depth = true, stencil = true) => { r.setClearColor(0x000000, 0); r.clear(color, depth, stencil); };
+
+    if ((read && has("default")) || f.dof) {
+      r.setRenderTarget(this.def);
+      drawDefault();
+      if (has("default")) image("default", this.def.texture, 0);
+    }
+    const world = has("world"), players = has("players"), effects = has("effects"), depth = has("depth"), normals = has("normals");
+    const mask = camera.layers.mask, bg = scene.background, auto = r.autoClear, alpha = r.getClearAlpha();
+    r.getClearColor(this.clear);
+    r.autoClear = false;
+    let restoreFx = () => {};
+    try {
+      camera.layers.set(0); // the effects have their own pass
+      if (world || players || effects || depth || normals) {
+        r.setRenderTarget(this.geo);
+        clear();
+        withHidden([...f.editor, ...f.viewmodel, ...f.players], () => r.render(scene, camera));
+        if (world) image("world", soft(this.geo.texture, 0), 0);
+      }
+      if (players || effects || depth || normals) {
+        // the players over the world's depth, none of its colour: walls still hide them
+        r.setRenderTarget(this.geo);
+        clear(true, false, true);
+        this.matte(players, () => { for (const p of f.players) r.render(p, camera); });
+        if (players) image("players", soft(this.geo.texture, 1), 1);
+      }
+      if (has("viewmodel") || depth || normals) {
+        // the gun alone with its own depth, so in depth / normals it stays on top in walls; sharp, as in the default pass
+        r.setRenderTarget(this.vm);
+        clear();
+        this.matte(has("viewmodel"), () => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
+        if (has("viewmodel")) image("viewmodel", this.vm.texture, 1);
+      }
+      for (const [pass, on, mat] of [["depth", depth, this.depthMat], ["normals", normals, this.normalMat]] as const) {
+        if (!on) continue;
+        const u = mat.uniforms;
+        u.tDepth.value = this.geo.depthTexture; u.tVm.value = this.vm.depthTexture; u.near.value = camera.near; u.far.value = camera.far;
+        if (mat === this.depthMat) { u.range.value = f.depthRange; u.size.value.set(w, h); }
+        else { u.projInv.value.copy(camera.projectionMatrixInverse); u.texel.value.set(1 / w, 1 / h); }
+        if (read) { if (pass === "depth") u.pack.value = 1; emit(pass, mat, pass === "depth" ? this.half : this.out); }
+        if (pass === monitor) { if (pass === "depth") u.pack.value = 0; emit(null, mat, null); }
+      }
+      if (effects) {
+        // over black, behind the world and the players (their depth is still in geo); a colour background would clear it
+        r.setRenderTarget(this.geo);
+        clear(true, false, false);
+        scene.background = null;
+        camera.layers.set(FX_LAYER);
+        const matte: Matte = f.alpha ? 2 : 0;
+        if (matte) restoreFx = fxCoverage(scene);
+        withHidden([...f.editor, ...f.viewmodel], () => r.render(scene, camera));
+        const fx = f.dof ? this.soft : this.geo;
+        soft(this.geo.texture, matte);
+        // the first-person flash: behind the gun, over everything else and sharp, as the default pass draws it
+        r.setRenderTarget(fx);
+        r.clearDepth();
+        camera.layers.set(0);
+        this.depthOnly(() => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
+        camera.layers.set(FX_LAYER);
+        for (const o of f.viewmodel) if (o.visible) r.render(o, camera);
+        image("effects", fx.texture, matte);
+      }
+    } finally {
+      restoreFx();
+      camera.layers.mask = mask;
+      scene.background = bg;
+      r.autoClear = auto;
+      r.setClearColor(this.clear, alpha);
+    }
+    r.setRenderTarget(null);
+    // in the order asked for (one ffmpeg each), not the order drawn
+    return read ? passes.map((p) => reads.get(p)!) : [];
+  }
+
+  /** draws with every passing fragment marking the stencil, then turns the marks into the alpha */
+  private matte(on: boolean, draw: () => void): void {
+    if (!on) { draw(); return; }
+    const gl = this.r.getContext(), s = this.r.state.buffers.stencil;
+    s.setTest(true); s.setMask(0xff); s.setFunc(gl.ALWAYS, 1, 0xff); s.setOp(gl.KEEP, gl.KEEP, gl.REPLACE); s.setLocked(true);
+    try { draw(); } finally { s.setLocked(false); }
+    this.quad.material = this.matteMat;
+    this.r.render(this.quad, this.cam);
+  }
+
+  private depthOnly(draw: () => void): void {
+    const c = this.r.state.buffers.color;
+    c.setMask(false); c.setLocked(true);
+    try { draw(); } finally { c.setLocked(false); c.setMask(true); }
+  }
+
+  dispose(): void {
+    for (const t of [this.def, this.geo, this.vm, this.soft]) { t.depthTexture?.dispose(); t.dispose(); }
+    this.out.dispose();
+    this.half.dispose();
+    for (const m of [this.outMat, this.depthMat, this.normalMat, this.matteMat]) m.dispose();
+    this.quad.geometry.dispose();
+  }
+}

@@ -137,25 +137,36 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (kind === "render" && m === "POST") {
     const id = url.searchParams.get("id") ?? "";
     if (name === "start") {
-      const o = JSON.parse((await body(req)).toString("utf8")) as { w: number; h: number; fps: number; codec: string; name: string };
+      // passes: the theater's render passes (src/mvm/passes.ts), one ffmpeg each, fed the same frame numbers
+      type Pass = { name: string; input: string; alpha: boolean };
+      const o = JSON.parse((await body(req)).toString("utf8")) as { w: number; h: number; fps: number; codec: string; name: string; passes: Pass[] };
       const codec = CODECS[o.codec];
       const ok = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
-      if (!codec || !ok(o.w, 16, 7680) || !ok(o.h, 16, 4320) || o.w % 2 || o.h % 2 || !ok(o.fps, 1, 1000) || !SAFE.test(o.name)) return send(res, 400, { error: "bad render settings" });
+      const passOk = (p: Pass) => /^[a-z]{1,20}$/.test(p.name) && (p.input === "rgba" || p.input === "gray16le") && typeof p.alpha === "boolean";
+      if (!codec || !ok(o.w, 16, 7680) || !ok(o.h, 16, 4320) || o.w % 2 || o.h % 2 || !ok(o.fps, 1, 1000) || !SAFE.test(o.name)
+        || !Array.isArray(o.passes) || !ok(o.passes.length, 1, 8) || !o.passes.every(passOk) || new Set(o.passes.map((p) => p.name)).size !== o.passes.length) return send(res, 400, { error: "bad render settings" });
       if (spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error) return send(res, 503, { error: "ffmpeg not found" });
       mkdirSync(DIRS.movies, { recursive: true });
-      // name + the first free number: a render never overwrites an earlier one
+      // name + the first number free for every pass: a render never overwrites an earlier one
+      const fileOf = (n: number, p: Pass) => join(DIRS.movies, `${o.name}${n}${p.name === "default" ? "" : `_${p.name}`}.${codec.ext}`);
       let n = 1;
-      while (existsSync(join(DIRS.movies, `${o.name}${n}.${codec.ext}`))) n++;
-      const file = join(DIRS.movies, `${o.name}${n}.${codec.ext}`);
-      const proc = spawn("ffmpeg", ["-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${o.w}x${o.h}`, "-r", String(o.fps), "-i", "-",
-        "-vf", "vflip", ...codec.args, "-r", String(o.fps), file]);
-      const job: Job = { proc, file, log: "", done: new Promise((ok) => proc.on("close", (c) => ok(c ?? -1))), next: 0, pending: new Map(), writing: false };
-      proc.stderr.on("data", (d: Buffer) => { job.log = (job.log + d.toString()).slice(-4000); });
-      proc.stdin.on("error", () => {}); // ffmpeg died: the next frame / end reports it
-      const jid = Math.random().toString(36).slice(2);
-      jobs.set(jid, job);
-      keepAlive(jid, job);
-      return send(res, 200, { id: jid, file });
+      while (o.passes.some((p) => existsSync(fileOf(n, p)))) n++;
+      const started = o.passes.map((p) => {
+        const file = fileOf(n, p);
+        // a matte survives only in the 4444 profiles' alpha plane
+        const args = p.alpha && codec.args.includes("yuv444p10le") ? codec.args.map((a) => (a === "yuv444p10le" ? "yuva444p10le" : a)) : codec.args;
+        const proc = spawn("ffmpeg", ["-y", "-f", "rawvideo", "-pix_fmt", p.input, "-s", `${o.w}x${o.h}`, "-r", String(o.fps), "-i", "-",
+          "-vf", "vflip", ...args, "-r", String(o.fps), file]);
+        const job: Job = { proc, file, log: "", done: new Promise((ok) => { proc.on("close", (c) => ok(c ?? -1)); proc.on("error", () => ok(-1)); }), next: 0, pending: new Map(), writing: false };
+        proc.on("error", (e) => { job.log += `\n${String(e)}`; }); // a failed spawn: unhandled, it would take the dev server down
+        proc.stderr.on("data", (d: Buffer) => { job.log = (job.log + d.toString()).slice(-4000); });
+        proc.stdin.on("error", () => {}); // ffmpeg died: the next frame / end reports it
+        const jid = Math.random().toString(36).slice(2);
+        jobs.set(jid, job);
+        keepAlive(jid, job);
+        return { id: jid, file };
+      });
+      return send(res, 200, { jobs: started });
     }
     const job = jobs.get(id);
     if (!job) return send(res, 404, { error: "no such render" });

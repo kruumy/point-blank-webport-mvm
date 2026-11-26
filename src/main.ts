@@ -23,6 +23,7 @@ import { BOT_WEAPON } from "./game/weaponAdapter";
 import { DemoRecorder } from "./mvm/demo";
 import type { DemoNet } from "./mvm/demoNet";
 import { Theater } from "./mvm/theater";
+import { FX_LAYER } from "./render/layers";
 
 export interface StartGameOptions extends Pick<GameDeps, "net" | "localTeam" | "localName" | "localRank" | "match" | "onMatchEnd" | "respawnInventory" | "localChara" | "itemEffects" | "botCount" | "botSkill" | "botAllies" | "missions" | "missionPanel" | "clanMatch" | "stageType" | "room"> {
   /** Client map to load (default: ?map= / nstation). */
@@ -126,6 +127,7 @@ async function prepare(map: MapId | undefined, set: MatchSet): Promise<Prepared>
     0.05,
     500
   );
+  camera.layers.enable(FX_LAYER);
 
   const renderer = acquireRenderer(); // one renderer / GL context for the session: the level's GPU data survives the rematch
   // NOT ORIGINAL: default DPR cap 1.5; Vídeo > "Escala de renderização" 70%..200% (settings.ts pixelRatioFor), clamped to the GL's max renderbuffer

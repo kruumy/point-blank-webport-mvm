@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { renderOnTop } from "../render/onTop";
+import { renderOnTop, withHidden } from "../render/onTop";
 
 /**
  * focus = view-space distance (m), or with focusUv the depth under that point of the image (0..1, origin bottom left),
@@ -11,7 +11,7 @@ export interface DofParams {
   aperture: number; maxBlur: number; near: number; far: number;
 }
 
-const QUAD_VS = "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+export const QUAD_VS = "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
 
 // one texel: the mouse focus distance, eased from last frame's on the GPU (the depth is never read back to the CPU)
 const FOCUS_FS = /* glsl */ `
@@ -33,18 +33,24 @@ const DOF_FS = /* glsl */ `
 #include <packing>
 uniform sampler2D tColor, tDepth, tFocus;
 uniform vec2 texel;
-uniform float near, far, focus, autoFocus, aperture, maxBlur, nearBlur, farBlur;
+uniform float near, far, focus, autoFocus, aperture, maxBlur, nearBlur, farBlur, matte;
 float F;
 varying vec2 vUv;
 float viewZ(vec2 uv) { return -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, near, far); }
 // blur radius in pixels: thin lens, |z - focus| / z
 float coc(float z) { return min(maxBlur, aperture * abs(z - F) / max(z, 1e-3) * (z < F ? nearBlur : farBlur)); }
-vec3 lin(vec2 uv) { return pow(texture2D(tColor, uv).rgb, vec3(2.2)); }
+// matte (passes.ts Matte): 1 = premultiplied coverage: the colour itself goes linear, weighted by its coverage; 2 = light
+// (effects) that adds with no coverage, so it cannot be divided out: it goes linear as it is
+vec4 lin(vec2 uv) {
+  vec4 c = texture2D(tColor, uv);
+  if (matte < 0.5) return vec4(pow(c.rgb, vec3(2.2)), 1.0);
+  return matte < 1.5 ? vec4(pow(c.rgb / max(c.a, 1e-4), vec3(2.2)) * c.a, c.a) : vec4(pow(c.rgb, vec3(2.2)), c.a);
+}
 void main() {
-  if (maxBlur < 0.5) { gl_FragColor = vec4(texture2D(tColor, vUv).rgb, 1.0); return; }
+  if (maxBlur < 0.5) { vec4 c = texture2D(tColor, vUv); gl_FragColor = vec4(c.rgb, matte > 0.5 ? c.a : 1.0); return; }
   F = autoFocus > 0.5 ? texture2D(tFocus, vec2(0.5)).x : focus;
   float zc = viewZ(vUv), cc = coc(zc);
-  vec3 acc = lin(vUv);
+  vec4 acc = lin(vUv);
   float tot = 1.0;
   float spacing = maxBlur * sqrt(3.14159 / ${N}.0);
   for (int i = 0; i < ${N}; i++) {
@@ -56,8 +62,28 @@ void main() {
     acc += mix(acc / tot, lin(uv), m);
     tot += 1.0;
   }
-  gl_FragColor = vec4(pow(acc / tot, vec3(1.0 / 2.2)), 1.0);
+  vec4 o = acc / tot;
+  gl_FragColor = matte < 0.5 ? vec4(pow(o.rgb, vec3(1.0 / 2.2)), 1.0)
+    : matte < 1.5 ? vec4(pow(o.rgb / max(o.a, 1e-4), vec3(1.0 / 2.2)) * o.a, o.a) : vec4(pow(o.rgb, vec3(1.0 / 2.2)), o.a);
 }`;
+
+/** an off-screen target that draws byte for byte like the canvas, with its depth (and stencil) as a texture */
+export function canvasTarget(r: THREE.WebGLRenderer, stencil = false): THREE.WebGLRenderTarget {
+  const depth = new THREE.DepthTexture(1, 1);
+  if (stencil) { depth.format = THREE.DepthStencilFormat; depth.type = THREE.UnsignedInt248Type; }
+  const rt = new THREE.WebGLRenderTarget(1, 1, {
+    depthTexture: depth, stencilBuffer: stencil,
+    samples: r.getContextAttributes()?.antialias ? 4 : 0, // the canvas' own MSAA
+  });
+  // the canvas path, byte for byte: three's own materials encode sRGB in the shader and the PB shaders write their raw
+  // gamma-space values (render/pbLighting.ts). A plain target would get linear output from the former; the XR flag is
+  // three's one switch for "render like the canvas" (r169: output colour space, tone mapping, no sRGB storage format)
+  rt.texture.colorSpace = THREE.SRGBColorSpace;
+  // plain bytes in both the MSAA buffer and the texture it resolves to (three gives the texture SRGB8 otherwise: no resolve)
+  rt.texture.internalFormat = "RGBA8";
+  (rt as { isXRRenderTarget?: boolean }).isXRRenderTarget = true;
+  return rt;
+}
 
 const focusTarget = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
 
@@ -70,7 +96,7 @@ export class Post {
     uniforms: {
       tColor: { value: null }, tDepth: { value: null }, tFocus: { value: null }, texel: { value: new THREE.Vector2() },
       near: { value: 0.1 }, far: { value: 1000 }, focus: { value: 10 }, autoFocus: { value: 0 },
-      aperture: { value: 1 }, maxBlur: { value: 1 }, nearBlur: { value: 1 }, farBlur: { value: 1 },
+      aperture: { value: 1 }, maxBlur: { value: 1 }, nearBlur: { value: 1 }, farBlur: { value: 1 }, matte: { value: 0 },
     },
     depthTest: false, depthWrite: false,
   });
@@ -88,30 +114,17 @@ export class Post {
   private readonly size = new THREE.Vector2();
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
-    this.rt = new THREE.WebGLRenderTarget(1, 1, {
-      depthTexture: new THREE.DepthTexture(1, 1),
-      samples: renderer.getContextAttributes()?.antialias ? 4 : 0, // the canvas' own MSAA
-    });
-    // the canvas path, byte for byte: three's own materials encode sRGB in the shader and the PB shaders write their raw
-    // gamma-space values (render/pbLighting.ts). A plain target would get linear output from the former; the XR flag is
-    // three's one switch for "render like the canvas" (r169: output colour space, tone mapping, no sRGB storage format)
-    this.rt.texture.colorSpace = THREE.SRGBColorSpace;
-    // plain bytes in both the MSAA buffer and the texture it resolves to (three gives the texture SRGB8 otherwise: no resolve)
-    this.rt.texture.internalFormat = "RGBA8";
-    (this.rt as { isXRRenderTarget?: boolean }).isXRRenderTarget = true;
+    this.rt = canvasTarget(renderer);
     this.quad.frustumCulled = false;
   }
 
   /** the scene with depth of field; `overlays` are drawn sharp on top (first-person gun, campath) */
   render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dof: DofParams, overlays: THREE.Object3D[]): void {
-    const r = this.renderer, u = this.mat.uniforms;
+    const r = this.renderer, target = r.getRenderTarget(); // the canvas, or the theater's render target
     r.getDrawingBufferSize(this.size);
     if (this.rt.width !== this.size.x || this.rt.height !== this.size.y) this.rt.setSize(this.size.x, this.size.y);
-    const shown = overlays.filter((o) => o.visible);
-    for (const o of shown) o.visible = false;
     r.setRenderTarget(this.rt);
-    r.render(scene, camera);
-    for (const o of shown) o.visible = true;
+    const shown = withHidden(overlays, () => r.render(scene, camera));
     if (dof.focusUv) {
       const f = this.focusMat.uniforms, [prev, next] = this.focusRt;
       f.tDepth.value = this.rt.depthTexture;
@@ -127,10 +140,19 @@ export class Post {
       this.focusRt.reverse();
     }
     this.focusLive = !!dof.focusUv;
-    r.setRenderTarget(null);
-    u.tColor.value = this.rt.texture;
-    u.tDepth.value = this.rt.depthTexture;
-    u.tFocus.value = this.focusRt[0].texture; // the one just written (reversed above)
+    this.blur(this.rt.texture, this.rt.depthTexture!, camera, dof, target, 0);
+    renderOnTop(r, shown, camera);
+  }
+
+  /** depth of field on `color` by its `depth` into `target`, focused where the last render() focused: a theater pass of the
+   * same frame, blurred like the default one (`matte`: what its alpha holds, passes.ts Matte) */
+  blur(color: THREE.Texture, depth: THREE.Texture, camera: THREE.PerspectiveCamera, dof: DofParams, target: THREE.WebGLRenderTarget | null, matte: number): void {
+    const r = this.renderer, u = this.mat.uniforms;
+    r.setRenderTarget(target);
+    u.tColor.value = color;
+    u.tDepth.value = depth;
+    u.matte.value = matte;
+    u.tFocus.value = this.focusRt[0].texture; // the one render() wrote last (reversed there)
     u.texel.value.set(1 / this.size.x, 1 / this.size.y);
     u.near.value = camera.near;
     u.far.value = camera.far;
@@ -142,7 +164,6 @@ export class Post {
     u.nearBlur.value = dof.near;
     u.farBlur.value = dof.far;
     r.render(this.quad, this.cam);
-    renderOnTop(r, shown, camera);
   }
 
   dispose(): void {
