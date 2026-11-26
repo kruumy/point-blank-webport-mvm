@@ -2764,7 +2764,7 @@ export class Game implements BotHost {
   /** the target's weapon + motion on the first-person arms (only the FPS view shows them) */
   private observeArms(t: Actor, dt: number): void {
     const ws = this.pbWeapons();
-    if (this.obsView !== "fps") { if (this.specWeapon) { this.specWeapon = ""; ws?.observe(null); } return; }
+    if (this.obsView !== "fps") { if (this.specWeapon) { this.specWeapon = ""; ws?.observe(null, { keep: this.theater }); } return; }
     const rw = t as Actor & { weaponId?: number };
     // no weapon known yet (the target has not sent a state / WeaponSync while standing still): the default rifle keeps the
     // arms on screen until the real one arrives [INFERIDO fallback]
@@ -2812,7 +2812,7 @@ export class Game implements BotHost {
       if (prev === "fps" && this.specTarget) this.flyPos.addScaledVector(d, -2).y += 1.5;
       if (this.specTarget) this.hideBody(this.specTarget, false);
     }
-    if (v !== "fps") { this.specWeapon = ""; this.pbWeapons()?.observe(null); } else { this.specFireSeq = -1; this.specReloadSeq = -1; this.specReloadEnd = 0; this.specReloading = false; this.specReady = false; }
+    if (v !== "fps") { this.specWeapon = ""; this.pbWeapons()?.observe(null, { keep: this.theater }); } else { this.specFireSeq = -1; this.specReloadSeq = -1; this.specReloadEnd = 0; this.specReloading = false; this.specReady = false; }
     this.applyObsFov();
   }
 

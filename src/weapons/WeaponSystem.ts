@@ -422,15 +422,17 @@ export class WeaponSystem {
    * Observer mode: the first-person arms hold the OBSERVED player's weapon (CStageBattle::ProcessObserverMode 0x76ab80 -> 0x76c810 shows the
    * target's view weapon); null gives the own current weapon back. View only: ammo / slots are untouched.
    */
-  observe(target: { id?: number; name?: string; chara?: number; team?: 0 | 1 } | null, opts: { swap?: boolean } = {}): void {
+  observe(target: { id?: number; name?: string; chara?: number; team?: 0 | 1 } | null, opts: { swap?: boolean; keep?: boolean } = {}): void {
     if (!this.viewmodel) return;
     if (!target) {
       this.obs = null;
-      this.obsDef = null;
       this.obsBoltUntil = 0;
       this.obsThrowT = -1;
       this.viewmodel.throwT = -1;
       this.viewmodel.throwReady = false;
+      // keep: his weapon stays mounted, hidden; a remount on the way back would load async and land after the theater seek's replay
+      if (opts.keep) return;
+      this.obsDef = null;
       this.viewmodel.observing = false;
       if (this.ownArms !== undefined) { this.viewmodel.setArms(this.ownArms, null); this.ownArms = undefined; }
       const cur = this.slots[this.cur];
