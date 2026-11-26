@@ -384,7 +384,8 @@ export class Theater {
   private setMode(m: Mode, id?: string): void {
     if ((m === "free" || m === "dolly") && this.mode !== "free" && this.mode !== "dolly") this.free = this.currentPose();
     this.mode = m;
-    if (m !== "pov" && this.preview === "viewmodel") this.setPreview("default"); // no gun to show outside first person
+    // no gun to show outside first person, where the world's pass may now be the whole frame
+    if (m !== "pov" && (this.preview === "viewmodel" || this.passOf(this.preview) === "default")) this.setPreview("default");
     this.host.game.observe(m === "pov" ? "fps" : m === "third" ? "third" : "fly", id);
     this.drawSide();
   }
@@ -532,7 +533,7 @@ export class Theater {
   }
 
   // ---- render ----
-  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["default"] as PassName[], joined: [] as PassName[], depthRange: 50 };
+  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["world"] as PassName[], joined: ["players", "effects", "viewmodel"] as PassName[], depthRange: 50 };
 
   /** the part of the window the render keeps: the output size fitted inside it, centred */
   private frameBox(): { x: number; y: number; w: number; h: number } {
@@ -611,7 +612,7 @@ export class Theater {
         const fps = (i + 1) / ((performance.now() - t0) / 1000), left = Math.round((frames - i - 1) / fps);
         bar.style.width = `${((i + 1) / frames) * 100}%`;
         text.innerHTML = `<span>Frame <b>${i + 1}</b> / ${frames}</span><span>${fps.toFixed(1)} fps</span><span>${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</span>
-          <span style="flex:1"></span><span class="hint">Showing ${this.passLabel(shown)}${passes.length > 1 ? ` (${passes.map((p) => PASSES.indexOf(p) + 1).join(" ")})` : ""} · Esc stops</span>`;
+          <span style="flex:1"></span><span class="hint">Showing ${this.passLabel(shown)}${passes.length > 1 ? ` (${passes.map((p) => PASSES.indexOf(p === "default" ? "world" : p) + 1).join(" ")})` : ""} · Esc stops</span>`;
       }
       // a cancel keeps the frames already drawn, so every file ends on the same frame
       while (ok && reading.length) await send(reading.shift()!);
@@ -642,7 +643,13 @@ export class Theater {
   /** the passes a render records: a layer joined to the one under it goes in that one's; the viewmodel alone only in POV, the one mode that draws the gun */
   private recorded(): PassName[] {
     const o = this.renderOpts;
-    return PASSES.filter((p) => o.passes.includes(p) && !o.joined.includes(p) && (p !== "viewmodel" || this.mode === "pov"));
+    return PASSES.filter((p) => o.passes.includes(p) && !o.joined.includes(p) && (p !== "viewmodel" || this.mode === "pov")).map((p) => this.passOf(p));
+  }
+
+  /** [RECRIADO] the pass p is drawn in: the world's with every layer drawn joined is the default, the frame drawn once as the game draws it */
+  private passOf(p: PassName): PassName {
+    const head = this.layersOf(p)[0], j = this.renderOpts.joined;
+    return head === "world" && j.includes("players") && j.includes("effects") && (j.includes("viewmodel") || this.mode !== "pov") ? "default" : head;
   }
 
   /** the layers recorded in one pass with p, the pass's own first; [p] for default, depth, normals */
@@ -668,7 +675,7 @@ export class Theater {
 
   /** the viewport's pass; the shown one again = back to default. While rendering: recorded passes only, kept afterwards */
   private setPreview(p: PassName): void {
-    p = this.layersOf(p)[0]; // a joined layer shows its pass
+    p = this.passOf(p); // a joined layer shows its pass
     if ((this.rendering && !this.recorded().includes(p)) || (p === "viewmodel" && this.mode !== "pov")) return;
     this.preview = p === this.preview && !this.rendering ? "default" : p;
     this.showPreview();
@@ -699,7 +706,7 @@ export class Theater {
       if ((e.target as HTMLElement).closest?.("input,select")) return;
       e.stopImmediatePropagation();
       e.preventDefault();
-      if (this.rendering && e.code !== "Escape" && !/^Digit[1-7]$/.test(e.code)) return; // the clock and camera stay the render's
+      if (this.rendering && e.code !== "Escape" && !/^Digit[1-6]$/.test(e.code)) return; // the clock and camera stay the render's
       this.held.add(e.code);
       if (!e.repeat) this.key(e);
     }, { capture: true, ...sig });
@@ -754,12 +761,12 @@ export class Theater {
       if (!b) return;
       if (b.dataset.eye) { this.setPreview(b.dataset.eye as PassName); return; }
       if (b.dataset.join) {
-        const l = b.dataset.join as PassName, o = this.renderOpts, rec = this.recorded().includes(this.layersOf(l)[0]), split = o.joined.includes(l);
+        const l = b.dataset.join as PassName, o = this.renderOpts, rec = this.recorded().includes(this.passOf(l)), split = o.joined.includes(l);
         o.joined = split ? o.joined.filter((x) => x !== l) : [...o.joined, l];
         // a recorded layer stays in a file: joined, the pass it went into records; split off, it records as its pass did
         const into = this.layersOf(l)[0];
         o.passes = PASSES.filter((x) => (x !== into ? o.passes.includes(x) : split ? rec : rec || o.passes.includes(x)));
-        this.preview = this.layersOf(this.preview)[0];
+        this.preview = this.passOf(this.preview);
         this.showPreview();
         return;
       }
@@ -831,7 +838,7 @@ export class Theater {
   }
 
   private key(e: KeyboardEvent): void {
-    const digit = /^Digit([1-7])$/.exec(e.code);
+    const digit = /^Digit([1-6])$/.exec(e.code);
     if (digit) { this.setPreview(PASSES[+digit[1] - 1]); return; }
     switch (e.code) {
       case "Space": this.action("play"); break;
@@ -879,7 +886,7 @@ export class Theater {
       case "pathRange": if (this.path.keys.length > 1) { this.inPt = this.path.start; this.outPt = this.path.end; } this.drawSide(); break;
       case "setIn": this.inPt = Math.min(this.time, this.outPt); this.toast(`In ${fmt(this.inPt)}`); if (this.tab === "render") this.drawSide(); break;
       case "setOut": this.outPt = Math.max(this.time, this.inPt); this.toast(`Out ${fmt(this.outPt)}`); if (this.tab === "render") this.drawSide(); break;
-      case "passesDefault": this.renderOpts.passes = ["default"]; this.drawSide(); break;
+      case "passesDefault": Object.assign(this.renderOpts, { passes: ["world"], joined: ["players", "effects", "viewmodel"] }); this.drawSide(); break;
       case "passesAll": this.renderOpts.passes = [...PASSES]; this.drawSide(); break;
       case "render": void this.renderMovie(); break;
       case "clean": document.body.classList.toggle("mvm-clean"); break;
@@ -1028,15 +1035,15 @@ export class Theater {
       const alpha = this.alphaFormat(), on = this.recorded(), name = this.movieName();
       const span = Math.max(0, this.outPt - this.inPt), frames = Math.round(span * o.fps);
       const pass = (p: PassName, i: number) => {
-        const info = PASS_INFO[p], head = this.layersOf(p)[0], joined = head !== p, rec = on.includes(head), eye = this.preview === p;
+        const info = PASS_INFO[p], head = this.layersOf(p)[0], joined = head !== p, rec = on.includes(this.passOf(p)), eye = this.preview === this.passOf(p) && !joined;
         const na = head === "viewmodel" && this.mode !== "pov", below = LAYERS[LAYERS.indexOf(p as never) - 1];
         // between two layers: join this one into the pass under it, or split it off into its own file
         const link = below ? `<button class="link${joined ? " on" : ""}" data-join="${p}" title="${joined ? `In the ${this.passLabel(head)} file · click to split it off` : `Own file · click to join it into ${this.passLabel(below)}`}">${LINK}</button>` : "";
-        const what = this.layersOf(p).length > 1 ? `${this.passLabel(head)} in one file` : info.note(alpha);
+        const what = this.passOf(p) === "default" ? `Every layer in one file: ${PASS_INFO.default.note(alpha).toLowerCase()}` : this.layersOf(p).length > 1 ? `${this.passLabel(head)} in one file` : info.note(alpha);
         return `<div class="pass${rec ? " rec" : ""}${na ? " na" : ""}${joined ? " joined" : ""}" ${na ? "" : `data-pass="${head}"`} title="${na ? "First person (POV) only" : `${what} · ${rec ? "recorded, click to leave it out" : "click to record it"}`}">
             ${link}<span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
             <span class="nm"><b>${info.label}</b></span>
-            <button class="eye${eye ? " on" : ""}" ${na || joined ? "disabled" : `data-eye="${p}"`} title="${eye && p !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
+            <button class="eye${eye ? " on" : ""}" ${na || joined ? "disabled" : `data-eye="${p}"`} title="${eye && this.preview !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
           + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
       };
       body.innerHTML = `${head("Output")}

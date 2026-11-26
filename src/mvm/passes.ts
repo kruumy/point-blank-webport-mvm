@@ -3,8 +3,9 @@ import { QUAD_VS, canvasTarget } from "./post";
 import { withHidden } from "../render/onTop";
 import { FX_LAYER } from "../render/layers";
 
-export const PASSES = ["default", "world", "players", "effects", "viewmodel", "depth", "normals"] as const;
-export type PassName = (typeof PASSES)[number];
+export const PASSES = ["world", "players", "effects", "viewmodel", "depth", "normals"] as const;
+/** "default": the world's pass with every layer joined, drawn as the game draws the frame (one scene render, not composited) */
+export type PassName = "default" | (typeof PASSES)[number];
 /** the frame's layers, bottom to top: each pass of them is a run of these, composited in this order */
 export const LAYERS = ["world", "players", "effects", "viewmodel"] as const;
 export type Layer = (typeof LAYERS)[number];

@@ -5,7 +5,7 @@ import { createReadStream, existsSync, mkdirSync, readdirSync, renameSync, rmSyn
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type { DemoInfo } from "../src/mvm/demo.ts";
 
 const ROOT = resolve("mvm");
@@ -147,10 +147,13 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
         || !Array.isArray(o.passes) || !ok(o.passes.length, 1, 8) || !o.passes.every(passOk) || new Set(o.passes.map((p) => p.name)).size !== o.passes.length) return send(res, 400, { error: "bad render settings" });
       if (spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error) return send(res, 503, { error: "ffmpeg not found" });
       mkdirSync(DIRS.movies, { recursive: true });
-      // name + the first number free for every pass: a render never overwrites an earlier one
       const fileOf = (n: number, p: Pass) => join(DIRS.movies, `${o.name}${n}${p.name === "default" ? "" : `_${p.name}`}.${codec.ext}`);
+      // a number any file of an earlier or running render holds is taken, whatever its passes were: one number, one render, never overwritten
+      // lower case: Windows file names are case-insensitive; running renders: their ffmpeg may not have made the file yet
+      const lc = o.name.toLowerCase(), names = [...readdirSync(DIRS.movies), ...[...jobs.values()].map((j) => basename(j.file))];
+      const taken = new Set(names.map((f) => f.toLowerCase()).filter((f) => f.startsWith(lc)).map((f) => /^(\d+)[._]/.exec(f.slice(lc.length))?.[1]));
       let n = 1;
-      while (o.passes.some((p) => existsSync(fileOf(n, p)))) n++;
+      while (taken.has(String(n))) n++;
       const started = o.passes.map((p) => {
         const file = fileOf(n, p);
         // a matte survives only in the 4444 profiles' alpha plane
