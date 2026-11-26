@@ -86,7 +86,6 @@ const ICON = {
 const TABS = { camera: "Camera", campath: "Campath", visuals: "Visuals", render: "Render", controls: "Controls" };
 const MODES: [Mode, string, string][] = [["pov", "POV", "First person (F2)"], ["third", "Third", "Third person (F3)"], ["free", "Free", "Free camera (F)"], ["dolly", "Dolly", "Ride the campath (J)"]];
 // common output sizes; the viewport takes the picked one's shape
-const SIZES: [number, number, string][] = [[1280, 720, "720p"], [1920, 1080, "1080p"], [2560, 1440, "1440p"], [3840, 2160, "4K UHD"], [1440, 1080, "4:3"], [1080, 1350, "Portrait 4:5"], [1080, 1920, "Vertical 9:16"]];
 const icon = (k: keyof typeof ICON, size = 14) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const TEAM = [{ name: "Red", color: "#d33a2c" }, { name: "Blue", color: "#2c6fd3" }];
@@ -1010,12 +1009,7 @@ export class Theater {
       const t = e.target as HTMLInputElement | HTMLSelectElement;
       const o = this.renderOpts;
       // even sizes: the 4:2:2 ProRes profiles halve the width of the colour planes
-      if (t.name === "w" || t.name === "h") { const v = Math.max(16, Math.min(t.name === "w" ? 7680 : 4320, Math.round(+t.value / 2) * 2 || 2)); o[t.name] = v; t.value = String(v); this.layout();
-        // the preset follows without a redraw, which would eat the click that blurred this field
-        const sz = this.root.querySelector<HTMLSelectElement>('[name="size"]');
-        if (sz) { sz.value = `${o.w}x${o.h}`; if (sz.selectedIndex < 0) sz.value = ""; }
-      }
-      else if (t.name === "size" && t.value) { [o.w, o.h] = t.value.split("x").map(Number); this.layout(); this.drawSide(); }
+      if (t.name === "w" || t.name === "h") { const v = Math.max(16, Math.min(t.name === "w" ? 7680 : 4320, Math.round(+t.value / 2) * 2 || 2)); o[t.name] = v; t.value = String(v); this.layout(); }
       else if (t.name === "watch") { t.blur(); this.setMode(this.mode === "third" ? "third" : "pov", t.value); } // focus kept would swallow the theater's keys
       else if (t.name === "speed") t.blur(); // the drag's end; on input it would cut the drag short
       else if (t.name === "fps") o.fps = +t.value;
@@ -1437,8 +1431,7 @@ export class Theater {
             <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye ? "Back to the default view" : `Preview ${info.label} alone in the viewport`} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
           + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
       };
-      body.innerHTML = `<div class="row"><label>Size</label><select name="size" style="flex:1;min-width:0"><option value="">Custom</option>${SIZES.map(([w, h, l]) => `<option value="${w}x${h}" ${w === o.w && h === o.h ? "selected" : ""}>${l}  ${w} × ${h}</option>`).join("")}</select></div>
-        <div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="flex:1;min-width:0"> ×
+      body.innerHTML = `<div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="flex:1;min-width:0"> ×
           <input name="h" type="number" min="16" max="4320" step="2" value="${o.h}" style="flex:1;min-width:0"></div>
         <div class="row"><label>FPS</label><select name="fps">${FRAMERATES.map((f) => `<option ${f === o.fps ? "selected" : ""}>${f}</option>`).join("")}</select></div>
         <div class="row"><label>Format</label><select name="codec" style="flex:1;min-width:0">${CODECS.map(([v, l]) => `<option value="${v}" ${v === o.codec ? "selected" : ""}>${l}</option>`).join("")}</select></div>
