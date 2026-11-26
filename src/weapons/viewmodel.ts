@@ -430,6 +430,15 @@ class ArmsRig {
   /** seconds the running one-shot takes to fade in / the one it replaces takes to fade out (a gun shot: ~2 frames) */
   private shotRamp = 0.03;
 
+  /** the one-shot just started has already run `age` s (a shot fired while the weapon was still loading) */
+  ageShot(age: number): void {
+    const a = this.shot;
+    if (!a || age <= 0) return;
+    a.time = Math.min(age * a.timeScale, a.getClip().duration);
+    this.shotW = Math.min(1, age / this.shotRamp);
+    a.setEffectiveWeight(this.shotW);
+  }
+
   private oneShot(c: THREE.AnimationClip | null | undefined, timeScale = 1, zoom = this.zoomOn, blend = 0): boolean {
     if (!c) return false;
     this.shotHold = false;
@@ -886,10 +895,26 @@ export class Viewmodel {
     this.raising = !(this.raiseSeen && this.switchT >= 0.999);
     if (!this.raising) rig.endDriven();
     this.raiseSawLow = false;
-    if (!inst) return;
-    this.attachMarkers(inst);
-    this.bindWeaponAnim(inst);
-    if (this.lastDef && wieldsTwo(this.lastDef, pb) && rig.handL) this.mountLeft(inst);
+    if (inst) {
+      this.attachMarkers(inst);
+      this.bindWeaponAnim(inst);
+      if (this.lastDef && wieldsTwo(this.lastDef, pb) && rig.handL) this.mountLeft(inst);
+    }
+    this.resumeShot("arms");
+  }
+
+  /** the last shot, and the weapon it was fired with (token): a mount after it resumes its clips */
+  lastShot: { left: boolean | "both"; t: number; tok: number } | null = null;
+  /** [RECRIADO] a shot fired while this weapon loaded (a seek's replayed quick swap) lost its clips to the mount */
+  private resumeShot(part: "arms" | "gun"): void {
+    const s = this.lastShot, age = s ? this.t - s.t : 0;
+    if (!s || s.tok !== this.token || age > 3) return;
+    if (part === "arms") {
+      if (this.rigActive && this.family !== "KNIFE" && this.family !== "GRENADE") { this.rig!.fire(this.semi, this.burst, s.left); this.rig!.ageShot(age); }
+      return;
+    }
+    if (s.left !== true) this.wAnim?.fire(this.fireCycle(), age);
+    if (s.left) this.wAnimL?.fire(this.fireCycle(), age);
   }
 
   /** C5: the brick (C5.I3S) the throw clip carries in the hand; the bomb trigger is hidden meanwhile */
@@ -968,6 +993,7 @@ export class Viewmodel {
    * The right gun's own clip (slide) plays on right / both shots.
    */
   fireKick(strength: number, left: boolean | "both" = false): void {
+    this.lastShot = { left, t: this.t, tok: this.token };
     this.side = this.dual && left === true ? "L" : "R";
     this.kickVel += strength * (this.rigActive ? 0.35 : 1);
     if (this.rigActive && this.family !== "KNIFE" && this.family !== "GRENADE") this.rig!.fire(this.semi, this.burst, left);
@@ -1138,7 +1164,7 @@ export class Viewmodel {
     if (this.reloadT >= 0) {
       if (this.lastReloadT < 0) {
         this.autoDraw = -1;
-        this.reloadElapsed = 0;
+        this.reloadElapsed = this.reloadStartElapsed();
         // shell-by-shell reload with a LoadMagazineReady clip (M1887, UTS-15, Cerberus, WaterGun): the opening plays over
         // WeaponSystem's 0.3 s lead-in, then LoadMagazine per shell [INFERIDO]
         this.readyPhase = !!this.lastDef?.params.reloadPerShell && rig.hasReady();
@@ -1222,6 +1248,12 @@ export class Viewmodel {
    * i3AIState dur / weapon.pef ReloadTime (AUG: Reload.i3a 2.5 s over ReloadTime 2.5 s). Shell-by-shell weapons
    * replay it for each shell (ReloadTime per shell, after WeaponSystem's 0.3 s lead-in).
    */
+  // a seek lands part way into a reload; shortcut: a shell-by-shell one counts as one ReloadTime (its shell count is unknown here)
+  private reloadStartElapsed(): number {
+    const p = this.lastDef?.params, rt = Math.max(0.05, (p?.reloadTime ?? 0) / this.reloadScale);
+    return this.reloadT > 0 ? this.reloadT * rt + (p?.reloadPerShell ? 0.3 : 0) : 0;
+  }
+
   private reloadClipTime(dur: number, elapsed = this.reloadElapsed): number {
     const p = this.lastDef?.params;
     const rt = Math.max(0.05, (p?.reloadTime ?? dur) / this.reloadScale);
@@ -1255,6 +1287,7 @@ export class Viewmodel {
 
   private bindWeaponAnim(inst: WeaponModelInstance): void {
     const tok = ++this.wAnimTok;
+    this.wAnim = null; // the old gun's clips are gone with its model; this one's come below
     this.wReloadT = -1;
     this.wReloading = this.wChanging = false;
     void inst.animator("1pv").then((a) => {
@@ -1262,6 +1295,7 @@ export class Viewmodel {
       if (a) a.gender = pbLive.fpsFamily === "female" ? "female" : "male";
       this.wAnim = a;
       a?.syncExt(this.extWanted);
+      this.resumeShot("gun");
       if (a && animLog) console.info(`[anim] weapon ${a.set.id}: ${Object.keys(a.set.states).join(", ")}`);
     });
   }
@@ -1283,7 +1317,7 @@ export class Viewmodel {
     a.syncExt(this.extWanted);
     if (this.reloadT >= 0) {
       if (this.wReloadT < 0) {
-        this.wReloadElapsed = 0;
+        this.wReloadElapsed = this.reloadStartElapsed();
         this.wChanging = false;
         this.wReloading = a.drive("reload");
       } else this.wReloadElapsed += dt;

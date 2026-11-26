@@ -310,9 +310,9 @@ export class WeaponAnimator {
     return true;
   }
 
-  /** Fire state: real time, or the clip over `cycle` seconds (shotguns, WeaponShotGun 0x624c40). */
-  fire(cycle?: number): boolean {
-    return this.play("fire", cycle);
+  /** Fire state: real time, or the clip over `cycle` seconds (shotguns, WeaponShotGun 0x624c40); `since` s in */
+  fire(cycle?: number, since = 0): boolean {
+    return this.play("fire", cycle, since);
   }
 
   /** Starts a state whose time the caller sets (setTime / setProgress) until end(). */

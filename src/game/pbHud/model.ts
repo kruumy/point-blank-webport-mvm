@@ -31,7 +31,9 @@ export interface FinalClan { name: string; rank: number; logo: number; points: n
 export interface HudData {
   hp: number; maxHp: number; armor: number; helmet: boolean;
   /** `dual` = dual-wield gun (2nd ammo gauge, charaPanel.ts); left = the left gun is the bright one (next shot) */
-  weapon: { name: string; slot: number; ammo: number; reserve: number; melee: boolean; reloading: boolean; reloadProgress: number; family?: string; id?: number; dual?: { left: boolean } };
+  weapon: { name: string; slot: number; ammo: number; reserve: number; melee: boolean; reloading: boolean; reloadProgress: number; family?: string; id?: number; dual?: { left: boolean };
+    /** [RECRIADO] theater: a watched player's weapon, whose ammo is not networked: no gauge, no count */
+    noAmmo?: boolean };
   /** crouching (portrait pose) */
   crouch?: boolean;
   /** grenades left in slot 3 (null = no grenade) */

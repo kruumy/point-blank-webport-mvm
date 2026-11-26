@@ -7,6 +7,7 @@ export interface MatchConfig {
   mode: "TDM" | "BOMB" | "DESTROY" | "DEFENCE" | "ANNIHILATION" | "ACE";
   /** BOMB: rounds to win (ROUNDS[killTime & 15]); 0 = no limit (offline) */
   roundLimit?: number;
+  /** 0 = no limit (the theater) */
   killLimit: number;
   timeLimit: number; // seconds
   countdown: number; // freeze before each round
@@ -143,6 +144,14 @@ export class Match {
    * (AllUtils.GetWinnerTeam).
    */
   registerKill(info: KillInfo): void {
+    this.count(info);
+    this.feed.push(info);
+    if (this.feed.length > 30) this.feed.shift();
+    this.killCbs.forEach((cb) => cb(info));
+    if (this.phase === "live" && this.cfg.mode === "TDM" && this.cfg.killLimit > 0 && Math.max(...this.score) >= this.cfg.killLimit) this.end();
+  }
+
+  private count(info: KillInfo): void {
     const v = this.stats.get(info.victim.id);
     if (v) v.deaths++;
     info.victimStreak = this.life.get(info.victim.id) ?? 0;
@@ -157,10 +166,14 @@ export class Match {
       this.life.set(info.killer.id, (this.life.get(info.killer.id) ?? 0) + 1);
       if (this.phase === "live" && this.cfg.mode === "TDM") this.score[info.killer.team]++;
     }
-    this.feed.push(info);
-    if (this.feed.length > 30) this.feed.shift();
-    this.killCbs.forEach((cb) => cb(info));
-    if (this.phase === "live" && this.cfg.mode === "TDM" && Math.max(...this.score) >= this.cfg.killLimit) this.end();
+  }
+
+  /** [RECRIADO] theater seek: the counts the kills before it leave (a seek skips their events); no feed, no callbacks */
+  recount(kills: readonly KillInfo[]): void {
+    if (this.cfg.mode === "TDM") this.score[0] = this.score[1] = 0; // other modes score rounds, which no kill brings back
+    for (const s of this.stats.values()) s.kills = s.deaths = s.headshots = 0;
+    this.life.clear();
+    for (const k of kills) this.count(k);
   }
 
   /** BOMB: the round is over for `winner` (null = draw). Server-ts sends the counts (5155); offline the caller counts. */

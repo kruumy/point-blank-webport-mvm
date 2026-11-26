@@ -176,6 +176,9 @@ const C5_PROP_DAMAGE_MULT = 2;
 /** HUD thrown-object warning range, metres (Cross CHud driver 0x744be0 -> 0x7443c0, float 0xb2af0c; text the same) */
 const GRENADE_WARN_RANGE = 10;
 
+/** the observed player's motion for the arms and his crosshair (reload progress -1 = none) */
+export interface ObservedMotion { speed: number; grounded: boolean; aiming: boolean; ext?: boolean; reloadT: number; crouch?: boolean; walking?: boolean }
+
 export class WeaponSystem {
   readonly db = new WeaponDb();
   readonly audio: WeaponAudio;
@@ -443,8 +446,10 @@ export class WeaponSystem {
       this.viewmodel.observing = true;
       this.viewmodel.reloadScale = 1; // not the spectator's own Quick Change Reload from an earlier life
       this.obsDef = def;
-      if (swap) { this.obsExt = undefined; this.obsBoltUntil = 0; this.obsThrowT = -1; this.viewmodel.throwT = -1; this.viewmodel.throwReady = false; } // a cut throw / pin does not follow the swap
-      this.viewmodel.setWeapon(def, true, !(swap && opts.swap)); // no Change clip on mount unless HE swapped
+      if (swap) { this.obsExt = undefined; this.obsBoltUntil = 0; this.obsThrowT = -1; this.viewmodel.throwT = -1; this.viewmodel.throwReady = false; this.xhCur = 0; this.xhTarget = -1; this.obsNextRound = 0; } // a cut throw / pin does not follow the swap
+      // the same weapon stays mounted: a remount loads async and would land after a theater seek's replay, dropping its shots
+      if (swap) this.viewmodel.setWeapon(def, true, !opts.swap); // no Change clip on mount unless HE swapped
+      else this.viewmodel.lastShot = null; // another player with the same gun: the last shot was not his
       // his draw (Change) state runs on the arms only when HE swapped weapons (quick swaps included); a new watched player / view
       // already holds his weapon: no draw clip, and one still running from the previous target is dropped
       if (swap && opts.swap) this.startChange(def);
@@ -453,10 +458,17 @@ export class WeaponSystem {
   }
 
   private obsNextFire = 0;
+  private obsNextRound = 0;
   /** the watched player's bolt rifle is cycling: his scope drops until the next round is chambered */
   private obsBoltUntil = 0;
   /** the watched player's bolt cycle is over (zoom may come back) */
   private get obsBoltDone(): boolean { return this.time >= this.obsBoltUntil; }
+
+  /** the watched weapon as his own HUD names it (his ammo is not networked) */
+  observedHud(): { id: number; name: string; family: string; melee: boolean; dual: "alt" | "both" | null } | null {
+    const d = this.obsDef;
+    return d ? { id: d.id, name: d.name, family: d.family, melee: d.family === "KNIFE" && !isBallisticKnife(d), dual: dualFire(d) } : null;
+  }
 
   observedFireMode(): string | null {
     return this.obsDef ? this.obsDef.fireMode : null;
@@ -500,12 +512,12 @@ export class WeaponSystem {
 
   private ownArms: { itemId: number; team: 0 | 1 } | null | undefined = undefined;
   private obsDef: WeaponDef | null = null;
-  private obs: { speed: number; grounded: boolean; aiming: boolean; ext?: boolean; reloadT: number } | null = null;
+  private obs: ObservedMotion | null = null;
   /** the watched player's extension as last seen on this weapon (undefined: not seen yet, no switch clip) */
   private obsExt: boolean | undefined;
 
   /** the observed player's motion for the arms (walk / run bob, jump, zoom, extension, reload progress -1 = none) */
-  observeState(s: { speed: number; grounded: boolean; aiming: boolean; ext?: boolean; reloadT: number }): void {
+  observeState(s: ObservedMotion): void {
     this.obs = s;
     const ext = !!s.ext, dualMag = this.obsDef?.params.ext?.type === "DualMag";
     // a DualMag's ext bit is its flip (getHudState): the flip clip, not the full reload his "reload" torso state also says
@@ -528,6 +540,11 @@ export class WeaponSystem {
   /** the observed player fired: kick + the arms' Attack clip + muzzle flash (the shot sound comes from the positional remote fire) */
   observeFire(heavy = false, tint?: Tint): void {
     const vm = this.viewmodel, def = this.obsDef;
+    // his crosshair: one deviation per round at the weapon's own rate (the arms' cycle below runs faster) [INFERIDO: his shots = his fire events + held fire]
+    if (def && def.family !== "KNIFE" && def.family !== "GRENADE" && !(this.obs?.ext && def.params.ext?.type === "GrenadeLauncher") && this.time >= this.obsNextRound) {
+      this.obsNextRound = this.time + Math.max(0.05, def.fireDelay) - 1e-4;
+      this.bumpCrosshair(def, !!this.obs?.ext, 1);
+    }
     if (!vm || !def || this.time < this.obsNextFire) return;
     this.obsNextFire = this.time + Math.max(0.05, def.fireDelay) * 0.8; // one arms shot per weapon cycle (shot events + the firing flag both land here)
     // a stab / throw is not a shot: the knife swings (light / heavy as the remote's fire event says), no kick, no muzzle flash
@@ -920,9 +937,12 @@ export class WeaponSystem {
     // spread / recoil recovery (0x7e7f10: vertical 0x7e7f60, crosshair target 0x7e7d90, interpolation 0x7e8100)
     if (!input.fire) this.shotCount = 0; // FireEnd vf1a8 0x606ac0 resets weapon+0xd00 on release
     this.sinceZoomShot += dt; // WeaponBase::OnUpdate 0x611559: weapon+0x66c += dt
+    // the watched player's crosshair from his replicated posture; his titles are not networked [INFERIDO: none]
+    const watched = od && this.obs;
+    if (watched) this.updateCrosshair(od, watched.speed, watched.grounded, !!watched.crouch, dt, !!watched.walking, 0);
     if (s) {
       this.updateRecoil(dt);
-      this.updateCrosshair(s.def, speed, grounded, !!input.crouching, dt);
+      if (!watched) this.updateCrosshair(s.def, speed, grounded, !!input.crouching, dt);
       this.recoilPitch = this.recV * s.def.params.recoil.camSyncRate; // camera shows R.v * CamSyncRate (0x7e5670)
       this.recoilYaw = this.yawOff;
     }
@@ -969,7 +989,7 @@ export class WeaponSystem {
    *   clamp(0, CrossHair_Max)
    * The chara-state-0x10 x g_d80b3c+0x2c factor on Stand is not modelled (state not identified).
    */
-  private crosshairTarget(def: WeaponDef, speed: number, grounded: boolean, crouch: boolean): number {
+  private crosshairTarget(def: WeaponDef, speed: number, grounded: boolean, crouch: boolean, walking: boolean, firstShot: number): number {
     const c = def.params.spread.cross;
     const m = c.min > 0 ? c.min : 0.01;
     let t = m;
@@ -977,9 +997,9 @@ export class WeaponSystem {
     if (this.aiming) t += m * c.zoom;
     else if (def.classType === 5) t += c.noZoom;
     if (!grounded) t += m * c.jump;
-    else if (speed > 0.5) t += m * (pbLive.walking ? (crouch ? c.walkSit : c.walk) : crouch ? c.moveSit : c.move);
+    else if (speed > 0.5) t += m * (walking ? (crouch ? c.walkSit : c.walk) : crouch ? c.moveSit : c.move);
     else if (crouch) t += m * c.sit;
-    t += titleFxLive.firstShot; // title First_Shot_Rate (0x7e7d90)
+    t += firstShot; // title First_Shot_Rate (0x7e7d90)
     return Math.min(c.max, Math.max(0, t));
   }
 
@@ -997,9 +1017,9 @@ export class WeaponSystem {
    * current value). 0x7e8100 per frame: t += dt; T > 2e-5 ? cur = start + (target - start) * sin(pi/2 * t/T) (0x7ecde0);
    * t > T ? cur = start = target, done.
    */
-  private updateCrosshair(def: WeaponDef, speed: number, grounded: boolean, crouch: boolean, dt: number) {
+  private updateCrosshair(def: WeaponDef, speed: number, grounded: boolean, crouch: boolean, dt: number, walking = pbLive.walking, firstShot = titleFxLive.firstShot) {
     const c = def.params.spread.cross;
-    const tgt = this.crosshairTarget(def, speed, grounded, crouch);
+    const tgt = this.crosshairTarget(def, speed, grounded, crouch, walking, firstShot);
     if (tgt !== this.xhTarget) {
       this.xhDur = tgt > this.xhCur ? c.expandTime : this.crossTime(def);
       this.xhTarget = tgt;
@@ -1137,15 +1157,20 @@ export class WeaponSystem {
       this.recHdur = Math.min(def.fireDelay, 0.5);
       this.recHrecov = rc.horzRecoverTime;
     }
+    this.bumpCrosshair(def, on, fxPct(titleFxLive.hitRate)); // title Target_Declination
+    return { kickH };
+  }
+
+  /** 0x7e8400: the shot's deviation onto the crosshair */
+  private bumpCrosshair(def: WeaponDef, on: boolean, rate: number): void {
     const c = def.params.spread.cross;
     this.xhPrev = this.xhCur;
-    this.xhCur += def.params.spread.deviation * (on ? ext.deviationFactor ?? 1 : 1) * fxPct(titleFxLive.hitRate); // title Target_Declination
+    this.xhCur += def.params.spread.deviation * (on ? def.params.ext?.deviationFactor ?? 1 : 1) * rate;
     this.xhStart = this.xhCur;
     this.xhTarget = Math.min(this.xhCur, c.max);
     this.xhT = 0;
     this.xhDur = this.crossTime(def);
     this.xhActive = true;
-    return { kickH };
   }
 
   /** RMB press: toggle zoom; scope weapons step ScopeOverlay levels (0 -> 1 -> .. -> MaxScopeLevel -> 0) */

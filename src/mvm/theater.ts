@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import type { Game } from "../game/game";
+import type { KillEvent } from "../game/netAdapter";
 import { Campath, unwrap, type CamKey, type CamPose } from "./campath";
 import { DEMO_API, demoInfo, deleteDemo, listDemos, renameDemo, saveDemo, type Demo, type DemoInfo, type DemoListing } from "./demo";
 import { MAP_SHAPE, STAGE_SHAPE, mapShapeCell } from "../lobby/screensCross/crossMap";
@@ -8,11 +9,13 @@ import { assetUrl } from "../assetMap";
 import { mapIndexEntry } from "../config";
 import type { DemoNet } from "./demoNet";
 import { Post, type DofParams } from "./post";
-import { LAYERS, PASSES, Passes, layerPasses, type PassFrame, type PassName } from "./passes";
+import { LAYERS, PASSES, Passes, hudKey, layerPasses, type PassFrame, type PassName } from "./passes";
+import { CROSSHAIR, CROSSHAIR_COLORS } from "../game/pbHud/layout";
+import { HudCapture } from "./hudCapture";
 import { renderOnTop } from "../render/onTop";
 import { charaChoices } from "../game/charModel";
 import { actorEquip, hatChoices } from "../game/charEquip";
-import { brightnessFactor } from "../gameplay/settings";
+import { brightnessFactor, crosshairIndex } from "../gameplay/settings";
 import { LookStage, deleteLook, listLooks, listSkies, readLook, writeLook, type Look } from "./looks";
 
 export interface TheaterHost {
@@ -28,10 +31,15 @@ export interface TheaterHost {
 type Mode = "pov" | "third" | "free" | "dolly";
 const SPEEDS = [0.05, 0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.5, 2, 4, 8];
 const SKIP = 5; // s per arrow press
+// the timeline: ruler height, kill marker height, px between ruler labels (px); the closest zoom (s)
+const TL_RULER = 13, TL_MARK = 7, TL_LABEL = 64, MIN_VIEW = 0.5;
+const RULER_STEPS = [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+/** red, blue, no team (the world) */
+const TEAM_CSS = ["#e0503f", "#4a8ef0", "#9a9a9a"];
 const STEP_DELAY = 300, STEP_RATE = 30; // a held Ctrl + arrow: ms before it repeats, then ticks per second
 const ZOOMS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const ZOOM_KEY = "mvm.uiZoom";
-const demoEdits = (d: Demo) => JSON.stringify({ deaths: d.deaths, charas: d.charas, hats: d.hats });
+const demoEdits = (d: Demo) => JSON.stringify({ deaths: d.deaths, charas: d.charas, hats: d.hats, names: d.names });
 /** depth of field (post.ts), kept apart from the looks: mode 0 off, 1 manual distance, 2 under the mouse, 3 a player;
  * blur in % of the image height; near / far scale it in front of / behind the focus; speed = mouse focus easing (1/s) */
 const DOF_DEFAULT = { mode: 0, focus: 10, speed: 5, aperture: 1, maxBlur: 1, near: 1, far: 1 };
@@ -94,9 +102,14 @@ const PLAYER_SVG = `<path d="M12.6 13.4h2.2l-.4 5.8h-1.9zm2.6 0h2.2l.3 5.8h-1.9z
 const GUN_SVG = `<path d="M30 13.6L16.2 8.1l-1.1 1.6L28.6 17z" fill="#5d636d"/><path d="M30 13.6L16.2 8.1l.3-.6 13.5 5.2z" fill="#949ba6"/>
   <path d="M23.3 12.1l-1.5 4 1.9.8 1.3-3.7z" fill="#454a52"/><path d="M23.6 15.6q2.2-1.7 4.4.3l2 1.1V20h-7.2z" fill="#d9a77e"/>
   <path d="M26 17.6l4-1.1V20h-5z" fill="#4b5a44"/>`;
+const HUD_SVG = `<path d="M15 6.5v3m0 4v3m-5-5h3m4 0h3" stroke="#5cf03c" stroke-width="1.1"/><rect x="1" y="1" width="7" height="7" rx=".6" fill="#26303a" stroke="#9aa3ad" stroke-width=".5"/>
+  <circle cx="4.5" cy="4.5" r=".9" fill="#5cf03c"/><rect x="20" y="14" width="9" height="5" rx=".6" fill="#2b2f36" stroke="#9aa3ad" stroke-width=".5"/><path d="M21.5 16.5h3" stroke="#8eb740" stroke-width="1.4"/>`;
 const CHECK_SVG = Array.from({ length: 24 }, (_, i) => `<rect x="${(i % 6) * 5}" y="${Math.floor(i / 6) * 5}" width="5" height="5" fill="${(i % 6 + Math.floor(i / 6)) % 2 ? "#2e3036" : "#4a4d55"}"/>`).join("");
 const svg = (inner: string) => `<svg viewBox="0 0 30 20" width="30" height="20">${inner}</svg>`;
-const matteSvg = (alpha: boolean, inner: string) => svg((alpha ? CHECK_SVG : `<rect width="30" height="20" fill="#14b814"/>`) + inner);
+const matteSvg = (alpha: boolean, inner: string, key = "#14b814") => svg((alpha ? CHECK_SVG : `<rect width="30" height="20" fill="${key}"/>`) + inner);
+/** the HUD's screen colour (passes.ts hudKey) by the crosshair colour set in the options, as PbHud draws it */
+const hudKeyNow = () => { const i = crosshairIndex(); return hudKey(i === null ? CROSSHAIR.color : CROSSHAIR_COLORS[i] ?? CROSSHAIR.color); };
+const KEY_NAMES: Record<string, string> = { "1,0,1": "magenta", "0,0,1": "blue" };
 /** swatch: an svg, or a CSS background */
 const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => string; swatch: (alpha: boolean) => string }> = {
   default: { label: "Default", note: () => "The frame as you see it",
@@ -104,11 +117,14 @@ const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => str
   world: { label: "World", note: () => "Map only: no players or effects", swatch: () => svg(WORLD_SVG) },
   players: { label: "Players", note: (a) => (a ? "Alpha matte" : "On green screen"), swatch: (a) => matteSvg(a, PLAYER_SVG) },
   viewmodel: { label: "Viewmodel", note: (a) => `Arms, gun and its flash · ${a ? "premultiplied alpha" : "on green"}`, swatch: (a) => matteSvg(a, GUN_SVG) },
+  hud: { label: "HUD", note: (a) => `The player's own HUD: crosshair, radar, kill feed · ${a ? "alpha matte" : `on ${KEY_NAMES[hudKeyNow().join()]} (its own green rules out green)`}`, swatch: (a) => matteSvg(a, HUD_SVG, `rgb(${hudKeyNow().map((v) => v * 255).join()})`) },
   effects: { label: "Effects", note: (a) => `Flashes, smoke, tracers ${a ? "· premultiplied alpha" : "on black"}`,
     swatch: () => "radial-gradient(circle at 55% 50%,#fff6d0 0 9%,#ffb84a 20%,rgba(255,120,20,.35) 38%,transparent 58%),#050505" },
   depth: { label: "Depth", note: () => "16-bit · white near, black far", swatch: () => "linear-gradient(90deg,#f2f2f2,#101010)" },
   normals: { label: "Normals", note: () => "Surface direction, view space", swatch: () => "linear-gradient(135deg,#9a80ff,#7f7fff 35%,#80ffa8 70%,#ff9a80)" },
 };
+/** layers only first person draws: his gun and his HUD */
+const povOnly = (p: PassName) => p === "viewmodel" || p === "hud";
 const LINK = `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6.5 9.5l3-3M7 4.5l1.3-1.3a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.3 1.3a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"/></svg>`;
 const EYE = `<svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.6 7-4.6S15 8 15 8s-2.6 4.6-7 4.6S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/></svg>`;
 const CODECS: [string, string][] = [["prores4444xq", "ProRes 4444 XQ"], ["prores4444", "ProRes 4444"], ["prores422hq", "ProRes 422 HQ"],
@@ -141,7 +157,8 @@ const CSS = `
 #mvm .dot{width:8px;height:8px;border-radius:50%}
 #mvm .bar{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 8px;display:flex;flex-direction:column;gap:5px}
 #mvm .ctl{display:flex;gap:8px;align-items:center}#mvm .time{font-family:Consolas,monospace;min-width:120px}
-#mvm canvas.tl{width:100%;height:34px;cursor:pointer;display:block}
+#mvm canvas.tl{width:100%;height:48px;cursor:pointer;display:block}
+#mvm .tltip{position:absolute;bottom:calc(100% + 4px);display:none;padding:3px 7px;background:rgba(18,20,24,.95);border:1px solid #444;border-radius:3px;white-space:nowrap;pointer-events:none;font-size:11px}
 #mvm .keys td{padding:1px 6px}#mvm .keys td:first-child{color:#f0a830;font-family:Consolas,monospace;white-space:nowrap}
 #mvm .mvm-toast{position:absolute;left:50%;top:40%;transform:translateX(-50%);padding:10px 16px;font-size:14px}
 #mvm .hint{color:#888}
@@ -220,6 +237,7 @@ export class Theater {
   private readonly tl: HTMLCanvasElement;
   private tab = "camera";
   private kills: number[];
+  private readonly killRecs: { t: number; e: KillEvent }[];
   /** the times of the recorded states, in order: Ctrl + arrow steps */
   private readonly ticks: number[];
   /** the demo edits as last saved: Discard goes back to them */
@@ -245,6 +263,7 @@ export class Theater {
   /** depth of field: made on first use; the cursor over the canvas (0..1, origin bottom left) and the player in focus */
   private post: Post | null = null;
   private passes: Passes | null = null;
+  private readonly hudCap = new HudCapture();
   /** the pass the viewport shows (render tab); a render always draws the default one there */
   private preview: PassName = "default";
   private drawnTab = "";
@@ -256,7 +275,8 @@ export class Theater {
   constructor(private readonly net: DemoNet, private readonly host: TheaterHost) {
     const demo = net.demo;
     this.outPt = demo.dur;
-    this.kills = demo.recs.filter((r) => r.k === "kill").map((r) => r.t);
+    this.killRecs = demo.recs.flatMap((r) => (r.k === "kill" ? [{ t: r.t, e: r.e }] : []));
+    this.kills = this.killRecs.map((r) => r.t);
     this.ticks = [...new Set(demo.recs.filter((r) => r.k === "state").map((r) => r.t))];
     this.savedEdits = demoEdits(demo);
     ensureCss();
@@ -272,10 +292,10 @@ export class Theater {
         <div class="body"></div><div class="foot"></div></div>
       <div class="p prog"><div class="ptext"></div><div class="pbar"><i></i></div></div>
       <div class="p bar"><div class="ctl">
-        <button data-a="back">⏮</button><button data-a="play"></button><button data-a="fwd">⏭</button>
+        <button data-a="back">⏮</button><button data-a="play"></button><button data-a="fwd">⏭</button><button data-a="loop" title="Loop the in / out range (O)">⟲</button>
         <span class="time"></span><span class="speed"></span><span class="hint mode"></span>
         <span style="flex:1"></span><span class="hint range"></span></div>
-        <canvas class="tl"></canvas></div>`;
+        <canvas class="tl"></canvas><div class="tltip"></div></div>`;
     document.getElementById("app")!.appendChild(this.root);
     this.tl = this.root.querySelector("canvas.tl")!;
     let z = 1;
@@ -299,6 +319,7 @@ export class Theater {
     this.looks = new LookStage(host.game.scene, host.renderer);
     host.game.scene.add(this.pathViz);
     host.game.demoSource = { time: () => this.time, track: (id, t) => this.net.trackOf(id, t) };
+    host.game.onHudFocus = () => host.game.hudRewind(this.killRecs, this.time);
     this.seek(0);
     this.setMode("pov", demo.pov);
     this.drawSide();
@@ -316,6 +337,8 @@ export class Theater {
     let sim = 0;
     if (this.playing) {
       sim = dt * SPEEDS[this.speedIdx];
+      // looping: past the out point (crossed while playing) back to the in point
+      if (this.loop && this.outPt > this.inPt && this.time < this.outPt && this.time + sim >= this.outPt) { this.seek(this.inPt); sim = 0; }
       this.time += sim;
       if (this.time >= this.net.demo.dur) { this.time = this.net.demo.dur; this.playing = false; }
       this.net.advance(this.time);
@@ -386,11 +409,13 @@ export class Theater {
     if (!exact) {
       this.time = target;
       game.snapRemotes(this.net.seek(target));
+      game.hudRewind(this.killRecs, this.time);
       game.poseRemotes(this.net.poses(this.time));
       return;
     }
     this.time = Math.max(0, target - WARM);
     game.snapRemotes(this.net.seek(this.time), this.time);
+    game.hudRewind(this.killRecs, this.time); // the replay brings the rest
     this.replay(target);
     game.restrideRemotes();
   }
@@ -406,6 +431,8 @@ export class Theater {
         game.poseRemotes(this.net.poses(this.time));
         this.host.simulate(h);
       }
+      this.net.advance(target); // the steps' float sum can stop short of a record at the target itself
+      this.host.simulate(0); // ...and the game takes in what that record brought (a shot exactly at the target: a kill marker)
     });
     this.time = target;
     game.poseRemotes(this.net.poses(this.time));
@@ -415,8 +442,10 @@ export class Theater {
     if ((m === "free" || m === "dolly") && this.mode !== "free" && this.mode !== "dolly") this.free = this.currentPose();
     this.mode = m;
     // no gun to show outside first person, where the world's pass may now be the whole frame
-    if (m !== "pov" && (this.preview === "viewmodel" || this.passOf(this.preview) === "default")) this.setPreview("default");
+    if (m !== "pov" && povOnly(this.preview)) this.setPreview("default");
     this.host.game.observe(m === "pov" ? "fps" : m === "third" ? "third" : "fly", id);
+    // arms mounted now start cold (no shot or reload under way): the exact seek's replay brings them up to this moment
+    if (m === "pov") this.seek(this.time);
     this.drawSide();
   }
 
@@ -607,6 +636,11 @@ export class Theater {
     const box = this.frameBox();
     camera.setViewOffset(window.innerWidth, window.innerHeight, box.x, box.y, box.w, box.h);
     renderer.setSize(w, h, false);
+    // the HUD laid out for the output size, as the game lays it out for its window
+    const hudRoot = passes.some((p) => (p === "default" ? this.layersOf("world") : this.layersOf(p)).includes("hud")) ? document.getElementById("pbhud") : null;
+    hudRoot?.style.setProperty("inset", "auto");
+    hudRoot?.style.setProperty("width", `${w}px`);
+    hudRoot?.style.setProperty("height", `${h}px`);
     const step = 1 / fps; // game time, like IWXMVM: the playback speed is a preview setting only
     const frames = Math.round((b - a) / step);
     const bf = brightnessFactor(), passer = (this.passes ??= new Passes(renderer));
@@ -617,8 +651,10 @@ export class Theater {
     const send = async (f: (typeof reading)[number]) => {
       const all = await f.bytes;
       all.forEach((bytes, k) => {
-        // a Blob body uploads ~8x faster than the typed array itself in Chromium
-        inflight.push(fetch(`${DEMO_API}/render/frame?id=${jobs[k].id}&n=${f.n}`, { method: "POST", body: new Blob([bytes]) }).then(async (r) => {
+        // a Blob body uploads ~8x faster than the typed array itself in Chromium; but the blob store (~2 GB here, freed only
+        // by a GC the tiny Blob objects never prompt) runs out on long renders: that frame goes again as the bytes themselves
+        const post = (body: BodyInit) => fetch(`${DEMO_API}/render/frame?id=${jobs[k].id}&n=${f.n}`, { method: "POST", body });
+        inflight.push(post(new Blob([bytes])).catch(() => post(bytes)).then(async (r) => {
           if (!r.ok && ok) { ok = false; this.toast(`Render failed: ${(await r.json().catch(() => ({}))).error ?? r.status}`, 0); }
         }).catch((e: unknown) => { if (ok) { ok = false; this.toast(`Render failed: ${String(e)}`, 0); } }));
       });
@@ -635,8 +671,9 @@ export class Theater {
         else { this.host.simulate(0); this.updateCamera(0); }
         // every pass from this one simulated frame: the files line up exactly
         // on screen: the previewed pass when it is recorded, else the first one (1 - 7 switch it while it renders)
-        const shown = passes.includes(this.preview) ? this.preview : passes[0];
-        reading.push({ n: i, bytes: Promise.all(passer.capture(passes, this.passFrame(), bf, () => this.drawFrame(step), shown)) });
+        const want = this.passOf(this.preview), shown = passes.includes(want) ? want : passes[0];
+        const hud = hudRoot ? await this.hudCap.capture(hudRoot, w, h) : null;
+        reading.push({ n: i, bytes: Promise.all(passer.capture(passes, this.passFrame(hud), bf, () => this.drawFrame(step), shown)) });
         // the GPU draws the next frame while this one's pixels come back and upload
         if (reading.length > 2) await send(reading.shift()!);
         const fps = (i + 1) / ((performance.now() - t0) / 1000), left = Math.round((frames - i - 1) / fps);
@@ -660,6 +697,7 @@ export class Theater {
       this.rendering = false;
       this.root.classList.remove("off", "rendering");
       void audio.resume();
+      for (const k of ["inset", "width", "height"]) hudRoot?.style.removeProperty(k);
       renderer.setPixelRatio(ratio);
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth / window.innerHeight; // a resize meanwhile was held back (busyRendering)
@@ -670,13 +708,18 @@ export class Theater {
     }
   }
 
-  /** the passes a render records: a layer joined to the one under it goes in that one's; the viewmodel alone only in POV, the one mode that draws the gun */
+  /** the passes a render records: a layer joined to the one under it goes in that one's; the viewmodel and HUD alone only in POV, the one mode that draws the gun and his HUD */
   private recorded(): PassName[] {
     const o = this.renderOpts;
-    return PASSES.filter((p) => o.passes.includes(p) && !o.joined.includes(p) && (p !== "viewmodel" || this.mode === "pov")).map((p) => this.passOf(p));
+    return PASSES.filter((p) => o.passes.includes(p) && !o.joined.includes(p) && (!povOnly(p) || this.mode === "pov")).map((p) => this.passOf(p));
   }
 
   /** [RECRIADO] the pass p is drawn in: the world's with every layer drawn joined is the default, the frame drawn once as the game draws it */
+  /** p is the first layer of its file (its eye shows the whole file) */
+  private heads(p: PassName): boolean {
+    return this.layersOf(p)[0] === p;
+  }
+
   private passOf(p: PassName): PassName {
     const head = this.layersOf(p)[0], j = this.renderOpts.joined;
     return head === "world" && j.includes("players") && j.includes("effects") && (j.includes("viewmodel") || this.mode !== "pov") ? "default" : head;
@@ -703,19 +746,24 @@ export class Theater {
     return `${this.renderOpts.name || this.net.demo.name.replace(/\.pbdemo$/, "")}${tag}`.replace(/[^\w.-]/g, "_");
   }
 
-  /** the viewport's pass; the shown one again = back to default. While rendering: recorded passes only, kept afterwards */
+  /** the viewport shows that layer alone (joined or not); the shown one again = back to default. While rendering: the recorded passes only, kept afterwards */
   private setPreview(p: PassName): void {
-    p = this.passOf(p); // a joined layer shows its pass
-    if ((this.rendering && !this.recorded().includes(p)) || (p === "viewmodel" && this.mode !== "pov")) return;
+    if (this.rendering) p = this.passOf(p); // the render's own files
+    if ((this.rendering && !this.recorded().includes(p)) || (povOnly(p) && this.mode !== "pov")) return;
     this.preview = p === this.preview && !this.rendering ? "default" : p;
     this.showPreview();
   }
 
   private showPreview(): void {
+    this.previewLabel();
+    if (this.tab === "render") this.drawSide();
+  }
+
+  /** the "Previewing" tag: its file's layers follow every link / unlink (drawSide) */
+  private previewLabel(): void {
     const el = this.root.querySelector<HTMLElement>(".prev")!;
     el.style.display = this.preview === "default" ? "none" : "flex";
-    el.innerHTML = `<span class="hint">Previewing</span><b>${this.passLabel(this.preview)}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
-    if (this.tab === "render") this.drawSide();
+    el.innerHTML = `<span class="hint">Previewing</span><b>${this.rendering || this.heads(this.preview) ? this.passLabel(this.preview) : PASS_INFO[this.preview].label}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
   }
 
   /** one fixed render step: demo clock, world, camera (the passes draw it) */
@@ -736,7 +784,7 @@ export class Theater {
       if ((e.target as HTMLElement).closest?.("input,select")) return;
       e.stopImmediatePropagation();
       e.preventDefault();
-      if (this.rendering && e.code !== "Escape" && !/^Digit[1-6]$/.test(e.code)) return; // the clock and camera stay the render's
+      if (this.rendering && e.code !== "Escape" && !/^Digit[1-7]$/.test(e.code)) return; // the clock and camera stay the render's
       this.held.add(e.code);
       if (!e.repeat) this.key(e);
     }, { capture: true, ...sig });
@@ -749,8 +797,7 @@ export class Theater {
     cv.addEventListener("mousedown", (e) => {
       if (this.rendering) return;
       if (e.button === 2) this.looking = true;
-      if (e.button === 1 && this.mode === "free") { e.preventDefault(); this.free.pitch = 0; this.free.roll = 0; this.free.fov = 70; }
-      else if (e.button === 1 && this.mode !== "dolly") { e.preventDefault(); this.setPovFov(null); }
+      if (e.button === 1 && this.mode !== "free" && this.mode !== "dolly") { e.preventDefault(); this.setPovFov(null); }
     }, sig);
     window.addEventListener("mouseup", (e) => { if (e.button === 2) this.looking = false; }, sig);
     // window, not canvas: the cursor keeps steering the mouse focus over the panels and while a render runs
@@ -798,8 +845,7 @@ export class Theater {
         // a recorded layer stays in a file: joined, the pass it went into records; split off, it records as its pass did
         const into = this.layersOf(l)[0];
         o.passes = PASSES.filter((x) => (x !== into ? o.passes.includes(x) : split ? rec : rec || o.passes.includes(x)));
-        this.preview = this.passOf(this.preview);
-        this.showPreview();
+        this.drawSide();
         return;
       }
       if (b.dataset.pass) {
@@ -830,6 +876,12 @@ export class Theater {
         this.net.setChara(this.editId, +t.value || null);
         this.setDirty(true);
         this.seek(this.time); // the seek replays each actor's last state, now with the new character
+      }
+      else if (t.name === "pname" && this.editId) {
+        this.net.setName(this.editId, t.value.trim() || null);
+        this.setDirty(true);
+        this.seek(this.time); // the bodies take the name from their states, the kill feed is rebuilt with it
+        this.drawSide();
       }
       else if (t.name === "hat" && this.editId) {
         // "" = recorded, "0" = bare head, else "<slot>:<itemId>"
@@ -870,7 +922,7 @@ export class Theater {
   }
 
   private key(e: KeyboardEvent): void {
-    const digit = /^Digit([1-6])$/.exec(e.code);
+    const digit = /^Digit([1-7])$/.exec(e.code);
     if (digit) { this.setPreview(PASSES[+digit[1] - 1]); return; }
     switch (e.code) {
       case "Space": this.action("play"); break;
@@ -890,6 +942,7 @@ export class Theater {
       case "KeyZ": if (e.ctrlKey || e.metaKey) this.history(e.shiftKey); break;
       case "KeyL": this.edit(() => this.path.clear()); this.sel = -1; this.leaveDolly(); this.toast("Campath cleared"); this.drawSide(); break;
       case "KeyJ": this.action("dolly"); break;
+      case "KeyO": this.action("loop"); break;
       case "Delete": case "Backspace":
         if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.removeKey(this.sel); }
         break;
@@ -903,6 +956,7 @@ export class Theater {
     switch (a) {
       case "play": if (this.time >= this.net.demo.dur) this.seek(0); this.playing = !this.playing; break;
       case "back": this.skip(-1); break;
+      case "loop": this.loop = !this.loop; this.toast(this.loop ? `Loop ${fmt(this.inPt)} – ${fmt(this.outPt)}` : "Loop off", 1000); this.drawBar(); break;
       case "fwd": this.skip(1); break;
       case "pov": this.setMode("pov"); break;
       case "third": this.setMode("third"); break;
@@ -918,7 +972,7 @@ export class Theater {
       case "pathRange": if (this.path.keys.length > 1) { this.inPt = this.path.start; this.outPt = this.path.end; } this.drawSide(); break;
       case "setIn": this.inPt = Math.min(this.time, this.outPt); this.toast(`In ${fmt(this.inPt)}`); if (this.tab === "render") this.drawSide(); break;
       case "setOut": this.outPt = Math.max(this.time, this.inPt); this.toast(`Out ${fmt(this.outPt)}`); if (this.tab === "render") this.drawSide(); break;
-      case "passesDefault": Object.assign(this.renderOpts, { passes: ["world"], joined: ["players", "effects", "viewmodel"] }); this.preview = this.passOf(this.preview); this.showPreview(); break;
+      case "passesDefault": Object.assign(this.renderOpts, { passes: ["world"], joined: ["players", "effects", "viewmodel"] }); this.drawSide(); break;
       case "passesAll": this.renderOpts.passes = [...PASSES]; this.drawSide(); break;
       case "render": void this.renderMovie(); break;
       case "clean": document.body.classList.toggle("mvm-clean"); break;
@@ -941,71 +995,187 @@ export class Theater {
     }
   }
 
+  // ---- timeline ----
+  /** the shown span of the demo (s): the wheel zooms around the cursor, the middle button or Shift + wheel pans */
+  private view = { a: 0, b: 0 };
+  private hoverX: number | null = null;
+  /** the playhead at the last timeline draw */
+  private barT = 0;
+  private loop = false;
+
+  private tlX(t: number, w: number): number { return ((t - this.view.a) / (this.view.b - this.view.a)) * w; }
+  private tlT(x: number, w: number): number { return this.view.a + (x / w) * (this.view.b - this.view.a); }
+
+  /** a span `s` long with time `at` kept `k` of the way across, inside the demo */
+  private setView(s: number, at: number, k: number): void {
+    const dur = this.net.demo.dur;
+    s = Math.max(Math.min(MIN_VIEW, dur), Math.min(dur, s));
+    const a = Math.max(0, Math.min(dur - s, at - k * s));
+    this.view = { a, b: a + s };
+    this.drawBar();
+  }
+
+  /** what sits under timeline x: a dolly node, the in / out handle, kills */
+  private tlHit(x: number, y: number, w: number, h: number) {
+    const near = (t: number) => Math.abs(this.tlX(t, w) - x) < 5;
+    const key = y >= TL_RULER && y < TL_RULER + (h - TL_RULER) / 2 ? this.path.keys.findIndex((k) => near(k.t)) : -1;
+    // the ruler only moves the playhead
+    // both handles at one x: the cursor's side picks, or the range could never open to the right
+    const edge = y < TL_RULER ? null : near(this.outPt) && (!near(this.inPt) || x > this.tlX(this.inPt, w)) ? "out" as const : near(this.inPt) ? "in" as const : null;
+    const kills = y >= h - TL_MARK - 8 ? this.killRecs.filter((k) => near(k.t)) : [];
+    return { key, edge, kills };
+  }
+
   private wireTimeline(): void {
     const cv = this.tl, sig = { signal: this.ac.signal };
-    let drag: "seek" | number | null = null;
+    this.view = { a: 0, b: this.net.demo.dur };
+    let drag: { kind: "seek" | "pan" | "in" | "out" | "range"; from: number; view: { a: number; b: number } } | number | null = null;
     // the cursor in the timeline's own px, by ratio: right however the UI zoom scales its box on screen
     const at = (e: MouseEvent) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * cv.clientWidth, y: (e.clientY - r.top) / r.height * cv.clientHeight }; };
-    const tAt = (x: number) => (x / cv.clientWidth) * this.net.demo.dur;
-    const keyAt = (x: number) => this.path.keys.findIndex((k) => Math.abs((k.t / this.net.demo.dur) * cv.clientWidth - x) < 6);
+    const tAt = (x: number) => Math.max(0, Math.min(this.net.demo.dur, this.tlT(x, cv.clientWidth)));
     cv.addEventListener("mousedown", (e) => {
-      const p = at(e), i = keyAt(p.x);
-      if (e.button === 2) { if (i >= 0) this.removeKey(i); return; }
-      if (i >= 0 && p.y < cv.clientHeight / 2) { this.snap(); this.keyDrag = true; drag = i; this.sel = i; this.drawSide(); return; }
-      drag = "seek";
+      const p = at(e), hit = this.tlHit(p.x, p.y, cv.clientWidth, cv.clientHeight);
+      if (e.button === 1) { e.preventDefault(); drag = { kind: "pan", from: p.x, view: { ...this.view } }; return; }
+      if (e.button === 2) { if (hit.key >= 0) this.removeKey(hit.key); return; }
+      if (e.button !== 0) return;
+      if (hit.key >= 0) { this.snap(); this.keyDrag = true; drag = hit.key; this.sel = hit.key; this.drawSide(); return; }
+      if (e.shiftKey && p.y >= TL_RULER) { const t = tAt(p.x); drag = { kind: "range", from: t, view: this.view }; this.inPt = this.outPt = t; this.drawBar(); return; }
+      if (hit.edge) { drag = { kind: hit.edge, from: p.x, view: this.view }; return; }
+      if (hit.kills.length) { this.seek(hit.kills[0].t); this.drawBar(); return; } // a kill marker: jump to it
+      drag = { kind: "seek", from: p.x, view: this.view };
       this.seek(tAt(p.x), false);
     }, sig);
+    cv.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const p = at(e), w = cv.clientWidth, s = this.view.b - this.view.a;
+      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) { this.setView(s, this.view.a + ((e.shiftKey ? e.deltaY : e.deltaX) / w) * s, 0); return; }
+      this.setView(s * Math.exp(e.deltaY * 0.0015), this.tlT(p.x, w), p.x / w);
+    }, { passive: false, ...sig });
+    cv.addEventListener("mousemove", (e) => { this.hoverX = at(e).x; this.drawTip(at(e)); }, sig);
+    cv.addEventListener("mouseleave", () => { this.hoverX = null; this.drawTip(null); }, sig);
     window.addEventListener("mousemove", (e) => {
       if (drag === null) return;
-      const t = Math.max(0, Math.min(this.net.demo.dur, tAt(at(e).x)));
-      if (drag === "seek") this.seek(t, false);
-      else { drag = this.sel = this.path.retime(drag, t); }
+      const p = at(e), t = tAt(p.x);
+      if (typeof drag === "number") { drag = this.sel = this.path.retime(drag, t); return; }
+      if (drag.kind === "seek") this.seek(t, false);
+      else if (drag.kind === "pan") { const s = drag.view.b - drag.view.a; this.setView(s, drag.view.a - ((p.x - drag.from) / cv.clientWidth) * s, 0); }
+      else if (drag.kind === "in") this.inPt = Math.min(t, this.outPt);
+      else if (drag.kind === "out") this.outPt = Math.max(t, this.inPt);
+      else { this.inPt = Math.min(drag.from, t); this.outPt = Math.max(drag.from, t); }
+      this.drawBar();
     }, sig);
     window.addEventListener("mouseup", () => {
       if (typeof drag === "number") { this.keyDrag = false; this.snapEnd(); this.drawSide(); }
-      else if (drag === "seek") this.seek(this.time);
+      else if (drag?.kind === "seek") this.seek(this.time);
+      else if (drag && drag.kind !== "pan" && this.tab === "render") this.drawSide(); // its range line
       drag = null;
     }, sig);
   }
+
+  /** the tooltip over the timeline: the time under the cursor and what is there */
+  private drawTip(p: { x: number; y: number } | null): void {
+    const tip = this.root.querySelector<HTMLElement>(".tltip")!;
+    if (!p) { tip.style.display = "none"; return; }
+    const w = this.tl.clientWidth, hit = this.tlHit(p.x, p.y, w, this.tl.clientHeight), t = Math.max(0, Math.min(this.net.demo.dur, this.tlT(p.x, w)));
+    const team = this.teamOf(), name = (id: string | null) => (id ? `<b style="color:${TEAM_CSS[team.get(id) ?? 2]}">${esc(this.nameOf(id))}</b>` : "<b>World</b>");
+    const lines = [fmt(t)];
+    if (hit.key >= 0) { const k = this.path.keys[hit.key]; lines.push(`Node ${hit.key + 1} · ${fmt(k.t)} · ${k.fov.toFixed(0)}°`); }
+    else if (hit.edge) lines.push(`${hit.edge === "in" ? "In" : "Out"} point · drag to move it`);
+    for (const k of hit.kills.slice(0, 3)) lines.push(`${fmt(k.t)} ${name(k.e.killerId)} ▸ ${name(k.e.victimId)} · ${esc(k.e.weapon)}${k.e.headshot ? " · Headshot" : ""}`);
+    tip.innerHTML = lines.join("<br>");
+    tip.style.display = "block";
+    tip.style.left = `${Math.max(0, Math.min(w - tip.offsetWidth, p.x - tip.offsetWidth / 2)) + this.tl.offsetLeft}px`;
+  }
+
+  /** each actor's team (0 red, 1 blue) */
+  private teamOf(): Map<string, number> { return new Map(this.net.roster().map((a) => [a.id, a.team])); }
+  private nameOf(id: string): string { return this.net.roster().find((a) => a.id === id)?.name ?? id; }
 
   // ---- UI ----
   private drawBar(): void {
     const q = (s: string) => this.root.querySelector<HTMLElement>(s)!;
     q('[data-a="play"]').textContent = this.playing ? "❚❚" : "▶";
+    q('[data-a="loop"]').classList.toggle("on", this.loop);
     q(".time").textContent = `${fmt(this.time)} / ${fmt(this.net.demo.dur)}`;
     q(".speed").textContent = `${SPEEDS[this.speedIdx]}x`;
     q(".mode").textContent = { pov: "First person", third: "Third person", free: "Free camera", dolly: "Dolly" }[this.mode];
     q(".range").textContent = `In ${fmt(this.inPt)} · Out ${fmt(this.outPt)}`;
-    const cv = this.tl, w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
-    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
-    const g = cv.getContext("2d")!, X = (t: number) => (t / this.net.demo.dur) * w;
+    const cv = this.tl, w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1, dur = this.net.demo.dur;
+    // the playhead playing across the right edge of a zoomed view: its next page (a view panned elsewhere stays)
+    const span = this.view.b - this.view.a, crossed = this.playing && span < dur && this.barT <= this.view.b && this.time > this.view.b;
+    this.barT = this.time;
+    if (crossed) { this.setView(span, this.time, 0.05); return; }
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const g = cv.getContext("2d")!, X = (t: number) => this.tlX(t, w), R = TL_RULER, mid = R + (h - R) / 2;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
-    g.fillStyle = "#23262c"; g.fillRect(0, h / 2 - 3, w, 6);
-    g.fillStyle = "rgba(240,168,48,.25)"; g.fillRect(X(this.inPt), 0, X(this.outPt) - X(this.inPt), h);
-    g.fillStyle = "#c33"; for (const t of this.kills) g.fillRect(X(t) - 0.5, h - 9, 1.5, 7);
+    this.drawRuler(g, w);
+    g.fillStyle = "#23262c"; g.fillRect(0, mid - 3, w, 6);
+    g.fillStyle = "rgba(240,168,48,.25)"; g.fillRect(X(this.inPt), R, X(this.outPt) - X(this.inPt), h - R);
+    for (const [t, d] of [[this.inPt, 1], [this.outPt, -1]] as const) { // bracket handles
+      const x = Math.round(X(t)) + 0.5;
+      g.strokeStyle = "#f0a830"; g.lineWidth = 2; g.beginPath(); g.moveTo(x + 4 * d, R + 1); g.lineTo(x, R + 1); g.lineTo(x, h - 1); g.lineTo(x + 4 * d, h - 1); g.stroke();
+    }
+    // the recorded ticks, once they are far enough apart to see
+    const tick = this.ticks[1] - this.ticks[0];
+    if (tick > 0 && (tick / span) * w >= 4) {
+      g.fillStyle = "rgba(255,255,255,.28)";
+      for (let i = lowerBound(this.ticks, this.view.a); i < this.ticks.length && this.ticks[i] <= this.view.b; i++) g.fillRect(Math.round(X(this.ticks[i])), mid - 2, 1, 4);
+    }
+    // kills: the killer's team colour, taller for the watched player's, a dot for a headshot, a mark over his deaths
+    const team = this.teamOf(), me = this.host.game.observedId;
+    for (const k of this.killRecs) {
+      if (k.t < this.view.a - 1 || k.t > this.view.b + 1) continue;
+      const x = X(k.t), mine = !!me && k.e.killerId === me, tall = mine ? TL_MARK + 4 : TL_MARK;
+      g.fillStyle = k.e.killerId ? TEAM_CSS[team.get(k.e.killerId) ?? 2] : TEAM_CSS[2];
+      g.globalAlpha = me && !mine && k.e.victimId !== me ? 0.6 : 1;
+      g.fillRect(x - 1, h - 2 - tall, 2, tall);
+      if (k.e.headshot) { g.fillStyle = "#ffd75a"; g.beginPath(); g.arc(x, h - 4 - tall, 1.8, 0, Math.PI * 2); g.fill(); }
+      if (me && k.e.victimId === me) { g.fillStyle = "#fff"; g.beginPath(); g.moveTo(x - 3.5, h - 6 - tall); g.lineTo(x + 3.5, h - 6 - tall); g.lineTo(x, h - 1 - tall); g.fill(); }
+      g.globalAlpha = 1;
+    }
     if (this.path.keys.length > 1) {
-      g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), 4, X(this.path.end) - X(this.path.start), 3);
+      g.fillStyle = "rgba(90,160,255,.35)"; g.fillRect(X(this.path.start), R + 4, X(this.path.end) - X(this.path.start), 3);
       this.drawSpeed(g, w, h, X);
     }
     this.path.keys.forEach((k, i) => {
-      const x = X(k.t);
+      const x = X(k.t), y = R + 8;
       g.fillStyle = i === this.sel ? "#fff" : "#5aa0ff";
-      g.beginPath(); g.moveTo(x, 2); g.lineTo(x + 5, 8); g.lineTo(x, 14); g.lineTo(x - 5, 8); g.fill();
+      g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 5, y); g.lineTo(x, y + 6); g.lineTo(x - 5, y); g.fill();
     });
-    g.fillStyle = "#f0a830"; g.fillRect(X(this.time) - 1, 0, 2, h);
+    if (this.hoverX !== null) { g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(Math.round(this.hoverX), R, 1, h - R); }
+    const px = X(this.time);
+    g.fillStyle = "#f0a830"; g.fillRect(px - 1, 0, 2, h);
+    g.beginPath(); g.moveTo(px - 5, 0); g.lineTo(px + 5, 0); g.lineTo(px, 6); g.fill(); // the playhead's head, in the ruler
+  }
+
+  /** labelled time marks at least TL_LABEL px apart; the strip under them = where the zoomed view sits in the demo */
+  private drawRuler(g: CanvasRenderingContext2D, w: number): void {
+    const { a, b } = this.view, pps = w / (b - a), dur = this.net.demo.dur;
+    const step = RULER_STEPS.find((s) => s * pps >= TL_LABEL) ?? RULER_STEPS[RULER_STEPS.length - 1];
+    const minor = step / (step * pps >= 5 * 8 ? 5 : 2);
+    g.fillStyle = "#16181c"; g.fillRect(0, 0, w, TL_RULER);
+    if (b - a < dur) { g.fillStyle = "rgba(240,168,48,.5)"; g.fillRect((a / dur) * w, TL_RULER - 2, Math.max(2, ((b - a) / dur) * w), 2); }
+    g.font = "9px Consolas,monospace"; g.textBaseline = "top";
+    for (let i = Math.ceil(a / minor - 1e-9); i * minor <= b + 1e-9; i++) {
+      const t = i * minor, x = Math.round((t - a) * pps) + 0.5, major = Math.abs(t / step - Math.round(t / step)) < 1e-6;
+      g.fillStyle = "#555"; g.fillRect(x, major ? 2 : TL_RULER - 6, 1, major ? TL_RULER - 4 : 3);
+      if (major) { g.fillStyle = "#999"; g.fillText(rulerLabel(t, step), x + 3, 1); }
+    }
   }
 
   private drawSpeed(g: CanvasRenderingContext2D, w: number, h: number, X: (t: number) => number): void {
-    const a = this.path.start, b = this.path.end, x0 = Math.floor(X(a)), x1 = Math.ceil(X(b)), sig = `${w}|${JSON.stringify(this.path.keys)}`;
+    const a = Math.max(this.path.start, this.view.a), b = Math.min(this.path.end, this.view.b);
+    if (b <= a) return;
+    const x0 = Math.floor(X(a)), x1 = Math.ceil(X(b)), sig = `${w}|${this.view.a}|${this.view.b}|${JSON.stringify(this.path.keys)}`;
     if (sig !== this.speedSig) {
       this.speedSig = sig;
       this.speedPts = [];
-      for (let x = x0; x <= x1; x++) this.speedPts.push(this.path.speed(Math.min(b, Math.max(a, (x / w) * this.net.demo.dur))));
+      for (let x = x0; x <= x1; x++) this.speedPts.push(this.path.speed(Math.min(b, Math.max(a, this.tlT(x, w)))));
       this.speedMax = Math.max(...this.speedPts);
     }
     if (this.speedMax <= 1e-6) return;
-    const y = (v: number) => h - 2 - (v / this.speedMax) * (h - 12);
+    const top = TL_RULER + 10, y = (v: number) => h - 2 - (v / this.speedMax) * (h - 2 - top);
     g.beginPath(); g.moveTo(x0, h - 2);
     this.speedPts.forEach((v, i) => g.lineTo(x0 + i, y(v)));
     g.lineTo(x0 + this.speedPts.length - 1, h - 2);
@@ -1015,6 +1185,7 @@ export class Theater {
   }
 
   private drawSide(): void {
+    this.previewLabel();
     for (const b of this.root.querySelectorAll<HTMLElement>("[data-tab]")) b.classList.toggle("on", b.dataset.tab === this.tab);
     const body = this.root.querySelector(".body")!, foot = this.root.querySelector(".foot")!;
     // a redraw of the same tab (a click in it) keeps its scroll; another tab starts at the top
@@ -1073,15 +1244,15 @@ export class Theater {
       const alpha = this.alphaFormat(), on = this.recorded(), name = this.movieName();
       const span = Math.max(0, this.outPt - this.inPt), frames = Math.round(span * o.fps);
       const pass = (p: PassName, i: number) => {
-        const info = PASS_INFO[p], head = this.layersOf(p)[0], joined = head !== p, rec = on.includes(this.passOf(p)), eye = this.preview === this.passOf(p) && !joined;
-        const na = head === "viewmodel" && this.mode !== "pov", below = LAYERS[LAYERS.indexOf(p as never) - 1];
+        const info = PASS_INFO[p], head = this.layersOf(p)[0], joined = head !== p, rec = on.includes(this.passOf(p)), eye = this.preview === p;
+        const na = povOnly(head) && this.mode !== "pov", below = LAYERS[LAYERS.indexOf(p as never) - 1];
         // between two layers: join this one into the pass under it, or split it off into its own file
         const link = below ? `<button class="link${joined ? " on" : ""}" data-join="${p}" title="${joined ? `In the ${this.passLabel(head)} file · click to split it off` : `Own file · click to join it into ${this.passLabel(below)}`}">${LINK}</button>` : "";
         const what = this.passOf(p) === "default" ? `Every layer in one file: ${PASS_INFO.default.note(alpha).toLowerCase()}` : this.layersOf(p).length > 1 ? `${this.passLabel(head)} in one file` : info.note(alpha);
         return `<div class="pass${rec ? " rec" : ""}${na ? " na" : ""}${joined ? " joined" : ""}" ${na ? "" : `data-pass="${head}"`} title="${na ? "First person (POV) only" : `${what} · ${rec ? "recorded, click to leave it out" : "click to record it"}`}">
             ${link}<span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
             <span class="nm"><b>${info.label}</b></span>
-            <button class="eye${eye ? " on" : ""}" ${na || joined ? "disabled" : `data-eye="${p}"`} title="${eye && this.preview !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
+            <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye ? "Back to the default view" : `Preview ${info.label} alone in the viewport`} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
           + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
       };
       body.innerHTML = `${head("Output")}
@@ -1098,12 +1269,14 @@ export class Theater {
         ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${this.layersOf(p).join("-")}`}.mov</i>`).join("")}</span></div>` : ""}
         <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `● Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
     } else {
-      const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["Ctrl + ← / →", "Pause and step one demo tick (hold to keep stepping)"], ["B / N", "Set in / out point"],
+      const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["Ctrl + ← / →", "Pause and step one demo tick (hold to keep stepping)"], ["B / N", "Set in / out point"], ["O", "Loop the in / out range"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
         ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"], ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo campath edits"],
         ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
-        ["1 – 7", "Preview a render pass (again: back to the default view)"], ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
+        ["Timeline wheel", "Zoom (Shift: pan; middle drag pans)"], ["Timeline Shift + drag", "Set the in / out range (or drag its brackets)"],
+        ["Kill marker", "Click to jump to it; hover for who and how"],
+        [`1 – ${PASSES.length}`, "Preview a render pass (again: back to the default view)"], ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
     }
     body.scrollTop = scroll;
@@ -1140,12 +1313,12 @@ export class Theater {
     const id = this.editId, el = this.root.querySelector<HTMLElement>(".edit")!;
     if (!id) return;
     const a = this.host.game.remotes.get(id), anim = a?.charVisual.anim;
-    const name = this.net.roster().find((p) => p.id === id)?.name ?? id;
+    const nm = this.net.nameOf(id), name = nm.name;
     const death = this.net.deathAt(id, this.time), ch = this.net.charaOf(id);
     if ((a?.charVisual.root ?? null) !== this.outlineRoot) this.setOutline(id); // the model was swapped in
     // redrawn only when what it shows changes: a rebuild would close an open dropdown
     const hat = this.net.hatOf(id), worn = actorEquip(id);
-    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}`;
+    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}|${name}`;
     if (sig === this.editSig) return;
     this.editSig = sig;
     if (!this.charas.length) void charaChoices().then((c) => { this.charas = c; });
@@ -1166,7 +1339,8 @@ export class Theater {
         <select name="deathclip" data-key="${esc(death.key)}"><option value="">Recorded</option>
         ${clips.map((c) => `<option value="${esc(c)}" ${c === death.clip ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`;
     }
-    el.innerHTML = `<div class="row"><b style="flex:1">${esc(name)}</b><button data-a="focusActor" title="Depth of field: keep this player in focus">Focus</button><button data-a="closeEdit">✕</button></div>${model}${hats}${body}`;
+    const rename = `<div class="hint">Name</div><input name="pname" maxlength="32" placeholder="${esc(nm.recorded)}" value="${name === nm.recorded ? "" : esc(name)}" title="Shown in the kill feed, HUD and name tags; empty = the recorded name">`;
+    el.innerHTML = `<div class="row"><b style="flex:1">${esc(name)}</b><button data-a="focusActor" title="Depth of field: keep this player in focus">Focus</button><button data-a="closeEdit">✕</button></div>${rename}${model}${hats}${body}`;
   }
 
   /** outline copies of the selected body's meshes, children of each one (same transform, same skeleton) */
@@ -1189,8 +1363,14 @@ export class Theater {
   /** the frame, through the depth of field when it is on; the first-person gun and the campath stay sharp on top */
   private draw(dt: number): void {
     const p = this.rendering ? "default" : this.preview;
-    if (p === "default") { this.drawFrame(dt); return; }
-    (this.passes ??= new Passes(this.host.renderer)).show(p, this.passFrame(), () => this.drawFrame(dt));
+    // a pass shows its file (the layers joined into it), the whole frame for the default one; a joined layer, itself alone
+    const frame = p === "default" || (this.heads(p) && this.passOf(p) === "default");
+    // the page's HUD always in the plain view; in a previewed file only where it holds the HUD. The passes composite their own (previewHud)
+    const hudEl = document.getElementById("pbhud");
+    if (hudEl && !this.rendering) hudEl.style.opacity = p === "default" || (frame && this.layersOf(p).includes("hud")) ? "" : "0";
+    if (frame) { this.drawFrame(dt); return; }
+    const f = this.passFrame();
+    (this.passes ??= new Passes(this.host.renderer)).show(p, this.heads(p) ? f : { ...f, joined: [] }, () => this.drawFrame(dt));
     renderOnTop(this.host.renderer, [this.pathViz].filter((o) => o.visible), this.host.camera); // the campath stays editable over the preview
   }
 
@@ -1260,11 +1440,19 @@ export class Theater {
   }
 
   /** this frame, split for the passes */
-  private passFrame(): PassFrame {
+  /** `hud`: this frame's HUD capture; none given = the last one for the preview, when it shows the HUD */
+  private passFrame(hud: THREE.Texture | null = this.previewHud()): PassFrame {
     const cam = this.host.camera;
     const dof: PassFrame["dof"] = this.dof.mode ? (color, depth, target, matte) => this.post?.blur(color, depth, cam, this.dofParams(0), target, matte) : null;
     // the edit outline writes depth: it would show in the depth and normals
-    return { scene: this.host.game.scene, camera: cam, players: this.players(), viewmodel: cam.children, editor: [this.pathViz, ...this.outline], depthRange: this.renderOpts.depthRange, alpha: this.alphaFormat(), joined: this.renderOpts.joined, dof };
+    return { scene: this.host.game.scene, camera: cam, players: this.players(), viewmodel: cam.children, editor: [this.pathViz, ...this.outline], depthRange: this.renderOpts.depthRange, alpha: this.alphaFormat(), joined: this.renderOpts.joined, dof, hud: this.mode === "pov" ? hud : null, hudKey: hudKeyNow() };
+  }
+
+  private previewHud(): THREE.Texture | null {
+    const root = document.getElementById("pbhud");
+    if (!root || this.mode !== "pov" || !(this.heads(this.preview) ? this.layersOf(this.preview) : [this.preview]).includes("hud")) return null;
+    const size = this.host.renderer.getDrawingBufferSize(new THREE.Vector2());
+    return this.hudCap.latest(root, size.x, size.y);
   }
 
   /** the ProRes 4444 profiles carry an alpha plane */
@@ -1346,13 +1534,15 @@ export class Theater {
 
   /** back to the edits last saved: each one set back through DemoNet, then the seek replays the bodies with them */
   private discard(): void {
-    const s = JSON.parse(this.savedEdits) as Pick<Demo, "deaths" | "charas" | "hats">, d = this.net.demo;
+    const s = JSON.parse(this.savedEdits) as Pick<Demo, "deaths" | "charas" | "hats" | "names">, d = this.net.demo;
     const keys = (a?: object, b?: object) => new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
     for (const k of keys(d.deaths, s.deaths)) this.net.setDeathClip(k, s.deaths?.[k] ?? null);
     for (const id of keys(d.charas, s.charas)) this.net.setChara(id, s.charas?.[id] ?? null);
     for (const id of keys(d.hats, s.hats)) this.net.setHat(id, s.hats?.[id] ?? null);
+    for (const id of keys(d.names, s.names)) this.net.setName(id, s.names?.[id] ?? null);
     this.setDirty(false);
     this.seek(this.time);
+    this.drawSide(); // the player list's names
     this.toast("Changes discarded");
   }
 
@@ -1390,6 +1580,8 @@ export class Theater {
     this.looks.dispose();
     this.post?.dispose();
     this.passes?.dispose();
+    this.hudCap.dispose();
+    document.getElementById("pbhud")?.style.removeProperty("opacity");
     this.cancelRender = true;
     this.ac.abort();
     this.root.remove();
@@ -1527,4 +1719,17 @@ function silently(fn: () => void): void {
 
 function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
+
+/** a ruler label: m:ss, with the fraction a step under a second needs */
+function rulerLabel(t: number, step: number): string {
+  const m = Math.floor(t / 60 + 1e-9), sec = t - m * 60, d = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  return `${m}:${sec.toFixed(d).padStart(d ? 3 + d : 2, "0")}`;
+}
+
+/** the first index whose value is >= v */
+function lowerBound(list: readonly number[], v: number): number {
+  let lo = 0, hi = list.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (list[m] < v) lo = m + 1; else hi = m; }
+  return lo;
 }

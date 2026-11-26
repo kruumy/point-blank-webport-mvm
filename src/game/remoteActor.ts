@@ -81,6 +81,8 @@ export class RemoteActor implements Actor {
   weaponName = "";
   /** item id in hand (net WeaponSync, PlayerState.weaponId); 0 = only the name is known */
   weaponId = 0;
+  /** equip slot in hand (PlayerState.weaponSlot); undefined = not sent */
+  weaponSlot: number | undefined;
   /** what the 3PV model was built for: the item id when known (skins), else the name */
   private weaponKey: string | number = "";
   private visual: CharVisual;
@@ -209,6 +211,7 @@ export class RemoteActor implements Actor {
     }
     this.weaponName = s.weapon;
     this.weaponId = s.weaponId ?? 0;
+    this.weaponSlot = s.weaponSlot;
     if (weaponChanged) {
       const tok = ++this.laserTok;
       this.laserOn = false;
@@ -395,7 +398,7 @@ export class RemoteActor implements Actor {
   private reloadSeq = 0;
   private reloadSecs = 2;
   obsState(): ObsState {
-    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: groundedOf(this.vel, this.airborne), aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready", ext: this.extOn };
+    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: groundedOf(this.vel, this.airborne), aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready", ext: this.extOn, walking: this.moving && !this.running };
   }
   get visualRoot(): THREE.Object3D {
     return this.visual.root;

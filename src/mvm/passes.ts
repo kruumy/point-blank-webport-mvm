@@ -3,11 +3,11 @@ import { QUAD_VS, canvasTarget } from "./post";
 import { withHidden } from "../render/onTop";
 import { FX_LAYER } from "../render/layers";
 
-export const PASSES = ["world", "players", "effects", "viewmodel", "depth", "normals"] as const;
+export const PASSES = ["world", "players", "effects", "viewmodel", "hud", "depth", "normals"] as const;
 /** "default": the world's pass with every layer joined, drawn as the game draws the frame (one scene render, not composited) */
 export type PassName = "default" | (typeof PASSES)[number];
 /** the frame's layers, bottom to top: each pass of them is a run of these, composited in this order */
-export const LAYERS = ["world", "players", "effects", "viewmodel"] as const;
+export const LAYERS = ["world", "players", "effects", "viewmodel", "hud"] as const;
 export type Layer = (typeof LAYERS)[number];
 
 /** [RECRIADO] the layer passes: `joined` layers go into the pass of the layer under them; a pass is named by its first */
@@ -31,6 +31,10 @@ export interface PassFrame {
   alpha: boolean;
   /** the layers drawn into the pass under them (layerPasses) */
   joined: readonly PassName[];
+  /** the game's HUD this frame (hudCapture.ts, premultiplied); null = none (outside first person) */
+  hud: THREE.Texture | null;
+  /** without alpha, the screen colour of a pass holding the HUD (hudKey) */
+  hudKey: readonly [number, number, number];
   /** the default pass's depth of field (post.ts Post.blur); null = off. Never on depth / normals: they are data */
   dof: ((color: THREE.Texture, depth: THREE.Texture, target: THREE.WebGLRenderTarget, matte: Matte) => void) | null;
 }
@@ -38,10 +42,19 @@ export interface PassFrame {
 /** a colour pass's alpha: 0 opaque, 1 coverage (players, gun), 2 light (smoke covers, flashes only add); 1 and 2 premultiplied */
 export type Matte = 0 | 1 | 2;
 
+/** [RECRIADO] the HUD's own green (HP, radar, the default crosshair) rules out a green screen: magenta, blue when the crosshair is near magenta */
+export function hudKey(crosshair: readonly number[]): [number, number, number] {
+  const [r, g, b] = crosshair, hi = Math.max(r, g, b), d = hi - Math.min(r, g, b);
+  if (d < 40) return [1, 0, 1]; // grey or white
+  const hue = 60 * (hi === r ? ((g - b) / d + 6) % 6 : hi === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  return Math.abs(hue - 300) < 60 ? [0, 0, 1] : [1, 0, 1];
+}
+
 // key 0 as drawn, 1 over green, 2 opaque, 3 over a checker; gain: main.ts's CSS brightness, unseen by a read back [INFERIDO: brightness() scales the sRGB bytes]
 const OUT_FS = /* glsl */ `
 uniform sampler2D t;
 uniform float gain, key, straight;
+uniform vec3 keyRgb;
 varying vec2 vUv;
 void main() {
   vec4 c = texture2D(t, vUv);
@@ -49,7 +62,7 @@ void main() {
   vec3 rgb = min(c.rgb * gain, 1.0);
   vec3 chk = mod(floor(gl_FragCoord.x / 12.0) + floor(gl_FragCoord.y / 12.0), 2.0) < 1.0 ? vec3(0.3, 0.31, 0.34) : vec3(0.2, 0.21, 0.23);
   gl_FragColor = key > 2.5 ? vec4(min(rgb + (1.0 - c.a) * chk, 1.0), 1.0) : key > 1.5 ? vec4(rgb, 1.0)
-    : key > 0.5 ? vec4(min(rgb + (1.0 - c.a) * vec3(0.0, 1.0, 0.0), 1.0), 1.0) : vec4(rgb, c.a);
+    : key > 0.5 ? vec4(min(rgb + (1.0 - c.a) * keyRgb, 1.0), 1.0) : vec4(rgb, c.a);
 }`;
 
 // the gun's own depth where it drew (its target is cleared to far), else the world's: on top, like in the default pass
@@ -126,7 +139,7 @@ export class Passes {
   private readonly soft: THREE.WebGLRenderTarget;
   private readonly out = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
   private readonly half = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
-  private readonly outMat = quadMat(OUT_FS, { t: { value: null }, gain: { value: 1 }, key: { value: 2 }, straight: { value: 0 } });
+  private readonly outMat = quadMat(OUT_FS, { t: { value: null }, gain: { value: 1 }, key: { value: 2 }, straight: { value: 0 }, keyRgb: { value: new THREE.Vector3(0, 1, 0) } });
   private readonly depthMat = quadMat(DEPTH_FS, { ...depthUniforms(), range: { value: 50 }, pack: { value: 0 }, size: { value: new THREE.Vector2() } });
   private readonly normalMat = quadMat(NORMAL_FS, { ...depthUniforms(), projInv: { value: new THREE.Matrix4() }, texel: { value: new THREE.Vector2() } });
   // the gun over a pass below it, both premultiplied
@@ -180,6 +193,8 @@ export class Passes {
     const image = (pass: PassName, t: THREE.Texture, matte: Matte) => {
       const u = this.outMat.uniforms;
       u.t.value = t;
+      const keyed = layerPasses(f.joined).find((g) => g[0] === pass)?.includes("hud");
+      (u.keyRgb.value as THREE.Vector3).set(...(keyed ? f.hudKey : ([0, 1, 0] as const)));
       if (read) {
         u.gain.value = gain; u.key.value = !matte ? 2 : f.alpha ? 0 : matte === 1 ? 1 : 2; u.straight.value = f.alpha && matte === 1 ? 1 : 0;
         emit(pass, this.outMat, this.out);
@@ -198,10 +213,20 @@ export class Passes {
     // the clear colour is set at each clear: drawing the scene leaves three's on its opaque background colour
     const clear = (color = true, depth = true, stencil = true) => { r.setClearColor(0x000000, 0); r.clear(color, depth, stencil); };
 
+    // premultiplied `t` over the target, never cleared first: the default pass composites before the autoClear switch below
+    const over = (t: THREE.Texture, target: THREE.WebGLRenderTarget) => {
+      const auto = r.autoClear;
+      this.overMat.uniforms.t.value = t; this.quad.material = this.overMat; r.setRenderTarget(target);
+      r.autoClear = false;
+      try { r.render(this.quad, this.cam); } finally { r.autoClear = auto; }
+    };
     if ((read && has("default")) || f.dof) {
       r.setRenderTarget(this.def);
       drawDefault();
-      if (has("default")) image("default", this.def.texture, 0);
+      if (has("default")) {
+        if (f.hud && layerPasses(f.joined).some((g) => g[0] === "world" && g.includes("hud"))) over(f.hud, this.def); // the HUD joined into the frame
+        image("default", this.def.texture, 0);
+      }
     }
     const depth = has("depth"), normals = has("normals");
     // the layer passes asked for, each drawn bottom up into geo over the depth of the layers under it
@@ -214,18 +239,20 @@ export class Passes {
     const end = (l: Layer) => {
       const g = of(l);
       if (!g || g[g.length - 1] !== l) return;
-      const matte = matteOf(g);
-      if (l === "viewmodel") {
+      const matte = matteOf(g), hud = g.includes("hud") ? f.hud : null;
+      if (g[0] === "hud") { if (hud) image("hud", hud, 1); else { r.setRenderTarget(this.vm); clear(); image("hud", this.vm.texture, 1); } return; }
+      if (g.includes("viewmodel")) {
         // the first-person flash goes with the gun, behind it by the gun's depth; drawn after depth / normals read that depth
         r.setRenderTarget(this.vm);
         camera.layers.set(FX_LAYER);
         const undo = fxCoverage(f.viewmodel);
         try { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); } finally { undo(); }
       }
-      if (g[0] === "viewmodel") { image("viewmodel", this.vm.texture, matte); return; }
+      if (g[0] === "viewmodel") { if (hud) over(hud, this.vm); image("viewmodel", this.vm.texture, matte); return; }
       const top = f.dof ? this.soft : this.geo;
       soft(this.geo.texture, matte);
-      if (l === "viewmodel") { this.overMat.uniforms.t.value = this.vm.texture; this.quad.material = this.overMat; r.setRenderTarget(top); r.render(this.quad, this.cam); }
+      if (g.includes("viewmodel")) over(this.vm.texture, top);
+      if (hud) over(hud, top);
       image(g[0], top.texture, matte);
     };
     const mask = camera.layers.mask, bg = scene.background, auto = r.autoClear, alpha = r.getClearAlpha();
@@ -240,7 +267,7 @@ export class Passes {
         clear();
         this.matte(!!of("viewmodel"), () => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
       }
-      if (depth || normals || groups.some((g) => g[0] !== "viewmodel")) {
+      if (depth || normals || groups.some((g) => g[0] !== "viewmodel" && g[0] !== "hud")) {
         r.setRenderTarget(this.geo);
         clear();
         withHidden([...f.editor, ...f.viewmodel, ...f.players], () => r.render(scene, camera));
@@ -274,6 +301,7 @@ export class Passes {
         end("effects");
       }
       end("viewmodel");
+      end("hud");
     } finally {
       restoreFx();
       camera.layers.mask = mask;

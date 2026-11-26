@@ -26,6 +26,7 @@ type WeaponState = WeaponHudState & {
   dual?: "alt" | "both" | null;
   dualLeft?: boolean;
   slots?: { slot: number; id: number; ammo?: number }[];
+  noAmmo?: boolean;
 };
 
 
@@ -55,7 +56,7 @@ export class Hud {
   /** id of the actor who last killed us, cleared once avenged (CRevengeManager) */
   private lastKillerId: string | null = null;
   /** banner of the newest own kill, held briefly: a 2nd victim of the same shot replaces it (ONE event in the exe) */
-  private pendingMark: { marks: ReturnType<typeof onKillMark>["marks"]; timer: ReturnType<typeof setTimeout> } | null = null;
+  private pendingMark: { marks: ReturnType<typeof onKillMark>["marks"]; left: number } | null = null;
 
   constructor() {
     const app = document.getElementById("app") ?? document.body;
@@ -128,7 +129,7 @@ export class Hud {
 
   weapon(s: WeaponState, _source: string): void {
     if (s.slot !== this.d.weapon.slot) this.switchCheck = 2;
-    this.d.weapon = { name: s.name, slot: s.slot, ammo: s.ammo, reserve: s.reserve, melee: s.melee, reloading: s.reloading, reloadProgress: s.reloadProgress, family: s.family, id: s.id, dual: s.dual ? { left: !!s.dualLeft } : undefined };
+    this.d.weapon = { name: s.name, slot: s.slot, ammo: s.ammo, reserve: s.reserve, melee: s.melee, reloading: s.reloading, reloadProgress: s.reloadProgress, family: s.family, id: s.id, dual: s.dual ? { left: !!s.dualLeft } : undefined, noAmmo: s.noAmmo };
     const g = s.slots?.find((x) => x.slot === 3);
     this.d.grenades = g ? g.ammo ?? 0 : null;
     this.xh.scoped = !!s.scoped;
@@ -154,9 +155,10 @@ export class Hud {
     this.pb.grenadeAlerts(list);
   }
 
-  killfeed(k: KillInfo, localId: string): void {
+  /** `age` s: a row the theater puts back after a seek, as old as its kill */
+  killfeed(k: KillInfo, localId: string, age = 0): void {
     const killer = k.killer && k.killer !== k.victim ? { name: k.killer.name, team: k.killer.team } : null;
-    this.pb.addKill(killer, { name: k.victim.name, team: k.victim.team }, k.weapon, k.headshot, k.killer?.id === localId || k.victim.id === localId);
+    this.pb.addKill(killer, { name: k.victim.name, team: k.victim.team }, k.weapon, k.headshot, k.killer?.id === localId || k.victim.id === localId, age);
     // CHud 0x741210: a kill with another player where the local player is killer (+1) or victim (-1); suicide is no record
     if (k.killer && k.killer.id !== k.victim.id) {
       if (k.killer.id === localId) this.pb.recordRevenge(k.victim, k.killer.name, 1);
@@ -169,7 +171,7 @@ export class Hud {
    * (killStars.ts). `multi` = another victim of the same shot (the exe gets all victims in ONE event: one star with the
    * count, Piercing Shot; Mass Kill when `boom` = a blast or a shotgun), `victimStreak` = the victim's kills this life before it died (Chain Stopper when > 3).
    */
-  registerOwnKill(k: { headshot: boolean; victimId: string; weapon: string; multi: boolean; boom?: boolean; victimStreak: number }): void {
+  registerOwnKill(k: { headshot: boolean; victimId: string; weapon: string; multi: boolean; boom?: boolean; victimStreak: number }, quiet = false): void {
     const isRevenge = k.victimId !== "" && k.victimId === this.lastKillerId;
     const cls = this.pb.weaponClassOf(k.weapon);
     const r = onKillMark(this.streak, {
@@ -178,10 +180,11 @@ export class Hud {
     });
     // the exe gets every victim of a shot in ONE event and shows ONE banner (Piercing/Mass): hold this kill's banner a moment
     // so the 2nd victim (its kill arrives later, one by one) replaces it instead of both being announced
-    if (k.multi && this.pendingMark) clearTimeout(this.pendingMark.timer);
-    else this.flushMark();
-    const marks = r.marks;
-    this.pendingMark = { marks, timer: setTimeout(() => this.flushMark(), 350) };
+    // quiet: a kill the theater puts back after a seek, whose banner is long gone
+    if (!quiet) {
+      if (!(k.multi && this.pendingMark)) this.flushMark();
+      this.pendingMark = { marks: r.marks, left: 0.35 };
+    }
     if (!(k.multi && this.pb.bumpKillStar())) this.pb.addKillStar(r.star);
     if (isRevenge) this.lastKillerId = null;
   }
@@ -189,7 +192,6 @@ export class Hud {
   private flushMark(): void {
     const p = this.pendingMark;
     if (!p) return;
-    clearTimeout(p.timer);
     this.pendingMark = null;
     this.pb.killMark(p.marks);
   }
@@ -289,6 +291,14 @@ export class Hud {
     this.lastKillerId = killerId ?? null;
   }
 
+  /** [RECRIADO] theater: the HUD now follows another player, or a seek left the old one's kills behind: no stars, banners, feed rows or streak */
+  refocus(): void {
+    this.pendingMark = null;
+    this.streak = initStreak();
+    this.lastKillerId = null;
+    this.pb.resetOwn();
+  }
+
   /** Round modes: a new round is a new life, the per-life kill stars start empty (the streak state is per life too). */
   newRound(): void {
     this.pb.resetKillStars();
@@ -316,6 +326,7 @@ export class Hud {
   }
 
   update(dt: number): void {
+    if (this.pendingMark && (this.pendingMark.left -= dt) <= 0) this.flushMark();
     const d = this.d;
     d.mapName = MAP_LABELS[CurrentMap] ?? CurrentMap;
     // countdown / "LUTE!" banner [RECRIADO text layout]; hidden on the result screen

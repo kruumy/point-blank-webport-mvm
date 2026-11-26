@@ -18,6 +18,7 @@ import { PB_CAMERA_SHAKE, PB_CHARA, PB_FPS_CAMERA } from "../gameplay/pbConfig";
 import { DEFAULT_WATCH, WATCH, observerRules, type ObserverRules } from "../lobby/core/roomRules";
 import { DEAD_TARGET_HOLD, FLY_SPEED, OBS_CAM, entryView, flyMove, hpColumns, hpFill, hpRowY, nextAfterDead, nextView, observeList, observedNickText, stepTarget, type ObsView } from "./observer";
 import { ObserverHud } from "./pbHud/observerHud";
+import { KILLFEED } from "./pbHud/layout";
 import { chat } from "../net/chatClient";
 import { NICK_SIZE, PosSlots, flySpeedStep, gmAction, gmNickView, nickSizeStep } from "./observerGm";
 import { KILL_MARKS, ShotKills } from "./pbHud/killmarks";
@@ -46,7 +47,7 @@ import { AmbientAudio } from "./audio3d";
 import { soundTerrainOf } from "../weapons/terrainSound";
 import { currentMapProps, propBreakInfo, propBreakSound, propSoundInfo, type MapProp } from "./mapProps";
 import { loadMapMeta, type SpawnPoint } from "./spawns";
-import { WEAPON_QUERY, WORLD_ONLY_QUERY, type Actor, type HitZone, type Team } from "./types";
+import { WEAPON_QUERY, WORLD_ONLY_QUERY, type Actor, type HitZone, type KillInfo, type Team } from "./types";
 import { BOT_WEAPON, loadWeaponSystem, PbWeaponsBridge, type ShotResult, type WeaponDef, type WeaponInput, type WeaponSystem } from "./weaponAdapter";
 import { pbHelmetProtection } from "./pbSound";
 import type { WeaponSystem as PbWeaponSystem } from "../weapons/WeaponSystem";
@@ -565,10 +566,15 @@ export class Game implements BotHost {
     g.wireThrows();
     g.match.onKill((k) => {
       g.rec?.add(g.time, { k: "kill", e: { killerId: k.killer?.id ?? null, victimId: k.victim.id, weapon: k.weapon, headshot: k.headshot, t: 0 } });
-      g.hud.killfeed(k, g.me.id);
-      if (k.killer === g.me && k.victim !== g.me && k.killer.team !== k.victim.team) {
-        g.hud.registerOwnKill({ headshot: k.headshot, victimId: k.victim.id, weapon: k.weapon, ...g.shotKills.kill(k.victim.id), victimStreak: k.victimStreak ?? 0 });
+      const f = g.hudFocus();
+      g.hud.killfeed(k, f.id);
+      if (k.killer === f && k.victim !== f && k.killer.team !== k.victim.team) {
+        // a watched player's shot is not ours to count: a 2nd victim within the same tick is the same shot [INFERIDO]
+        const multi = f === g.me ? g.shotKills.kill(k.victim.id) : { multi: g.time - (g.focusKillAt.get(f.id) ?? -1) < 0.06 };
+        g.hud.registerOwnKill({ headshot: k.headshot, victimId: k.victim.id, weapon: k.weapon, ...multi, victimStreak: k.victimStreak ?? 0 });
       }
+      if (k.killer) g.focusKillAt.set(k.killer.id, g.time);
+      if (g.theater && k.victim === f && f !== g.me) g.hud.ownDeath(k.killer && k.killer !== f ? k.killer.id : null);
     });
     g.match.onPhase((ph) => g.onPhase(ph));
     const mapProps = currentMapProps();
@@ -2022,6 +2028,7 @@ export class Game implements BotHost {
     });
     this.net.onRemoteHit((e) => {
       this.rec?.add(this.time, { k: "hit", e });
+      if (this.theater) this.focusHit(e);
       // the theater's re-cast shots often miss the replayed body; live, a remote's knife draws no shot of its own
       if (e.attackerId !== this.me.id || this.theater) this.hitBlood(e, !this.theater);
       // a remote player's hit on a bot WE host: the bot is ours, so its hp is ours to take
@@ -2468,9 +2475,12 @@ export class Game implements BotHost {
       if (!rules.on) { hud.setVisible(false); return false; }
       this.setObsView("fly"); // nobody to watch and the FLY camera is allowed: free flight from where the view was
     }
-    hud.setVisible(this.obsView !== "fly" && !this.gmHudOff);
+    // [RECRIADO] the theater: his own HUD through his eyes (updateHud hudFocus), no HUD at all from any other camera
+    const ownHud = this.theater && this.obsView === "fps";
+    hud.setVisible(this.obsView !== "fly" && !this.gmHudOff && !this.theater);
+    if (this.theater) this.hud.setVisible(ownHud);
     hud.setHelpImage(inp.key("F1"), gm); // F1 held: help_observer.i3i for a GM, else help.i3i (0x73f1a0)
-    this.obsHudMode = this.obsView === "fly" ? "fly" : "view";
+    this.obsHudMode = ownHud ? null : this.obsView === "fly" ? "fly" : "view";
     if (this.obsView === "fly") return this.flyCam(dt);
     if (!t) return false;
 
@@ -2490,6 +2500,53 @@ export class Game implements BotHost {
   }
 
   get observedId(): string | null { return this.specTarget?.id ?? null; }
+
+  /** [RECRIADO] theater: whose own HUD is drawn: the watched player through his eyes, else the local player */
+  private hudFocus(): Actor { return this.theater && this.obsView === "fps" && this.specTarget ? this.specTarget : this.me; }
+  private hudFocusId: string | null = null;
+  /** [RECRIADO] theater: the HUD started following another player (the theater puts his kills back: hudRewind) */
+  onHudFocus?: () => void;
+  /** each killer's last kill (game time): a watched player's 2nd victim of one shot */
+  private readonly focusKillAt = new Map<string, number>();
+
+  /** [RECRIADO] theater: a recorded hit as the watched player's HUD shows it: his hit marker, or the helmet banner, arc and blood of a hit he took */
+  private focusHit(e: HitEvent): void {
+    const f = this.hudFocus();
+    if (f === this.me) return;
+    const attacker = this.actorById(e.attackerId), victim = this.actorById(e.victimId);
+    if (attacker === f && victim && victim !== f && victim.team !== f.team) this.hud.hitmarker(e.zone === "head" ? "head" : "hit");
+    if (victim !== f) return;
+    if (e.helmetBlocked) { this.helmetProtection(attacker); return; } // a stopped hit deals nothing
+    if (!attacker || attacker === f) { this.hud.damageFrom(Math.PI); return; }
+    const p = f.feet(this._v), a = attacker.feet(this._w);
+    let rel = f.yaw() - Math.atan2(-(a.x - p.x), -(a.z - p.z));
+    while (rel > Math.PI) rel -= Math.PI * 2;
+    while (rel < -Math.PI) rel += Math.PI * 2;
+    this.hud.damageFrom(rel);
+  }
+
+  /** [RECRIADO] a seek skips the kill events: the feed rows and this life's stars at `now` are rebuilt from the demo's kills (in time order) */
+  hudRewind(kills: readonly { t: number; e: KillEvent }[], now: number): void {
+    this.hud.refocus();
+    const f = this.hudFocus(), byId = (id: string | null) => (id ? this.actorById(id) ?? null : null);
+    let born = -Infinity;
+    for (const k of kills) if (k.t <= now && k.e.victimId === f.id) born = k.t;
+    const infos: (KillInfo & { t: number })[] = [];
+    for (const k of kills) {
+      const victim = byId(k.e.victimId);
+      if (k.t > now) break;
+      if (victim) infos.push({ killer: byId(k.e.killerId), victim, weapon: k.e.weapon, headshot: k.e.headshot, time: k.t, t: k.t });
+    }
+    this.match.recount(infos); // sets each victimStreak
+    let last = -1;
+    for (const k of infos) {
+      if (now - k.t < KILLFEED.life) this.hud.killfeed(k, f.id, now - k.t);
+      if (f !== this.me && k.killer === f && k.t > born && k.victim.team !== f.team) {
+        this.hud.registerOwnKill({ headshot: k.headshot, victimId: k.victim.id, weapon: k.weapon, multi: k.t - last < 0.06, victimStreak: k.victimStreak ?? 0 }, true);
+        last = k.t;
+      }
+    }
+  }
 
   /** [RECRIADO] movie theater: every frame, the demo's interpolated poses */
   poseRemotes(poses: { id: string; pos: [number, number, number]; yaw: number; pitch: number }[]): void {
@@ -2518,6 +2575,17 @@ export class Game implements BotHost {
 
   /** [RECRIADO] theater: the demo clock and tracks every remote reads (RemoteActor.demo) */
   demoSource?: RemoteActor["demo"];
+  /** [RECRIADO] theater: how long the reload the arms first see now has been going, by the recorded states (0 live) */
+  private demoReloadAge(id: string): number {
+    const ds = this.demoSource, now = ds?.time() ?? 0, tr = ds?.track(id, now);
+    if (!tr) return 0;
+    let i = tr.t.length - 1;
+    while (i >= 0 && tr.t[i] > now) i--;
+    let start = now;
+    for (; i >= 0 && tr.s[i].torsoAction === "reload"; i--) start = tr.t[i];
+    return now - start;
+  }
+
   /** [RECRIADO] theater exact seek, after its replay: each body's legs where its recorded states put them */
   restrideRemotes(): void {
     for (const r of this.remotes.values()) r.restride();
@@ -2717,7 +2785,7 @@ export class Game implements BotHost {
       // Length = the watched weapon's ReloadTime (the remote's own is not networked; his Quick Change Reload scale is [INFERIDO] 1)
       const secs = ws.observedReloadSecs() ?? os.reloadSecs, first = this.specReloadSeq < 0, seqNew = os.reloadSeq !== this.specReloadSeq;
       this.specReloadSeq = os.reloadSeq;
-      if (os.reloading !== undefined ? os.reloading && !this.specReloading : seqNew && !first) { this.specReloadEnd = this.time + secs; this.specReloadLen = secs; }
+      if (os.reloading !== undefined ? os.reloading && !this.specReloading : seqNew && !first) { this.specReloadEnd = this.time + secs - (first ? this.demoReloadAge(t.id) : 0); this.specReloadLen = secs; }
       if (os.reloading !== undefined) { if (!os.reloading) this.specReloadEnd = 0; this.specReloading = os.reloading; }
       if (!!os.ready !== this.specReady) { this.specReady = !!os.ready; ws.observeReady(this.specReady); } // grenade pin out / released
       if (os.fireSeq !== this.specFireSeq) { if (this.specFireSeq >= 0) ws.observeFire(!!os.heavy, this.muzzleTintOfId(t.id)); this.specFireSeq = os.fireSeq; }
@@ -2727,7 +2795,7 @@ export class Game implements BotHost {
       if (this.specPlanting) this.specPlantT += dt;
       ws.observePlant(this.specPlanting, this.specPlantT / BOMB.plantTime);
       const left = this.specReloadEnd - this.time;
-      ws.observeState({ speed: os.speed, grounded: os.grounded, aiming: os.aiming, ext: !!os.ext, reloadT: left > 0 ? 1 - left / Math.max(0.001, this.specReloadLen) : os.reloading ? 0.999 : -1 }); // still reloading past the estimate: hold the end
+      ws.observeState({ speed: os.speed, grounded: os.grounded, aiming: os.aiming, ext: !!os.ext, crouch: t.isCrouching(), walking: os.walking, reloadT: left > 0 ? 1 - left / Math.max(0.001, this.specReloadLen) : os.reloading ? 0.999 : -1 }); // still reloading past the estimate: hold the end
     }
   }
 
@@ -2850,18 +2918,26 @@ export class Game implements BotHost {
     const h = this.hud;
     const m = this.match;
     const ws = this.weapons.getState();
+    // the theater: the watched player's own HUD through his eyes
+    const f = this.hudFocus(), own = f === this.me, ow = own ? null : this.pbWeapons()?.observedHud() ?? null;
+    if (this.theater && f.id !== this.hudFocusId) { this.hudFocusId = f.id; this.onHudFocus?.(); }
     h.tickFps();
-    h.matchState({ phase: m.phase, tab: this.input.key("Tab"), crouch: this.me.isCrouching() });
+    h.matchState({ phase: m.phase, tab: this.input.key("Tab"), crouch: f.isCrouching() });
     h.observing(this.obsHudMode);
-    h.vitals(this.me.hp, this.me.maxHp, this.me.armor, this.me.helmet, this.me.alive ? this.me.invulnUntil - this.time : 0);
-    h.weapon(ws, this.weaponSource === "weapons" ? "weapons" : "adapter");
+    h.vitals(f.hp, f.maxHp, f.armor, f.helmet, own && f.alive ? f.invulnUntil - this.time : 0);
+    if (!ow) h.weapon(ws, this.weaponSource === "weapons" ? "weapons" : "adapter");
+    else {
+      // his ammo and grenades left are not networked: no gauge, no count; a grenade in hand is one left [INFERIDO]
+      const slot = (f as RemoteActor).weaponSlot ?? 0;
+      h.weapon({ ...ws, ...ow, slot, ammo: 0, reserve: 0, noAmmo: true, reloading: false, reloadProgress: 0, dualLeft: false, slots: slot === 3 ? [{ slot: 3, id: ow.id, ammo: 1 }] : [] }, "observed");
+    }
     // src/weapons/scope.ts full-screen overlay (sniper scope and DotSight _ZoomType 3, data.ts params.scope):
     // ws.zoomFov is non-null exactly while that overlay is up (WeaponSystem.scoped), so the 2D crosshair must hide.
     // laser weapons: OnApplyCrosshair 0xa6585f turns the crosshair off while the laser is on (only the red dot)
     // snipers (SR) never draw the 2D crosshair, scoped or not: its spread grows huge unscoped [user request, not from the exe]
-    const sniper = ws.family === "SR";
+    const sniper = (ow?.family ?? ws.family) === "SR";
     h.hideCrosshair = !!ws.zoomFov || !!ws.laserOn || sniper;
-    h.crosshair(spread, this.camera.fov, this.me.alive && !ws.zoomFov && !sniper && m.phase !== "ended");
+    h.crosshair(spread, this.camera.fov, f.alive && !ws.zoomFov && !sniper && m.phase !== "ended");
     h.update(dt); // renders: after the crosshair flags, or the first scoped frame drew the crosshair over the overlay
     // Minimap enlarge/reduce (hud.ts zoomMinimap, exe 0x749994/0x709960). [RECRIADO] key mapping: the exact
     // key-map slot wasn't found in the available RE notes, so "+"/"-" (both the top row and numpad) are bound,
@@ -2874,7 +2950,9 @@ export class Game implements BotHost {
       else h.final({ ...this.finalData, mapName: MAP_LABELS[CurrentMap] ?? CurrentMap, modeName: this.bomb ? tOr("STR_HEADER_MODE_EXPLOSION", "Destruction") : tOr("STR_HEADER_MODE_TEAM_DEATH_MATCH", "Deathmatch"), tab: this.finalTab, leaveIn: FINAL_SECONDS - this.finalT });
     }
     h.helpImage(this.input.key("F1") && !this.obsHudMode); // F1 held (0x73f1a0); observing: obsUpdate draws it
-    h.topBar(m.score, m.timeLeft(), m.cfg.mode !== "TDM" ? m.roundLimit : m.cfg.killLimit, m.round);
+    // the theater: a demo records neither the match clock nor its goal
+    if (this.theater) h.topBar(m.score, NaN, NaN, m.round);
+    else h.topBar(m.score, m.timeLeft(), m.cfg.mode !== "TDM" ? m.roundLimit : m.cfg.killLimit, m.round);
     // grey C4 (exe 0x740620 gate = CGameMissionManager+0x14, set per frame by 0x580880 in the pre-plant state): shown only while
     // the local chara stands in a site area (same test as the exe, BombMode.siteAt); any team, no carrier check
     if (this.bomb) h.bomb(this.bomb.state === "planted" ? this.bomb.fuseLeft : null, this.bomb.progress, this.bomb.state === "idle" && this.bomb.siteAt(this.me.feet(this.bombFeet).toArray() as BombVec3) >= 0, this.bombHintT > 0 ? this.bombHint : null);
@@ -2906,16 +2984,16 @@ export class Game implements BotHost {
       const k = this.me.lastAttacker;
       const left = (this.respawnAt.get(this.me.id) ?? this.time) - this.time;
       h.death(true, k && k !== this.me ? k.name : "", this.me.deathWeapon, this.me.deathHeadshot, Math.max(0, left), k?.id);
-    } else h.death(false);
+    } else h.death(!own && !f.alive);
 
     const blips: MinimapBlip[] = [];
     for (const a of this.actors()) {
-      if (a === this.me) continue;
-      const enemy = a.team !== this.me.team;
+      if (a === f || (a === this.me && this.spectating)) continue;
+      const enemy = a.team !== f.team;
       const recentlyFired = this.time - (this.lastFire.get(a.id) ?? (a instanceof RemoteActor ? a.lastFire : -999)) < 1.5;
       if (enemy && (!a.alive || !recentlyFired)) continue; // PB radar: enemies show when they shoot
-      const f = a.feet(this._w); // x/z copied into the blip right away; _w is rewritten by the eye() call below
-      blips.push({ x: f.x, z: f.z, team: a.team, alive: a.alive });
+      const p = a.feet(this._w); // x/z copied into the blip right away; _w is rewritten by the eye() call below
+      blips.push({ x: p.x, z: p.z, team: a.team, alive: a.alive });
     }
     // a GM observing: every other chara while ` is on (0x7507e0), "%s -%dHP" or the F9 seat badge (nameTags.ts)
     const gmObs = this.obsHudMode !== null && this.isGM();
@@ -2927,17 +3005,17 @@ export class Game implements BotHost {
       const t = hit.actorId ? this.actorById(hit.actorId) : null;
       return t && t.team !== this.me.team ? t : null;
     }, gmObs ? { ids: gmNickView.ids, size: this.gmNickSize, slotOf: (a) => this.slotOf(a) } : null);
-    const myFeet = this.me.feet(this._v);
-    h.minimap(myFeet, this.player.yaw, blips, this.me.team);
+    const myFeet = f.feet(this._v), myYaw = own ? this.player.yaw : f.yaw();
+    h.minimap(myFeet, myYaw, blips, f.team);
     // thrown grenade near: Cross CHud 0x7443c0 warning badge, arrow and distance (pbHud layout.ts GRENADE_WARN)
     // [INFERIDO] the alive gate: the exe draws the list only while 0x53f870 (local character +0x710 state == 1) holds
-    const near = this.me.alive ? this.pbWeapons()?.grenadesNear(myFeet, (owner) => {
+    const near = f.alive ? this.pbWeapons()?.grenadesNear(myFeet, (owner) => {
       const a = this.actorById(owner);
-      return !!a && a !== this.me && a.team === this.me.team;
+      return !!a && a !== f && a.team === f.team;
     }) ?? [] : [];
     h.grenadeAlerts(near.map((n) => {
       const bearing = Math.atan2(-(n.pos.x - myFeet.x), -(n.pos.z - myFeet.z));
-      let rel = this.player.yaw - bearing;
+      let rel = myYaw - bearing;
       while (rel > Math.PI) rel -= Math.PI * 2;
       while (rel < -Math.PI) rel += Math.PI * 2;
       return { rel, dist: n.dist, indicatorType: n.indicatorType };

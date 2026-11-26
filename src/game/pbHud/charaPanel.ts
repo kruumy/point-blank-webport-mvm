@@ -51,7 +51,7 @@ export function charaLayout(d: HudData, W: number, H: number, f: CharaFlags): Pa
   if (melee) boxes.push({ tex: hud, x: X0 + 74, y: Y0 + 25, w: 77, h: 15, uv: [187, 185, 269, 200] });
   if (f.helmetSeen) boxes.push({ tex: hud, x: X0 + 115, y: Y0 - 47, w: 46, h: 46, uv: d.helmet ? [463, 323, 509, 369] : [463, 373, 509, 419] });
   if (f.throwShown) boxes.push({ tex: hud, x: X0 + 115, y: Y0 - 96, w: 46, h: 46, uv: (d.grenades ?? 0) > 0 ? [413, 359, 458, 405] : [413, 407, 458, 453] });
-  if (!melee && !count) {
+  if (!melee && !count && !w.noAmmo) {
     const n = Math.min(AMMO_CELLS, Math.max(0, w.ammo));
     if (w.dual) {
       // SetDualGage 0x728270: the 1st gauge moves to (W-102, H-54), the 2nd (+0xb4) sits at (W-103, H-49). The gun that
@@ -65,7 +65,7 @@ export function charaLayout(d: HudData, W: number, H: number, f: CharaFlags): Pa
     { text: pad3(Math.ceil(d.hp)), x: W - 170, y: H - 43, w: 70, h: 50, face: "Gunplay", size: 28, color: GREEN },
     { text: w.name, x: W - 109, y: H - 97, w: 92, h: 13, face: "Arial", size: 10, color: GREY, ax: 1, ay: 1 },
   ];
-  if (!melee) texts.push({ text: count ? `        ${Math.max(0, w.ammo)}` : `${pad3(w.ammo)}/${pad3(w.reserve)}`, x: W - 100, y: H - 82, w: 100, h: 30, face: "Gunplay", size: 19, color: WHITE });
+  if (!melee && !w.noAmmo) texts.push({ text: count ? `        ${Math.max(0, w.ammo)}` : `${pad3(w.ammo)}/${pad3(w.reserve)}`, x: W - 100, y: H - 82, w: 100, h: 30, face: "Gunplay", size: 19, color: WHITE });
   return { boxes, texts };
 }
 

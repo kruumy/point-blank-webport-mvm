@@ -68,12 +68,12 @@ export function dashLayout(d: HudData, W: number): PanelLayout {
   const t = Math.max(0, Math.ceil(d.timeLeft)), p2 = (n: number) => String(n).padStart(2, "0");
   const G: RGB = [180, 180, 180];
   const node = (text: string, x: number, y: number, w: number, h: number, size: number, color: RGB = G): I3Text => ({ text, x, y, w, h, face: "Gunplay", size, color, ax: 1, ay: 1 });
+  // NaN = not known (a theater demo records neither the clock nor the goal): that text is left out
   const texts = [
-    node(`${p2(Math.min(99, Math.floor(t / 60)))}   ${p2(t % 60)}`, Wc - 42, Y0 + 48, 83, 26, 19),
-    node(":", Wc - 42, Y0 + 45, 83, 26, 19),
+    ...(Number.isNaN(d.timeLeft) ? [] : [node(`${p2(Math.min(99, Math.floor(t / 60)))}   ${p2(t % 60)}`, Wc - 42, Y0 + 48, 83, 26, 19), node(":", Wc - 42, Y0 + 45, 83, 26, 19)]),
     node(String(d.score[0]), Wc - 118, Y0 + 8, 75, 40, 25),
     node(String(d.score[1]), Wc + 42, Y0 + 8, 75, 40, 25),
-    node(d.bomb ? `${d.killLimit}R` : String(d.killLimit), Wc - 37, Y0 + 9, 75, 40, 23, [205, 205, 50]),
+    ...(Number.isNaN(d.killLimit) ? [] : [node(d.bomb ? `${d.killLimit}R` : String(d.killLimit), Wc - 37, Y0 + 9, 75, 40, 23, [205, 205, 50])]),
   ];
   return { boxes, texts };
 }

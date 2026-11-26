@@ -24,6 +24,8 @@ export interface DemoHeader {
   charas?: Record<string, number>;
   /** [RECRIADO] theater edits: head / beret item by actor id over the recorded ones (0 = no item: the character's default helmet) */
   hats?: Record<string, { head: number; beret: number }>;
+  /** [RECRIADO] theater edits: display name by actor id, over the recorded one (kill feed, HUD, name tags) */
+  names?: Record<string, string>;
 }
 export interface Demo extends DemoHeader { name: string; dur: number; recs: DemoRecord[] }
 

@@ -317,9 +317,9 @@ export class PbHud {
     this.undecoded.append(this.killBanner);
     // CChallengeBoard (layout.ts MISSION_PANEL) and the mission notice (+0x2a0) are absolute window px: on the root, not the design box
     this.fx.before(this.mission, this.banner);
-    // CChainKills sizes and slots are absolute screen px too (52 x 56 at W - (52n + 183), H - 65; only the birth uses sx/sy)
-    this.fx.before(this.kLayer);
-    this.box.append(this.undecoded, this.feedLayer, this.chainBanner);
+    // CChainKills sizes and slots are absolute screen px too (52 x 56 at W - (52n + 183), H - 65; only the birth uses sx/sy), its banner as well
+    this.fx.before(this.chainBanner, this.kLayer);
+    this.box.append(this.undecoded, this.feedLayer);
     // end screen: Cross Result_BG; its confirm button is the only click target (the HUD ignores the mouse)
     const resultTree = crossHud ? crossResultTree(crossHud.root) : undefined;
     if (resultTree) this.crossFinal = new CrossFinal(this.box, resultTree, () => this.onFinal.ok?.());
@@ -366,20 +366,38 @@ export class PbHud {
    * after another 0.6s apart — CChainKills::_PushKillMessage pushes one banner per event, not a single winner.
    */
   killMark(marks: KillMarkDef[]): void {
-    let delay = 0;
-    for (const m of marks) {
-      setTimeout(() => {
-        if (markSprite(m)) this.spriteMark(m, false);
-        else if (m.caption && getSettings().textEffect) { // Option > Game: Efeito de texto
-          this.killBanner.textContent = m.caption;
-          this.killBanner.classList.add("on");
-          this.killBannerT = 0;
-          this.killBannerLife = m.duration;
-        }
-        this.playAnnounce(m.sound);
-      }, delay * 1000);
-      delay += 0.6;
+    marks.forEach((m, i) => this.markQueue.push({ m, left: i * 0.6 }));
+    this.tickMarks(0);
+  }
+  /** kill marks waiting their turn, on the game clock (a theater render or replay shows them where play does) */
+  private markQueue: { m: KillMarkDef; left: number }[] = [];
+  private tickMarks(dt: number): void {
+    for (const q of [...this.markQueue]) {
+      if ((q.left -= dt) > 0) continue;
+      this.markQueue.splice(this.markQueue.indexOf(q), 1);
+      const m = q.m;
+      if (markSprite(m)) this.spriteMark(m, false);
+      else if (m.caption && getSettings().textEffect) { // Option > Game: Efeito de texto
+        this.killBanner.textContent = m.caption;
+        this.killBanner.classList.add("on");
+        this.killBannerT = 0;
+        this.killBannerLife = m.duration;
+      }
+      this.playAnnounce(m.sound);
     }
+  }
+
+  /** [RECRIADO] theater seek / new watched player: no banner, star or feed row of the time left behind */
+  resetOwn(): void {
+    this.markQueue = [];
+    this.chainBanners.reset();
+    this.killBannerT = -1;
+    this.killBanner.classList.remove("on");
+    this.kstars.reset();
+    this.clearFeed();
+    this.arcs.length = 0;
+    this.blood = -1;
+    this.hitT = -1;
   }
 
   /**
@@ -395,7 +413,7 @@ export class PbHud {
   }
 
   private tickKillBanner(dt: number): void {
-    const f = this.chainBanners.update(dt, this.dw, 768), cb = this.chainBanner;
+    const f = this.chainBanners.update(dt, this.dw * this.scale, 768 * this.scale), cb = this.chainBanner;
     if (!f) cb.style.display = "none";
     else {
       const k = f.w / 512;
@@ -538,6 +556,7 @@ export class PbHud {
       this.box.style.visibility = "";
     }
     this.tickFeed(dt);
+    this.tickMarks(dt);
     this.tickKillBanner(dt);
     this.tickKillStars(dt);
     this.revenge.tick(dt);
@@ -695,7 +714,7 @@ export class PbHud {
   /** CHud::RecordRevenge (called from the kill feed only for kills where the local player is killer or victim) */
   recordRevenge(foe: RevengeFoe, me: string, delta: number): void { this.revenge.record(foe, me, delta); }
 
-  addKill(killer: { name: string; team: Team } | null, victim: { name: string; team: Team }, weapon: string, headshot: boolean, mine: boolean): void {
+  addKill(killer: { name: string; team: Team } | null, victim: { name: string; team: Team }, weapon: string, headshot: boolean, mine: boolean, age = 0): void {
     const K = KILLFEED;
     const ctx = this.g;
     ctx.font = `${emPx("Arial", K.font)}px ${HUD_FONT}`;
@@ -731,10 +750,10 @@ export class PbHud {
       else put("pbhud-txt", L.icon, "font-size:9px;color:#ccc;justify-content:center").textContent = weapon; // last resort [RECRIADO]
     }
     let hs: HTMLElement | null = null;
-    if (headshot) hs = put("spr", L.hs, spr(K.hsSrc, L.hs, 1024, 512, tex) + `;opacity:${K.hsAlpha};transform-origin:0 0;transform:scale(${K.hsScale(0)})`);
+    if (headshot) hs = put("spr", L.hs, spr(K.hsSrc, L.hs, 1024, 512, tex) + `;opacity:${K.hsAlpha};transform-origin:0 0;transform:scale(${K.hsScale(Math.min(age, 0.3))})`);
     txt(L.victim, L.victimR, victim.team);
     this.feedLayer.appendChild(el);
-    this.feed.push({ el, t: 0, hs });
+    this.feed.push({ el, t: age, hs });
     while (this.feed.length > K.max) this.feed.shift()!.el.remove();
     this.restackFeed();
   }

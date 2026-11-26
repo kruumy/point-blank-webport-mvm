@@ -81,11 +81,26 @@ export class DemoNet implements NetAdapter {
     this.applyDeaths();
   }
 
-  /** a state with the character an edit chose; a copy, so the record keeps what was recorded (saveDemo writes the records) */
+  /** a state with the character and name edits chose; a copy, so the record keeps what was recorded (saveDemo writes the records) */
   private withChara(s: PlayerState): PlayerState {
     // no recorded character = the team default; an actor that had an edit needs it said (0) or its model would never change back
     const c = this.demo.charas?.[s.id] ?? (s.chara === undefined && this.charaTouched.has(s.id) ? 0 : undefined);
-    return c === undefined ? s : { ...s, chara: c };
+    const name = this.demo.names?.[s.id];
+    return c === undefined && name === undefined ? s : { ...s, ...(c === undefined ? {} : { chara: c }), ...(name === undefined ? {} : { name }) };
+  }
+
+  /** [RECRIADO] demo editor: the name the actor shows (an edit's, else the recorded one) and the recorded one */
+  nameOf(id: string): { name: string; recorded: string } {
+    const recorded = this.rosterOf(id)?.name ?? id;
+    return { name: this.demo.names?.[id] ?? recorded, recorded };
+  }
+
+  /** [RECRIADO] demo editor: that actor shows `name` for the whole demo; null / "" = back to the recorded one */
+  setName(id: string, name: string | null): void {
+    const edits = (this.demo.names ??= {});
+    if (name) edits[id] = name;
+    else delete edits[id];
+    if (!Object.keys(edits).length) delete this.demo.names;
   }
   private readonly charaTouched = new Set<string>();
 
@@ -195,8 +210,13 @@ export class DemoNet implements NetAdapter {
     return states;
   }
 
-  /** actors the demo knows (first state of each id); built once, the theater asks every UI tick */
+  /** actors the demo knows (first state of each id), with their name edits; the theater asks every UI tick */
   roster(): { id: string; name: string; team: number }[] {
+    const names = this.demo.names;
+    return names ? this.recordedRoster().map((a) => (names[a.id] ? { ...a, name: names[a.id] } : a)) : this.recordedRoster();
+  }
+  private rosterOf(id: string) { return this.recordedRoster().find((a) => a.id === id); }
+  private recordedRoster(): { id: string; name: string; team: number }[] {
     if (this.rosterList) return this.rosterList;
     const seen = new Map<string, { id: string; name: string; team: number }>();
     for (const r of this.demo.recs) if (r.k === "state" && !seen.has(r.s.id)) seen.set(r.s.id, { id: r.s.id, name: r.s.name, team: r.s.team });

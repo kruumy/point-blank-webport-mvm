@@ -25,7 +25,9 @@ export interface ObsState { speed: number; grounded: boolean; aiming: boolean; f
   /** replicated torsoAction "reload" / "ready" (grenade pin out): absent (bots) = the observer falls back to the reload counter / nothing */
   reloading?: boolean; ready?: boolean;
   /** RMB extension on (silencer, CrossFire arms, raised launcher) */
-  ext?: boolean }
+  ext?: boolean;
+  /** legs walking, not running (the crosshair's Walk / Move share) */
+  walking?: boolean }
 
 /** Anything that can be shot: local player, bot, or (later) a remote network player. */
 export interface Actor {

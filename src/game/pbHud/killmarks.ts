@@ -95,7 +95,7 @@ export const markSprite = (def: KillMarkDef): KillSprite | undefined =>
  *   - while shown, the scale falls dt * 2.5 / 0.1 per second down to 1 (2.5 -> 1 in 0.06 s).
  *   - the sprite is the whole 512 x 102 cell, drawn at 512 s x 102 s px, scaled around the box whose top-left is (W/2 - 490/2, H/2 - 512/2)
  *     (0x5224b0 centres a 490 x 512 box; 490 x 412 when the stage type is 10, not reproduced): x = X0 - (512 s - 512) / 2, y = Y0 - (102 s - 102) / 2.
- *     The exe works in screen px with no HUD scale; here W x H is the HUD design box (H = 768) [INFERIDO].
+ *     Screen px with no HUD scale: 0x5224b0 centres the box on the render target's own size.
  */
 export const CHAIN_BANNER = { cellW: 512, cellH: 102, hold: 1.0, fade: 1 / 3, scale0: 2.5, shrinkPerS: 2.5 / 0.1, maxQueued: 5, boxW: 490, boxH: 512 } as const;
 
