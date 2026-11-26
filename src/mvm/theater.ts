@@ -8,7 +8,7 @@ import { assetUrl } from "../assetMap";
 import { mapIndexEntry } from "../config";
 import type { DemoNet } from "./demoNet";
 import { Post, type DofParams } from "./post";
-import { ALPHA_PASSES, PASSES, Passes, type PassFrame, type PassName } from "./passes";
+import { LAYERS, PASSES, Passes, layerPasses, type PassFrame, type PassName } from "./passes";
 import { renderOnTop } from "../render/onTop";
 import { charaChoices } from "../game/charModel";
 import { actorEquip, hatChoices } from "../game/charEquip";
@@ -105,6 +105,7 @@ const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => str
   depth: { label: "Depth", note: () => "16-bit · white near, black far", swatch: () => "linear-gradient(90deg,#f2f2f2,#101010)" },
   normals: { label: "Normals", note: () => "Surface direction, view space", swatch: () => "linear-gradient(135deg,#9a80ff,#7f7fff 35%,#80ffa8 70%,#ff9a80)" },
 };
+const LINK = `<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6.5 9.5l3-3M7 4.5l1.3-1.3a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.3 1.3a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"/></svg>`;
 const EYE = `<svg viewBox="0 0 16 16" width="15" height="15"><path d="M1 8s2.6-4.6 7-4.6S15 8 15 8s-2.6 4.6-7 4.6S1 8 1 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/></svg>`;
 const CODECS: [string, string][] = [["prores4444xq", "ProRes 4444 XQ"], ["prores4444", "ProRes 4444"], ["prores422hq", "ProRes 422 HQ"],
   ["prores422", "ProRes 422"], ["prores422lt", "ProRes 422 LT"]];
@@ -142,11 +143,14 @@ const CSS = `
 #mvm .sect button{padding:0 6px;font-size:11px}
 #mvm .passes{display:flex;flex-direction:column;border:1px solid #30333a;border-radius:4px;overflow:hidden;background:#15171b}
 #mvm .pass{display:flex;align-items:center;gap:7px;padding:5px 4px 5px 7px;cursor:pointer;border-top:1px solid #23262c}
+#mvm .pass{position:relative}#mvm .pass.joined{border-top-color:transparent}#mvm .pass.joined .recdot,#mvm .pass.joined .eye{visibility:hidden}
+#mvm .link{position:absolute;left:4px;top:-8px;z-index:1;width:15px;height:15px;padding:0;display:grid;place-items:center;border-radius:50%;background:#15171b;border:1px solid #30333a;color:#5c616b}
+#mvm .link:hover{color:#ddd;background:#2a2e35}#mvm .link.on{color:#f0a830;border-color:#c47f12;background:#3d3220}
 #mvm .pass:first-child{border-top:0}#mvm .pass:hover{background:#1f2227}#mvm .pass.rec{background:#2a2217}#mvm .pass.rec:hover{background:#33291b}
 #mvm .recdot{flex:none;width:11px;height:11px;border-radius:50%;border:2px solid #4c5059;box-sizing:border-box}
 #mvm .pass.rec .recdot{border-color:#ff7262;background:radial-gradient(circle at 35% 35%,#ff8a7a,#d2321f)}
 #mvm .sw{flex:none;width:30px;height:20px;border-radius:3px;overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.12)}#mvm .sw svg{display:block}
-#mvm .pass:not(.rec) .sw{opacity:.55}#mvm .pass.na{opacity:.4;cursor:default}#mvm .pass.na:hover{background:none}
+#mvm .pass:not(.rec) .sw{opacity:.55}#mvm .pass.na{cursor:default}#mvm .pass.na>:not(.link){opacity:.4}#mvm .pass.na:hover{background:none}
 #mvm .nm{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 #mvm .nm b{font-weight:600;color:#9aa0a8}#mvm .pass.rec .nm b{color:#f2f2f2}
 
@@ -528,7 +532,7 @@ export class Theater {
   }
 
   // ---- render ----
-  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["default"] as PassName[], depthRange: 50 };
+  private renderOpts = { w: window.innerWidth & ~1, h: window.innerHeight & ~1, fps: 250, codec: "prores422lt", name: "", passes: ["default"] as PassName[], joined: [] as PassName[], depthRange: 50 };
 
   /** the part of the window the render keeps: the output size fitted inside it, centred */
   private frameBox(): { x: number; y: number; w: number; h: number } {
@@ -549,7 +553,7 @@ export class Theater {
     const name = this.movieName();
     const passes = this.recorded();
     if (!passes.length) { this.toast("Pick at least one pass"); return; }
-    const streams = passes.map((p) => ({ name: p, input: p === "depth" ? "gray16le" : "rgba", alpha: ALPHA_PASSES.includes(p) && this.alphaFormat() }));
+    const streams = passes.map((p) => ({ name: this.layersOf(p).join("-"), input: p === "depth" ? "gray16le" : "rgba", alpha: this.mattePass(p) && this.alphaFormat() }));
     const start = await fetch(`${DEMO_API}/render/start`, { method: "POST", body: JSON.stringify({ w, h, fps, codec: this.renderOpts.codec, name, passes: streams }) });
     if (start.status === 503) {
       window.alert("Rendering needs ffmpeg, and none was found on PATH.\n\nInstall it (for example: winget install Gyan.FFmpeg), then restart start_server.cmd.");
@@ -607,7 +611,7 @@ export class Theater {
         const fps = (i + 1) / ((performance.now() - t0) / 1000), left = Math.round((frames - i - 1) / fps);
         bar.style.width = `${((i + 1) / frames) * 100}%`;
         text.innerHTML = `<span>Frame <b>${i + 1}</b> / ${frames}</span><span>${fps.toFixed(1)} fps</span><span>${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left</span>
-          <span style="flex:1"></span><span class="hint">Showing ${PASS_INFO[shown].label}${passes.length > 1 ? ` (${passes.map((p) => PASSES.indexOf(p) + 1).join(" ")})` : ""} · Esc stops</span>`;
+          <span style="flex:1"></span><span class="hint">Showing ${this.passLabel(shown)}${passes.length > 1 ? ` (${passes.map((p) => PASSES.indexOf(p) + 1).join(" ")})` : ""} · Esc stops</span>`;
       }
       // a cancel keeps the frames already drawn, so every file ends on the same frame
       while (ok && reading.length) await send(reading.shift()!);
@@ -635,9 +639,24 @@ export class Theater {
     }
   }
 
-  /** the passes a render records: the viewmodel only in POV, the one mode that draws the gun */
+  /** the passes a render records: a layer joined to the one under it goes in that one's; the viewmodel alone only in POV, the one mode that draws the gun */
   private recorded(): PassName[] {
-    return PASSES.filter((p) => this.renderOpts.passes.includes(p) && (p !== "viewmodel" || this.mode === "pov"));
+    const o = this.renderOpts;
+    return PASSES.filter((p) => o.passes.includes(p) && !o.joined.includes(p) && (p !== "viewmodel" || this.mode === "pov"));
+  }
+
+  /** the layers recorded in one pass with p, the pass's own first; [p] for default, depth, normals */
+  private layersOf(p: PassName): readonly PassName[] {
+    return layerPasses(this.renderOpts.joined).find((g) => (g as readonly PassName[]).includes(p)) ?? [p];
+  }
+
+  private passLabel(p: PassName): string {
+    return this.layersOf(p).map((x) => PASS_INFO[x].label).join(" + ");
+  }
+
+  /** a layer pass over nothing (not the world's): its alpha is a matte */
+  private mattePass(p: PassName): boolean {
+    return p !== "world" && (LAYERS as readonly PassName[]).includes(p);
   }
 
   /** <file name or demo>_<player>_pov|third, or _cine; the server appends the first free number, then _<pass> */
@@ -649,11 +668,16 @@ export class Theater {
 
   /** the viewport's pass; the shown one again = back to default. While rendering: recorded passes only, kept afterwards */
   private setPreview(p: PassName): void {
+    p = this.layersOf(p)[0]; // a joined layer shows its pass
     if ((this.rendering && !this.recorded().includes(p)) || (p === "viewmodel" && this.mode !== "pov")) return;
     this.preview = p === this.preview && !this.rendering ? "default" : p;
+    this.showPreview();
+  }
+
+  private showPreview(): void {
     const el = this.root.querySelector<HTMLElement>(".prev")!;
     el.style.display = this.preview === "default" ? "none" : "flex";
-    el.innerHTML = `<span class="hint">Previewing</span><b>${PASS_INFO[this.preview].label}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
+    el.innerHTML = `<span class="hint">Previewing</span><b>${this.passLabel(this.preview)}</b><button data-eye="${this.preview}" title="Back to the default view">✕</button>`;
     if (this.tab === "render") this.drawSide();
   }
 
@@ -726,9 +750,19 @@ export class Theater {
     }, sig);
 
     this.root.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del],[data-eye],[data-pass]");
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del],[data-eye],[data-join],[data-pass]");
       if (!b) return;
       if (b.dataset.eye) { this.setPreview(b.dataset.eye as PassName); return; }
+      if (b.dataset.join) {
+        const l = b.dataset.join as PassName, o = this.renderOpts, rec = this.recorded().includes(this.layersOf(l)[0]), split = o.joined.includes(l);
+        o.joined = split ? o.joined.filter((x) => x !== l) : [...o.joined, l];
+        // a recorded layer stays in a file: joined, the pass it went into records; split off, it records as its pass did
+        const into = this.layersOf(l)[0];
+        o.passes = PASSES.filter((x) => (x !== into ? o.passes.includes(x) : split ? rec : rec || o.passes.includes(x)));
+        this.preview = this.layersOf(this.preview)[0];
+        this.showPreview();
+        return;
+      }
       if (b.dataset.pass) {
         const p = b.dataset.pass as PassName, o = this.renderOpts;
         o.passes = PASSES.filter((x) => (x === p ? !o.passes.includes(p) : o.passes.includes(x)));
@@ -994,11 +1028,15 @@ export class Theater {
       const alpha = this.alphaFormat(), on = this.recorded(), name = this.movieName();
       const span = Math.max(0, this.outPt - this.inPt), frames = Math.round(span * o.fps);
       const pass = (p: PassName, i: number) => {
-        const info = PASS_INFO[p], rec = on.includes(p), eye = this.preview === p, na = p === "viewmodel" && this.mode !== "pov";
-        return `<div class="pass${rec ? " rec" : ""}${na ? " na" : ""}" ${na ? "" : `data-pass="${p}"`} title="${na ? "First person (POV) only" : `${info.note(alpha)} · ${rec ? "recorded, click to leave it out" : "click to record it"}`}">
-            <span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
+        const info = PASS_INFO[p], head = this.layersOf(p)[0], joined = head !== p, rec = on.includes(head), eye = this.preview === p;
+        const na = head === "viewmodel" && this.mode !== "pov", below = LAYERS[LAYERS.indexOf(p as never) - 1];
+        // between two layers: join this one into the pass under it, or split it off into its own file
+        const link = below ? `<button class="link${joined ? " on" : ""}" data-join="${p}" title="${joined ? `In the ${this.passLabel(head)} file · click to split it off` : `Own file · click to join it into ${this.passLabel(below)}`}">${LINK}</button>` : "";
+        const what = this.layersOf(p).length > 1 ? `${this.passLabel(head)} in one file` : info.note(alpha);
+        return `<div class="pass${rec ? " rec" : ""}${na ? " na" : ""}${joined ? " joined" : ""}" ${na ? "" : `data-pass="${head}"`} title="${na ? "First person (POV) only" : `${what} · ${rec ? "recorded, click to leave it out" : "click to record it"}`}">
+            ${link}<span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
             <span class="nm"><b>${info.label}</b></span>
-            <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye && p !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
+            <button class="eye${eye ? " on" : ""}" ${na || joined ? "disabled" : `data-eye="${p}"`} title="${eye && p !== "default" ? "Back to the default view" : "Preview in the viewport"} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
           + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
       };
       body.innerHTML = `${head("Output")}
@@ -1012,7 +1050,7 @@ export class Theater {
         <div class="hint">Click a pass to record it. The eye or 1 – ${PASSES.length} shows it.</div>`;
       foot.innerHTML = `<div class="sect" style="margin-top:0">Range<span class="hint">${fmt(this.inPt)} – ${fmt(this.outPt)} · ${frames} frames</span></div>
         <div class="row">${btn("setIn", "Set in (B)")}${btn("setOut", "Set out (N)")}${btn("pathRange", "Campath")}</div>
-        ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${p}`}.mov</i>`).join("")}</span></div>` : ""}
+        ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${this.layersOf(p).join("-")}`}.mov</i>`).join("")}</span></div>` : ""}
         <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `● Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
     } else {
       const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
@@ -1142,7 +1180,7 @@ export class Theater {
     const cam = this.host.camera;
     const dof: PassFrame["dof"] = this.dof.mode ? (color, depth, target, matte) => this.post?.blur(color, depth, cam, this.dofParams(0), target, matte) : null;
     // the edit outline writes depth: it would show in the depth and normals
-    return { scene: this.host.game.scene, camera: cam, players: this.players(), viewmodel: cam.children, editor: [this.pathViz, ...this.outline], depthRange: this.renderOpts.depthRange, alpha: this.alphaFormat(), dof };
+    return { scene: this.host.game.scene, camera: cam, players: this.players(), viewmodel: cam.children, editor: [this.pathViz, ...this.outline], depthRange: this.renderOpts.depthRange, alpha: this.alphaFormat(), joined: this.renderOpts.joined, dof };
   }
 
   /** the ProRes 4444 profiles carry an alpha plane */

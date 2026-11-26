@@ -3,10 +3,18 @@ import { QUAD_VS, canvasTarget } from "./post";
 import { withHidden } from "../render/onTop";
 import { FX_LAYER } from "../render/layers";
 
-export const PASSES = ["default", "world", "players", "viewmodel", "effects", "depth", "normals"] as const;
+export const PASSES = ["default", "world", "players", "effects", "viewmodel", "depth", "normals"] as const;
 export type PassName = (typeof PASSES)[number];
-// passes with an alpha channel where the format keeps one (players and gun: coverage; effects: what smoke covers)
-export const ALPHA_PASSES: readonly PassName[] = ["players", "viewmodel", "effects"];
+/** the frame's layers, bottom to top: each pass of them is a run of these, composited in this order */
+export const LAYERS = ["world", "players", "effects", "viewmodel"] as const;
+export type Layer = (typeof LAYERS)[number];
+
+/** [RECRIADO] the layer passes: `joined` layers go into the pass of the layer under them; a pass is named by its first */
+export function layerPasses(joined: readonly PassName[]): Layer[][] {
+  const out: Layer[][] = [];
+  for (const l of LAYERS) if (out.length && joined.includes(l)) out[out.length - 1].push(l); else out.push([l]);
+  return out;
+}
 
 /** one simulated frame, split by what each pass keeps */
 export interface PassFrame {
@@ -20,6 +28,8 @@ export interface PassFrame {
   depthRange: number;
   /** the output format keeps alpha (ProRes 4444): mattes go there instead of onto green */
   alpha: boolean;
+  /** the layers drawn into the pass under them (layerPasses) */
+  joined: readonly PassName[];
   /** the default pass's depth of field (post.ts Post.blur); null = off. Never on depth / normals: they are data */
   dof: ((color: THREE.Texture, depth: THREE.Texture, target: THREE.WebGLRenderTarget, matte: Matte) => void) | null;
 }
@@ -118,6 +128,10 @@ export class Passes {
   private readonly outMat = quadMat(OUT_FS, { t: { value: null }, gain: { value: 1 }, key: { value: 2 }, straight: { value: 0 } });
   private readonly depthMat = quadMat(DEPTH_FS, { ...depthUniforms(), range: { value: 50 }, pack: { value: 0 }, size: { value: new THREE.Vector2() } });
   private readonly normalMat = quadMat(NORMAL_FS, { ...depthUniforms(), projInv: { value: new THREE.Matrix4() }, texel: { value: new THREE.Vector2() } });
+  // the gun over a pass below it, both premultiplied
+  private readonly overMat = quadMat("uniform sampler2D t; varying vec2 vUv; void main() { gl_FragColor = texture2D(t, vUv); }", { t: { value: null } }, {
+    blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.OneMinusSrcAlphaFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneMinusSrcAlphaFactor,
+  });
   // alpha = 1 where the stencil says a kept object drew, the colour left as it is
   private readonly matteMat = quadMat("void main() { gl_FragColor = vec4(1.0); }", {}, {
     blending: THREE.CustomBlending, blendSrc: THREE.ZeroFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor,
@@ -188,32 +202,56 @@ export class Passes {
       drawDefault();
       if (has("default")) image("default", this.def.texture, 0);
     }
-    const world = has("world"), players = has("players"), effects = has("effects"), depth = has("depth"), normals = has("normals");
+    const depth = has("depth"), normals = has("normals");
+    // the layer passes asked for, each drawn bottom up into geo over the depth of the layers under it
+    const groups = layerPasses(f.joined).filter((g) => has(g[0])), of = (l: Layer) => groups.find((g) => g.includes(l));
+    const first = (l: Layer) => of(l)?.[0] === l;
+    // without alpha the effects alone go over black (their light adds, a key would not); with the players or gun, on green
+    const matteOf = (g: Layer[]): Matte => (g[0] === "world" || (g.length === 1 && g[0] === "effects" && !f.alpha) ? 0 : f.alpha && g.includes("effects") ? 2 : 1);
+    // a pass done at its top layer: the depth of field, then what sits over it sharp, as in the default pass (flash, gun)
+    const end = (l: Layer) => {
+      const g = of(l);
+      if (!g || g[g.length - 1] !== l) return;
+      const matte = matteOf(g);
+      if (g[0] === "viewmodel") { image("viewmodel", this.vm.texture, matte); return; }
+      const top = f.dof ? this.soft : this.geo;
+      soft(this.geo.texture, matte);
+      if (g.includes("effects")) {
+        // the first-person flash, behind the gun
+        r.setRenderTarget(top);
+        r.clearDepth();
+        camera.layers.set(0);
+        this.depthOnly(() => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
+        camera.layers.set(FX_LAYER);
+        for (const o of f.viewmodel) if (o.visible) r.render(o, camera);
+      }
+      if (l === "viewmodel") { this.overMat.uniforms.t.value = this.vm.texture; this.quad.material = this.overMat; r.setRenderTarget(top); r.render(this.quad, this.cam); }
+      image(g[0], top.texture, matte);
+    };
     const mask = camera.layers.mask, bg = scene.background, auto = r.autoClear, alpha = r.getClearAlpha();
     r.getClearColor(this.clear);
     r.autoClear = false;
     let restoreFx = () => {};
     try {
-      camera.layers.set(0); // the effects have their own pass
-      if (world || players || effects || depth || normals) {
+      camera.layers.set(0); // the effects are their own layer
+      if (of("viewmodel") || depth || normals) {
+        // the gun alone with its own depth, so in depth / normals it stays on top in walls
+        r.setRenderTarget(this.vm);
+        clear();
+        this.matte(!!of("viewmodel"), () => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
+      }
+      if (depth || normals || groups.some((g) => g[0] !== "viewmodel")) {
         r.setRenderTarget(this.geo);
         clear();
         withHidden([...f.editor, ...f.viewmodel, ...f.players], () => r.render(scene, camera));
-        if (world) image("world", soft(this.geo.texture, 0), 0);
-      }
-      if (players || effects || depth || normals) {
-        // the players over the world's depth, none of its colour: walls still hide them
-        r.setRenderTarget(this.geo);
-        clear(true, false, true);
-        this.matte(players, () => { for (const p of f.players) r.render(p, camera); });
-        if (players) image("players", soft(this.geo.texture, 1), 1);
-      }
-      if (has("viewmodel") || depth || normals) {
-        // the gun alone with its own depth, so in depth / normals it stays on top in walls; sharp, as in the default pass
-        r.setRenderTarget(this.vm);
-        clear();
-        this.matte(has("viewmodel"), () => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
-        if (has("viewmodel")) image("viewmodel", this.vm.texture, 1);
+        end("world");
+        if (of("players") || of("effects") || depth || normals) {
+          // the players over the world's depth: walls still hide them
+          r.setRenderTarget(this.geo);
+          if (first("players")) clear(true, false, true);
+          this.matte(first("players"), () => { for (const p of f.players) r.render(p, camera); });
+          end("players");
+        }
       }
       for (const [pass, on, mat] of [["depth", depth, this.depthMat], ["normals", normals, this.normalMat]] as const) {
         if (!on) continue;
@@ -224,26 +262,18 @@ export class Passes {
         if (read) { if (pass === "depth") u.pack.value = 1; emit(pass, mat, pass === "depth" ? this.half : this.out); }
         if (pass === monitor) { if (pass === "depth") u.pack.value = 0; emit(null, mat, null); }
       }
-      if (effects) {
-        // over black, behind the world and the players (their depth is still in geo); a colour background would clear it
+      const fx = of("effects");
+      if (fx) {
+        // behind the world and the players (their depth is still in geo); a colour background would clear it
         r.setRenderTarget(this.geo);
-        clear(true, false, false);
+        if (first("effects")) clear(true, false, false);
         scene.background = null;
         camera.layers.set(FX_LAYER);
-        const matte: Matte = f.alpha ? 2 : 0;
-        if (matte) restoreFx = fxCoverage(scene);
+        if (matteOf(fx)) restoreFx = fxCoverage(scene);
         withHidden([...f.editor, ...f.viewmodel], () => r.render(scene, camera));
-        const fx = f.dof ? this.soft : this.geo;
-        soft(this.geo.texture, matte);
-        // the first-person flash: behind the gun, over everything else and sharp, as the default pass draws it
-        r.setRenderTarget(fx);
-        r.clearDepth();
-        camera.layers.set(0);
-        this.depthOnly(() => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
-        camera.layers.set(FX_LAYER);
-        for (const o of f.viewmodel) if (o.visible) r.render(o, camera);
-        image("effects", fx.texture, matte);
+        end("effects");
       }
+      end("viewmodel");
     } finally {
       restoreFx();
       camera.layers.mask = mask;
@@ -276,7 +306,7 @@ export class Passes {
     for (const t of [this.def, this.geo, this.vm, this.soft]) { t.depthTexture?.dispose(); t.dispose(); }
     this.out.dispose();
     this.half.dispose();
-    for (const m of [this.outMat, this.depthMat, this.normalMat, this.matteMat]) m.dispose();
+    for (const m of [this.outMat, this.depthMat, this.normalMat, this.matteMat, this.overMat]) m.dispose();
     this.quad.geometry.dispose();
   }
 }

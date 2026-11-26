@@ -142,7 +142,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       const o = JSON.parse((await body(req)).toString("utf8")) as { w: number; h: number; fps: number; codec: string; name: string; passes: Pass[] };
       const codec = CODECS[o.codec];
       const ok = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
-      const passOk = (p: Pass) => /^[a-z]{1,20}$/.test(p.name) && (p.input === "rgba" || p.input === "gray16le") && typeof p.alpha === "boolean";
+      const passOk = (p: Pass) => /^[a-z]+(-[a-z]+){0,3}$/.test(p.name) && p.name.length <= 40 && (p.input === "rgba" || p.input === "gray16le") && typeof p.alpha === "boolean";
       if (!codec || !ok(o.w, 16, 7680) || !ok(o.h, 16, 4320) || o.w % 2 || o.h % 2 || !ok(o.fps, 1, 1000) || !SAFE.test(o.name)
         || !Array.isArray(o.passes) || !ok(o.passes.length, 1, 8) || !o.passes.every(passOk) || new Set(o.passes.map((p) => p.name)).size !== o.passes.length) return send(res, 400, { error: "bad render settings" });
       if (spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).error) return send(res, 503, { error: "ffmpeg not found" });
