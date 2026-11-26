@@ -26,6 +26,8 @@ export interface DemoHeader {
   hats?: Record<string, { head: number; beret: number }>;
   /** [RECRIADO] theater edits: display name by actor id, over the recorded one (kill feed, HUD, name tags) */
   names?: Record<string, string>;
+  /** [RECRIADO] theater edits: by actor id, recorded weapon (item id, or name where none was recorded) -> the item id shown instead */
+  weapons?: Record<string, Record<string, number>>;
 }
 export interface Demo extends DemoHeader { name: string; dur: number; recs: DemoRecord[] }
 

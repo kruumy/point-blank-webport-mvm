@@ -15,6 +15,9 @@ import { HudCapture } from "./hudCapture";
 import { renderOnTop } from "../render/onTop";
 import { charaChoices } from "../game/charModel";
 import { actorEquip, hatChoices } from "../game/charEquip";
+import { WeaponDb } from "../weapons/data";
+import { loadWeaponModelIndex } from "../weapons/worldModel";
+import { isItemShown, loadWeaponSupport } from "../lobby/state/weaponSupport";
 import { brightnessFactor, crosshairIndex } from "../gameplay/settings";
 import { LookStage, deleteLook, listLooks, listSkies, readLook, writeLook, type Look } from "./looks";
 
@@ -39,7 +42,40 @@ const TEAM_CSS = ["#e0503f", "#4a8ef0", "#9a9a9a"];
 const STEP_DELAY = 300, STEP_RATE = 30; // a held Ctrl + arrow: ms before it repeats, then ticks per second
 const ZOOMS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const ZOOM_KEY = "mvm.uiZoom";
-const demoEdits = (d: Demo) => JSON.stringify({ deaths: d.deaths, charas: d.charas, hats: d.hats, names: d.names });
+const demoEdits = (d: Demo) => JSON.stringify({ deaths: d.deaths, charas: d.charas, hats: d.hats, names: d.names, weapons: d.weapons });
+
+type WeaponChoices = { list: { itemId: number; label: string; group: string }[]; names: Map<number, string> };
+let weaponChoicesP: Promise<WeaponChoices> | null = null;
+/** every weapon the client shows, primary first, for the actor editor's weapon swap; loaded once */
+function weaponChoices(): Promise<WeaponChoices> {
+  return (weaponChoicesP ??= loadWeaponChoices().catch((e) => { console.warn("[theater] weapon list", e); throw e; }));
+}
+async function loadWeaponChoices(): Promise<WeaponChoices> {
+  const db = new WeaponDb();
+  const [models] = await Promise.all([loadWeaponModelIndex(), db.load("/assets/cross/weapons/weapons.json"), loadWeaponSupport()]);
+  const looks = new Map<string, Set<string>>(), out: { itemId: number; label: string; group: string; model: string }[] = [];
+  for (const w of db.all().filter((w) => isItemShown(w.id)).sort((a, b) => a.slot - b.slot || a.name.localeCompare(b.name) || a.id - b.id)) {
+    const model = models.find((m) => m.itemIds?.includes(w.id))?.id ?? "", seen = looks.get(w.name) ?? new Set<string>();
+    looks.set(w.name, seen);
+    if (seen.has(model)) continue; // a timed / event copy of the same gun: same model, clips and sounds
+    seen.add(model);
+    out.push({ itemId: w.id, label: w.name, group: w.slotName, model });
+  }
+  // a name left with several looks (KrissSuperV, its _EV and _D) says which model each is
+  const list = out.map((o) => (looks.get(o.label)!.size > 1 && o.model ? { ...o, label: `${o.label} (${o.model})` } : o));
+  return { list, names: new Map(db.all().map((w) => [w.id, w.name])) };
+}
+
+const ICON = {
+  wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  focus: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>',
+  reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+};
+const icon = (k: keyof typeof ICON, size = 14) =>
+  `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+const TEAM = [{ name: "Red", color: "#d33a2c" }, { name: "Blue", color: "#2c6fd3" }];
 /** depth of field (post.ts), kept apart from the looks: mode 0 off, 1 manual distance, 2 under the mouse, 3 a player;
  * blur in % of the image height; near / far scale it in front of / behind the focus; speed = mouse focus easing (1/s) */
 const DOF_DEFAULT = { mode: 0, focus: 10, speed: 5, aperture: 1, maxBlur: 1, near: 1, far: 1 };
@@ -162,7 +198,26 @@ const CSS = `
 #mvm .keys td{padding:1px 6px}#mvm .keys td:first-child{color:#f0a830;font-family:Consolas,monospace;white-space:nowrap}
 #mvm .mvm-toast{position:absolute;left:50%;top:40%;transform:translateX(-50%);padding:10px 16px;font-size:14px}
 #mvm .hint{color:#888}
-#mvm .edit{position:absolute;width:240px;padding:8px;display:flex;flex-direction:column;gap:6px}#mvm .edit select{width:100%}
+#mvm .edit{position:absolute;width:264px;flex-direction:column;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.5)}
+#mvm .edit select,#mvm .edit input{width:100%;min-width:0;box-sizing:border-box}
+#mvm .ed-head{display:flex;align-items:center;gap:2px;padding:8px 6px 8px 10px;border-left:3px solid var(--team);cursor:move;user-select:none;background:linear-gradient(90deg,color-mix(in srgb,var(--team) 24%,transparent),transparent 75%)}
+#mvm .ed-id{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+#mvm .ed-id b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#mvm .ed-id span{font-size:11px;color:#8b9099}
+#mvm .ed-id i{font-style:normal;color:#f0a830}
+#mvm .ic{flex:none;width:26px;height:26px;padding:0;display:grid;place-items:center;background:none;border-color:transparent;color:#9aa0a8}
+#mvm .ic:hover{color:#fff}#mvm .ic.on{color:#f0a830;background:#3d3220;border-color:#c47f12}
+#mvm .ed-sec{padding:7px 10px 9px;border-top:1px solid #2a2d33;display:flex;flex-direction:column;gap:5px}
+#mvm .ed-sec h6{margin:0;font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#6c717a}
+#mvm .fld{display:grid;grid-template-columns:78px minmax(0,1fr);align-items:center;gap:6px}
+#mvm .fld>span{color:#9aa0a8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mvm .fld.ed>span{color:#f0a830}#mvm .fld.ed>span::before{content:"";display:inline-block;width:5px;height:5px;margin-right:4px;border-radius:50%;background:#f0a830;vertical-align:middle}
+#mvm .fld.ed select,#mvm .fld.ed input{border-color:#8a5c12}
+#mvm .ed-foot{padding:5px 6px 5px 10px;border-top:1px solid #2a2d33;display:flex;align-items:center;gap:6px;font-size:11px;color:#8b9099}
+#mvm .ed-foot span{flex:1}#mvm .ed-foot button{display:flex;align-items:center;gap:4px;padding:2px 8px}
+#mvm .item .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mvm .item .wr{flex:none;width:22px;height:20px;padding:0;display:grid;place-items:center;background:none;border-color:transparent;color:#6c717a;opacity:.55}
+#mvm .item:hover .wr{opacity:1}#mvm .item .wr:hover{color:#fff;background:#3a404a}
+#mvm .item .wr.has{color:#f0a830;opacity:1}#mvm .item.editing .wr{color:#111;background:#c47f12;opacity:1}
 #mvm .sect{display:flex;gap:6px;align-items:center;margin-top:6px;color:#f0a830}#mvm .sect .hint{flex:1}
 #mvm .sect button{padding:0 6px;font-size:11px}
 #mvm .passes{display:flex;flex-direction:column;border:1px solid #30333a;border-radius:4px;overflow:hidden;background:#15171b}
@@ -190,7 +245,6 @@ const CSS = `
 #mvm .go[disabled]{opacity:.45;pointer-events:none}
 #mvm .prev{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);padding:4px 6px 4px 10px;display:flex;gap:8px;align-items:center;border-color:#c47f12}
 #mvm .prev b{color:#f0a830}#mvm .prev button{padding:0 6px}
-body.mvm-clean #app>*:not(canvas):not(#mvm),body.mvm-clean>:not(#app){visibility:hidden}
 `;
 
 /** [RECRIADO] Movie theater: demo playback with a rewindable timeline, POV / third-person / free / dolly cameras, keyframed
@@ -254,6 +308,8 @@ export class Theater {
   private outlineRoot: THREE.Object3D | null = null;
   private charas: { itemId: number; label: string }[] = [];
   private hats: { itemId: number; slot: "head" | "beret"; label: string }[] = [];
+  private weaponList: { itemId: number; label: string; group: string }[] = [];
+  private weaponNames = new Map<number, string>();
   private dirty = false;
   private readonly looks: LookStage;
   /** saved looks / maps with a sky; null = not fetched yet */
@@ -284,7 +340,7 @@ export class Theater {
     this.root.innerHTML = `<div class="mvm-mask"></div>
       <div class="p top"><span class="zoom" title="UI size"><button data-a="zoomOut">−</button><button data-a="zoomReset" title="Back to 100%"></button><button data-a="zoomIn">+</button></span>
         <b>${esc(demo.name)}</b><span class="hint">${esc(demo.map)} · ${fmt(demo.dur)}</span>
-        <button data-a="clean">Hide HUD (G)</button><button data-a="exit">Exit</button>
+        <button data-a="exit">Exit</button>
         <button data-a="save" class="on" style="display:none">Save changes</button><button data-a="discard" style="display:none">Discard changes</button></div>
       <div class="p edit" style="display:none"></div>
       <div class="p prev" style="display:none"></div>
@@ -832,11 +888,20 @@ export class Theater {
       if (node >= 0) { this.sel = node; this.drawSide(); return; }
       const id = this.actorAt(e.clientX, e.clientY);
       if (!id && this.sel >= 0) { this.sel = -1; this.drawSide(); }
-      this.openEdit(id, e.clientX, e.clientY);
+      this.openEdit(id, e.clientX + 8, e.clientY + 8);
     }, sig);
 
+    this.root.addEventListener("pointerdown", (e) => {
+      const t = e.target as HTMLElement, el = t.closest<HTMLElement>(".edit");
+      if (!el || !t.closest(".ed-head") || t.closest("button")) return;
+      const z = this.uiZoom, dx = e.clientX - el.offsetLeft * z, dy = e.clientY - el.offsetTop * z;
+      const move = (m: PointerEvent) => this.placeEdit(m.clientX - dx, m.clientY - dy);
+      el.setPointerCapture(e.pointerId);
+      el.addEventListener("pointermove", move, sig);
+      el.addEventListener("lostpointercapture", () => el.removeEventListener("pointermove", move), { once: true, ...sig });
+    }, sig);
     this.root.addEventListener("click", (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-id],[data-key],[data-del],[data-eye],[data-join],[data-pass]");
+      const b = (e.target as HTMLElement).closest<HTMLElement>("[data-a],[data-tab],[data-edit],[data-id],[data-key],[data-del],[data-eye],[data-join],[data-pass]");
       if (!b) return;
       if (b.dataset.eye) { this.setPreview(b.dataset.eye as PassName); return; }
       if (b.dataset.join) {
@@ -855,6 +920,12 @@ export class Theater {
         return;
       }
       if (b.dataset.tab) { this.tab = b.dataset.tab; this.drawSide(); return; }
+      if (b.dataset.edit) {
+        // beside the side panel, level with its row
+        const side = this.root.querySelector(".side")!.getBoundingClientRect(), row = b.getBoundingClientRect();
+        this.openEdit(this.editId === b.dataset.edit ? null : b.dataset.edit, side.left - 8 - 264 * this.uiZoom, row.top - 8);
+        return;
+      }
       if (b.dataset.id) { this.setMode(this.mode === "third" ? "third" : "pov", b.dataset.id); return; }
       if (b.dataset.key) { const k = this.path.keys[+b.dataset.key]; this.sel = +b.dataset.key; if (k) { this.seek(k.t); this.free = { ...k, pos: [...k.pos] as CamKey["pos"] }; } this.drawSide(); return; }
       if (b.dataset.del) { this.removeKey(+b.dataset.del); return; }
@@ -888,6 +959,11 @@ export class Theater {
         const [slot, id] = t.value.split(":");
         this.net.setHat(this.editId, t.value === "" ? null : { head: slot === "head" ? +id : 0, beret: slot === "beret" ? +id : 0 });
         this.setDirty(true);
+      }
+      else if (t.name === "weapon" && this.editId && t.dataset.from) {
+        this.net.setWeapon(this.editId, t.dataset.from, +t.value || null);
+        this.setDirty(true);
+        this.seek(this.time); // the seek replays each actor's last state, now holding the new weapon
       }
       else if (t.name === "deathclip" && t.dataset.key) {
         this.net.setDeathClip(t.dataset.key, t.value || null);
@@ -947,7 +1023,6 @@ export class Theater {
         if (this.sel >= 0) { this.toast(`Node ${this.sel + 1} removed`, 800); this.removeKey(this.sel); }
         break;
       case "KeyH": this.root.classList.toggle("off"); break;
-      case "KeyG": this.action("clean"); break;
       case "Escape": this.cancelRender = true; break;
     }
   }
@@ -975,13 +1050,25 @@ export class Theater {
       case "passesDefault": Object.assign(this.renderOpts, { passes: ["world"], joined: ["players", "effects", "viewmodel"] }); this.drawSide(); break;
       case "passesAll": this.renderOpts.passes = [...PASSES]; this.drawSide(); break;
       case "render": void this.renderMovie(); break;
-      case "clean": document.body.classList.toggle("mvm-clean"); break;
       case "save": void this.save(); break;
       case "discard": if (window.confirm("Discard your unsaved demo changes?")) this.discard(); break;
       case "zoomOut": this.setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(this.uiZoom) - 1)]); break;
       case "zoomIn": this.setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(this.uiZoom) + 1)]); break;
       case "zoomReset": this.setZoom(1); break;
       case "closeEdit": this.openEdit(null); break;
+      case "watchActor": if (this.editId) this.setMode(this.mode === "third" ? "third" : "pov", this.editId); break;
+      case "resetActor": {
+        const id = this.editId, d = this.net.demo;
+        if (!id) break;
+        if (d.names?.[id] !== undefined) this.net.setName(id, null);
+        if (d.charas?.[id] !== undefined) this.net.setChara(id, null);
+        if (d.hats?.[id] !== undefined) this.net.setHat(id, null);
+        for (const k of Object.keys(d.weapons?.[id] ?? {})) this.net.setWeapon(id, k, null);
+        for (const k of Object.keys(d.deaths ?? {})) if (k.startsWith(`${id}@`)) this.net.setDeathClip(k, null);
+        this.setDirty(true);
+        this.seek(this.time);
+        break;
+      }
       case "focusActor":
         this.dofActor = this.editId;
         this.dof.mode = 3;
@@ -1200,7 +1287,7 @@ export class Theater {
       body.innerHTML = `<div class="row">${btn("pov", "POV", m === "pov")}${btn("third", "Third", m === "third")}${btn("free", "Free", m === "free")}${btn("dolly", "Dolly", m === "dolly")}</div>
         <div class="row"><label>POV FOV</label><input name="povfov" type="number" min="5" max="140" step="1" placeholder="game" value="${this.povFov ?? ""}" style="width:60px"></div>
         <div class="hint">Players (click to watch, [ / ] to cycle)</div>
-        <div class="list">${this.net.roster().map((a) => `<div class="item ${a.id === cur ? "on" : ""}" data-id="${esc(a.id)}"><span class="dot" style="background:${a.team ? "#2c6fd3" : "#d33a2c"}"></span>${esc(a.name)}</div>`).join("")}</div>
+        <div class="list">${this.net.roster().map((a) => { const n = this.editsOf(a.id); return `<div class="item ${a.id === cur ? "on" : ""} ${a.id === this.editId ? "editing" : ""}" data-id="${esc(a.id)}"><span class="dot" style="background:${TEAM[a.team ? 1 : 0].color}"></span><span class="who">${esc(a.name)}</span><button class="wr ${n ? "has" : ""}" data-edit="${esc(a.id)}" title="Edit ${esc(a.name)}${n ? ` (${n} change${n > 1 ? "s" : ""})` : ""}">${icon("wrench", 13)}</button></div>`; }).join("")}</div>
         <div class="hint">Free camera: hold right mouse to look, WASD / Q E to move, wheel = FOV, Alt + wheel = roll.</div>`;
     } else if (this.tab === "campath") {
       const k = this.path.keys[this.sel];
@@ -1276,7 +1363,7 @@ export class Theater {
         ["Click node", "Select it; drag its handles to edit"], ["R", "Move / rotate handles"],
         ["Timeline wheel", "Zoom (Shift: pan; middle drag pans)"], ["Timeline Shift + drag", "Set the in / out range (or drag its brackets)"],
         ["Kill marker", "Click to jump to it; hover for who and how"],
-        [`1 – ${PASSES.length}`, "Preview a render pass (again: back to the default view)"], ["G", "Hide game HUD"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
+        [`1 – ${PASSES.length}`, "Preview a render pass (again: back to the default view)"], ["H", "Hide this UI"], ["Esc", "Cancel render"]];
       body.innerHTML = `<table class="keys">${rows.map(([k, t]) => `<tr><td>${k}</td><td>${t}</td></tr>`).join("")}</table>`;
     }
     body.scrollTop = scroll;
@@ -1302,11 +1389,28 @@ export class Theater {
     this.setOutline(id);
     const el = this.root.querySelector<HTMLElement>(".edit")!;
     el.style.display = id ? "flex" : "none";
+    if (this.tab === "camera") this.drawSide(); // the list marks whose editor is open
     if (!id) return;
-    const z = this.uiZoom; // its left / top are zoomed with it
-    el.style.left = `${Math.min(x + 8, window.innerWidth - 250 * z) / z}px`;
-    el.style.top = `${Math.min(y + 8, window.innerHeight - 160 * z) / z}px`;
     this.drawEdit();
+    this.placeEdit(x, y);
+  }
+
+  /** the editor's top-left at screen x, y, kept inside the window (its left / top are zoomed with it) */
+  private placeEdit(x: number, y: number): void {
+    const el = this.root.querySelector<HTMLElement>(".edit")!, z = this.uiZoom;
+    el.style.left = `${Math.max(0, Math.min(x, window.innerWidth - el.offsetWidth * z)) / z}px`;
+    el.style.top = `${Math.max(0, Math.min(y, window.innerHeight - el.offsetHeight * z)) / z}px`;
+  }
+
+  private watching(id: string): boolean {
+    return (this.mode === "pov" || this.mode === "third") && this.host.game.observedId === id;
+  }
+
+  /** theater edits on that actor: name, model, hat, each weapon swap and each death clip */
+  private editsOf(id: string): number {
+    const d = this.net.demo;
+    return [d.names, d.charas, d.hats].filter((m) => m?.[id] !== undefined).length + Object.keys(d.weapons?.[id] ?? {}).length
+      + Object.keys(d.deaths ?? {}).filter((k) => k.startsWith(`${id}@`)).length;
   }
 
   private drawEdit(): void {
@@ -1317,30 +1421,52 @@ export class Theater {
     const death = this.net.deathAt(id, this.time), ch = this.net.charaOf(id);
     if ((a?.charVisual.root ?? null) !== this.outlineRoot) this.setOutline(id); // the model was swapped in
     // redrawn only when what it shows changes: a rebuild would close an open dropdown
-    const hat = this.net.hatOf(id), worn = actorEquip(id);
-    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}|${name}`;
+    const hat = this.net.hatOf(id), worn = actorEquip(id), wEd = this.net.demo.weapons?.[id];
+    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}|${name}|${JSON.stringify(wEd ?? {})}|${this.weaponList.length}|${this.dofActor === id && this.dof.mode === 3}|${this.watching(id)}`;
     if (sig === this.editSig) return;
     this.editSig = sig;
     if (!this.charas.length) void charaChoices().then((c) => { this.charas = c; });
     if (!this.hats.length) void hatChoices().then((h) => { this.hats = h; });
+    if (!this.weaponList.length) void weaponChoices().then((w) => { this.weaponList = w.list; this.weaponNames = w.names; }).catch(() => {});
     const rec = ch.edited ? undefined : ch.chara;
-    const model = `<div class="hint">Model</div><select name="chara"><option value="">Recorded${rec ? ` (${esc(this.charas.find((c) => c.itemId === rec)?.label ?? String(rec))})` : ""}</option>
+    const fld = (label: string, edited: boolean, control: string) => `<label class="fld ${edited ? "ed" : ""}"><span title="${esc(label)}">${esc(label)}</span>${control}</label>`;
+    const model = `<select name="chara"><option value="">Recorded${rec ? ` (${esc(this.charas.find((c) => c.itemId === rec)?.label ?? String(rec))})` : ""}</option>
       ${this.charas.map((c) => `<option value="${c.itemId}" ${ch.edited && c.itemId === ch.chara ? "selected" : ""}>${esc(c.label)}</option>`).join("")}</select>`;
     const recHat = hat ? undefined : this.hats.find((h) => h.itemId === (worn?.head || worn?.beret));
     const pickedHat = hat && (hat.head || hat.beret);
-    const hats = `<div class="hint">Hat</div><select name="hat"><option value="">Recorded${recHat ? ` (${esc(recHat.label)})` : ""}</option>
+    const hats = `<select name="hat"><option value="">Recorded${recHat ? ` (${esc(recHat.label)})` : ""}</option>
       <option value="0" ${hat && !pickedHat ? "selected" : ""}>No item (default helmet)</option>
       ${this.hats.map((h) => `<option value="${h.slot}:${h.itemId}" ${pickedHat === h.itemId ? "selected" : ""}>${esc(h.label)}</option>`).join("")}</select>`;
-    let body: string;
-    if (!death || !a || a.alive || !anim) body = `<div class="hint">Not in a death animation now. Pause on a death to change it.</div>`;
+    const groups = [...new Set(this.weaponList.map((w) => w.group))];
+    // [RECRIADO] a dirty swap: the new gun plays the recorded fire / reload timing, and the kill feed keeps the recorded gun
+    const guns = this.net.weaponsOf(id).map((h) => {
+      const to = wEd?.[h.key], listed = to === undefined || this.weaponList.some((w) => w.itemId === to);
+      // a saved pick the list folded into its twin still shows, so "Recorded" can undo it
+      const kept = listed ? "" : `<option value="${to}" selected>${esc(this.weaponNames.get(to!) ?? String(to))}</option>`;
+      return fld(/^\d+$/.test(h.key) ? this.weaponNames.get(+h.key) ?? h.name : h.name, to !== undefined, `<select name="weapon" data-from="${esc(h.key)}"><option value="">Recorded</option>${kept}
+      ${groups.map((g) => `<optgroup label="${esc(g)}">${this.weaponList.filter((w) => w.group === g).map((w) => `<option value="${w.itemId}" ${wEd?.[h.key] === w.itemId ? "selected" : ""}>${esc(w.label)}</option>`).join("")}</optgroup>`).join("")}</select>`);
+    }).join("");
+    let dies: string;
+    if (!death || !a || a.alive || !anim) dies = `<div class="hint">Pause on one of this player's deaths to pick its animation.</div>`;
     else {
       const clips = anim.deathClips(), now = anim.deathClip;
-      body = `<div class="hint">Death animation${now ? ` (playing ${esc(now)})` : ""}</div>
-        <select name="deathclip" data-key="${esc(death.key)}"><option value="">Recorded</option>
-        ${clips.map((c) => `<option value="${esc(c)}" ${c === death.clip ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`;
+      dies = fld(now ? `Playing ${now}` : "Clip", !!death.clip, `<select name="deathclip" data-key="${esc(death.key)}"><option value="">Recorded</option>
+        ${clips.map((c) => `<option value="${esc(c)}" ${c === death.clip ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`);
     }
-    const rename = `<div class="hint">Name</div><input name="pname" maxlength="32" placeholder="${esc(nm.recorded)}" value="${name === nm.recorded ? "" : esc(name)}" title="Shown in the kill feed, HUD and name tags; empty = the recorded name">`;
-    el.innerHTML = `<div class="row"><b style="flex:1">${esc(name)}</b><button data-a="focusActor" title="Depth of field: keep this player in focus">Focus</button><button data-a="closeEdit">✕</button></div>${rename}${model}${hats}${body}`;
+    const rename = `<input name="pname" maxlength="32" placeholder="${esc(nm.recorded)}" value="${name === nm.recorded ? "" : esc(name)}" title="Shown in the kill feed, HUD and name tags; empty = the recorded name">`;
+    const team = TEAM[this.net.roster().find((r) => r.id === id)?.team ? 1 : 0], n = this.editsOf(id);
+    const sec = (title: string, html: string) => `<div class="ed-sec"><h6>${title}</h6>${html}</div>`;
+    el.style.setProperty("--team", team.color);
+    el.innerHTML = `<div class="ed-head" title="Drag to move">
+        <div class="ed-id"><b>${esc(name)}</b><span>${team.name} team · ${a?.alive === false ? "dead" : "alive"}${n ? ` · <i>${n} change${n > 1 ? "s" : ""}</i>` : ""}</span></div>
+        <button class="ic ${this.watching(id) ? "on" : ""}" data-a="watchActor" title="Watch this player">${icon("eye")}</button>
+        <button class="ic ${this.dofActor === id && this.dof.mode === 3 ? "on" : ""}" data-a="focusActor" title="Depth of field: keep this player in focus">${icon("focus")}</button>
+        <button class="ic" data-a="closeEdit" title="Close">${icon("close")}</button></div>
+      ${sec("Identity", fld("Name", name !== nm.recorded, rename))}
+      ${sec("Look", fld("Model", ch.edited, model) + fld("Hat", !!hat, hats))}
+      ${guns ? sec("Loadout", guns) : ""}
+      ${sec("Death", dies)}
+      ${n ? `<div class="ed-foot"><span>Changes apply to the whole demo.</span><button data-a="resetActor" title="Back to everything as recorded">${icon("reset", 12)}Reset</button></div>` : ""}`;
   }
 
   /** outline copies of the selected body's meshes, children of each one (same transform, same skeleton) */
@@ -1530,16 +1656,18 @@ export class Theater {
   private setDirty(v: boolean): void {
     this.dirty = v;
     for (const a of ["save", "discard"]) this.root.querySelector<HTMLElement>(`[data-a="${a}"]`)!.style.display = v ? "" : "none";
+    if (this.tab === "camera") this.drawSide(); // the list's edit markers
   }
 
   /** back to the edits last saved: each one set back through DemoNet, then the seek replays the bodies with them */
   private discard(): void {
-    const s = JSON.parse(this.savedEdits) as Pick<Demo, "deaths" | "charas" | "hats" | "names">, d = this.net.demo;
+    const s = JSON.parse(this.savedEdits) as Pick<Demo, "deaths" | "charas" | "hats" | "names" | "weapons">, d = this.net.demo;
     const keys = (a?: object, b?: object) => new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
     for (const k of keys(d.deaths, s.deaths)) this.net.setDeathClip(k, s.deaths?.[k] ?? null);
     for (const id of keys(d.charas, s.charas)) this.net.setChara(id, s.charas?.[id] ?? null);
     for (const id of keys(d.hats, s.hats)) this.net.setHat(id, s.hats?.[id] ?? null);
     for (const id of keys(d.names, s.names)) this.net.setName(id, s.names?.[id] ?? null);
+    d.weapons = s.weapons; // DemoNet reads the edits live
     this.setDirty(false);
     this.seek(this.time);
     this.drawSide(); // the player list's names
@@ -1592,7 +1720,6 @@ export class Theater {
     this.gizmo.getHelper().traverse((o) => { (o as THREE.Mesh).geometry?.dispose(); ((o as THREE.Mesh).material as THREE.Material | undefined)?.dispose(); });
     disposeViz(this.pathViz);
     for (const m of this.labelMats.values()) { m.map?.dispose(); m.dispose(); }
-    document.body.classList.remove("mvm-clean");
   }
 }
 

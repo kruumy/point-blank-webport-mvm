@@ -86,7 +86,35 @@ export class DemoNet implements NetAdapter {
     // no recorded character = the team default; an actor that had an edit needs it said (0) or its model would never change back
     const c = this.demo.charas?.[s.id] ?? (s.chara === undefined && this.charaTouched.has(s.id) ? 0 : undefined);
     const name = this.demo.names?.[s.id];
-    return c === undefined && name === undefined ? s : { ...s, ...(c === undefined ? {} : { chara: c }), ...(name === undefined ? {} : { name }) };
+    const w = this.demo.weapons?.[s.id]?.[s.weaponId || s.weapon];
+    return c === undefined && name === undefined && !w ? s
+      : { ...s, ...(c === undefined ? {} : { chara: c }), ...(name === undefined ? {} : { name }), ...(w ? { weaponId: w } : {}) };
+  }
+
+  /** [RECRIADO] demo editor: keys by item id, or by name where only that was recorded (bots) */
+  weaponsOf(id: string): { key: string; name: string }[] {
+    let out = this.heldCache.get(id);
+    if (!out) {
+      const seen = new Map<string, { name: string; n: number }>();
+      for (const s of this.tracks.get(id)?.s ?? []) {
+        const key = String(s.weaponId || s.weapon), h = seen.get(key);
+        if (h) h.n++;
+        else if (key) seen.set(key, { name: s.weapon, n: 1 });
+      }
+      // a gun in a tick or two (a respawn's first state) was never really held
+      this.heldCache.set(id, out = [...seen].filter(([, h]) => h.n >= 3).map(([key, h]) => ({ key, name: h.name })));
+    }
+    return out;
+  }
+  private readonly heldCache = new Map<string, { key: string; name: string }[]>();
+
+  /** [RECRIADO] demo editor: `id` shows `to` wherever it held `from` (a weaponsOf key); null = back to the recorded one */
+  setWeapon(id: string, from: string, to: number | null): void {
+    const all = (this.demo.weapons ??= {}), edits = (all[id] ??= {});
+    if (to) edits[from] = to;
+    else delete edits[from];
+    if (!Object.keys(edits).length) delete all[id];
+    if (!Object.keys(all).length) delete this.demo.weapons;
   }
 
   /** [RECRIADO] demo editor: the name the actor shows (an edit's, else the recorded one) and the recorded one */
