@@ -517,10 +517,10 @@ export class CharVisual {
     this.weaponAnim?.play("reload", duration); // LoadMag over ReloadTime, like the upper LoadMagazine (exe 0x611980)
     this.weaponAnimL?.play("reload", duration);
   }
-  change(): void {
-    this.anim?.change();
-    this.weaponAnim?.play("change");
-    this.weaponAnimL?.play("change");
+  change(since = 0): void {
+    this.anim?.change(since);
+    this.weaponAnim?.play("change", undefined, since);
+    this.weaponAnimL?.play("change", undefined, since);
   }
   /** Bomb Mission C4 held plant: the upper Install clip (Mission/C4 Attack, 5 s) until released; the LCD on the C4 types along */
   private plantT = -1;

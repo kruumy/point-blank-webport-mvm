@@ -300,10 +300,14 @@ export class WeaponAnimator {
     return true;
   }
 
-  /** One-shot in real time. `duration` (s) stretches the clip over it (3PV reload over ReloadTime). */
-  play(kind: WeaponAnimKind, duration?: number): boolean {
+  /** One-shot in real time. `duration` (s) stretches the clip over it (3PV reload over ReloadTime); `since` (s) starts it that far in. */
+  play(kind: WeaponAnimKind, duration?: number, since = 0): boolean {
     const s = this.state(kind);
-    return !!s && this.start(kind, duration && duration > 0 ? s.clip.duration / duration : 1, false);
+    if (!s) return false;
+    const speed = duration && duration > 0 ? s.clip.duration / duration : 1;
+    if (since * speed >= s.clip.duration || !this.start(kind, speed, false)) return false;
+    if (since > 0) this.setTime(since * speed);
+    return true;
   }
 
   /** Fire state: real time, or the clip over `cycle` seconds (shotguns, WeaponShotGun 0x624c40). */

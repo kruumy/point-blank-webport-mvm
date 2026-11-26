@@ -799,6 +799,7 @@ export class Viewmodel {
     this.semi = w.fireMode === "semi" || w.fireMode === "bolt" || w.fireMode === "pump";
     this.burst = w.fireMode === "burst";
     this.raising = true;
+    this.raiseSeen = false;
     const cls = armsClassOf(w.family);
     const grenade = w.family === "GRENADE";
     const wantRig = !!this.rig && (!!cls || grenade);
@@ -881,7 +882,9 @@ export class Viewmodel {
     this.reloadingClip = false;
     this.lastReloadT = -1;
     this.autoDraw = -1;
-    this.raising = true;
+    // [RECRIADO] the switch's raise ended while the model loaded (a theater seek's replay; live, a load slower than the raise): no late draw
+    this.raising = !(this.raiseSeen && this.switchT >= 0.999);
+    if (!this.raising) rig.endDriven();
     this.raiseSawLow = false;
     if (!inst) return;
     this.attachMarkers(inst);
@@ -1054,6 +1057,7 @@ export class Viewmodel {
 
   update(dt: number, camera: THREE.Camera, speed: number, grounded: boolean, aiming: boolean): void {
     this.t += dt;
+    if (this.raising && this.switchT < 0.999) this.raiseSeen = true;
     if (this.rigActive && this.rig) this.updateJump(dt, grounded);
     for (let i = 0; i < 2; i++) {
       if (this.bladeBack[i] > 0 && (this.bladeBack[i] -= dt) <= 0) { const w = i ? this.rigWeaponL : this.rigWeapon; if (w) w.visible = true; }
@@ -1231,6 +1235,8 @@ export class Viewmodel {
   private readyPhase = false;
   private autoDraw = -1;
   private raiseSawLow = false;
+  /** the switch's raise ran since setWeapon (the model may still have been loading) */
+  private raiseSeen = false;
   private reloadElapsed = 0;
   private lastThrowT = -1;
 

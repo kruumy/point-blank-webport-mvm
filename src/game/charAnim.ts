@@ -422,29 +422,31 @@ export class CharAnimator {
    * Play an upper one-shot state (Attack, SecondaryAttack, LoadMagazine, LoadBullet, Change, DamageFrontLeftA, ...).
    * `duration` (s) stretches the whole clip over that time (reload = weapon.pef ReloadTime), so it is never cut.
    */
-  playUpper(state: string, duration?: number): boolean {
+  playUpper(state: string, duration?: number, since = 0): boolean {
     if (this.death) return false;
     const T = this.upperTable();
     const s = T[state] ?? this.upperT.stances.AttackIdle?.[state];
     if (!s) return false;
     const c = this.clips.get(s.clip);
     if (!c) return false;
+    // OnActionLoadMagazine 0xa0cd50: scale = i3AIState duration / ReloadTime (LoadBullet: / LoadBulletTime)
+    // the whole clip, not s.dur: some AI durations do not match their clip (DSR-1 ReloadB, XM2010 ReloadC) and the weapon's clip runs whole [INFERIDO]
+    const scale = duration && duration > 0 ? c.duration / duration : 1;
+    const len = c.duration / scale;
+    if (since >= len) return false;
     if (this.oneShot && this.oneShot.track.key !== s.clip) this.oneShot.track.target = 0;
     const tr = this.track(s.clip, false)!;
     tr.layer = "shot";
     tr.action.reset().play();
     tr.action.setLoop(THREE.LoopOnce, 1);
     tr.action.clampWhenFinished = true;
-    // OnActionLoadMagazine 0xa0cd50: scale = i3AIState duration / ReloadTime (LoadBullet: / LoadBulletTime)
-    // the whole clip, not s.dur: some AI durations do not match their clip (DSR-1 ReloadB, XM2010 ReloadC) and the weapon's clip runs whole [INFERIDO]
-    const scale = duration && duration > 0 ? c.duration / duration : 1;
     tr.action.timeScale = scale;
-    const len = c.duration / scale;
+    tr.action.time = since * scale;
     tr.w = s.blend > 0 ? Math.min(tr.w, 0.999) : 1;
     tr.target = 1;
     tr.rate = s.blend > 0 ? 1 / s.blend : Infinity;
-    this.oneShot = { track: tr, state, until: this.t + Math.max(len, 0.1), fadeOut: Math.min(0.15, len * 0.5 + 0.05) };
-    this.notePivot(c, s.blend);
+    this.oneShot = { track: tr, state, until: this.t - since + Math.max(len, 0.1), fadeOut: Math.min(0.15, len * 0.5 + 0.05) };
+    this.notePivot(c, s.blend, since);
     this.onState?.("shot", `${state} -> ${s.clip}`);
     return true;
   }
@@ -493,10 +495,12 @@ export class CharAnimator {
   loadBullet(duration?: number): void {
     this.playUpper("LoadBullet", duration);
   }
-  change(): void {
+  /** [RECRIADO] `since`: seconds of animator time since the swap (its clips bound late, after a seek's replay ran past it) */
+  change(since = 0): void {
     this.queued = null;
-    this.playUpper("Change");
+    this.playUpper("Change", undefined, since);
   }
+  get time(): number { return this.t; }
   /**
    * Flinch on a hit. `from` = side the bullet came from, relative to the actor: DamageFrontLeftA / DamageFrontRightA /
    * DamageBackA (all three exported per AI). [INFERIDO]: the exe rule that picks the clip is not decoded; the names
@@ -697,9 +701,9 @@ export class CharAnimator {
     for (const tr of this.tracks.values()) if (tr.w > 0.05) this.active.push(tr.key);
   }
 
-  private notePivot(clip: THREE.AnimationClip, blend: number): void {
+  private notePivot(clip: THREE.AnimationClip, blend: number, since = 0): void {
     this.pivotBlend = blend;
-    this.pivotT = 0;
+    this.pivotT = since;
     const tr = clip.tracks.find((t) => t.name === "Pivot.quaternion");
     if (tr) (this.pivotQ ??= new THREE.Quaternion()).fromArray(tr.values, 0);
   }

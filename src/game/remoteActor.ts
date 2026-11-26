@@ -108,6 +108,7 @@ export class RemoteActor implements Actor {
   private protectLeft = 0;
   private laserOn = false;
   private laserTok = 0;
+  private changeTok = 0;
   private beam: THREE.Mesh | null = null;
 
   constructor(readonly id: string, s: PlayerState, private scene: THREE.Scene) {
@@ -143,6 +144,7 @@ export class RemoteActor implements Actor {
 
   apply(s: PlayerState, snap = false): void {
     this.name = s.name;
+    if (snap) this.changeTok++; // [RECRIADO] a seek is no swap: no draw still waiting for its clips (the seek's own state queued one)
     if (s.chara !== undefined && s.chara !== this.chara) {
       this.chara = s.chara;
       this.maxHp = charaMaxHp(s.chara);
@@ -168,9 +170,10 @@ export class RemoteActor implements Actor {
       weaponChanged = true;
       this.visual.setWeapon(key);
       // the weapon's own PB upper-body AI (reload/change/attack clips); Change plays once its clips are bound
-      const first = !this.weaponKey;
-      void bindWeaponAnim(this.visual.anim, key, undefined, this.visual.animSkel).then(() => {
-        if (!first) this.visual.change();
+      // [RECRIADO] a late bind starts the draw as far in as the swap is old; a new chara model's animator has another clock
+      const first = !this.weaponKey, anim = this.visual.anim, at = anim?.time ?? 0, tok = this.changeTok;
+      void bindWeaponAnim(anim, key, undefined, this.visual.animSkel).then((ai) => {
+        if (!first && ai && tok === this.changeTok) this.visual.change(this.visual.anim === anim ? (anim?.time ?? 0) - at : 0);
       });
       this.weaponKey = key;
     }
