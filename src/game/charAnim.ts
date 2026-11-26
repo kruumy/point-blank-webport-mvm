@@ -40,6 +40,8 @@ export interface CharAnimInput {
   /** 8-way lower-body direction, actor frame. Omitted: inferred from vel (remote players: network `moveDir`) */
   dir8?: Dir8;
 }
+/** what the lower body reads (the theater seek's stride pass feeds recorded states) */
+export type LowerInput = Pick<CharAnimInput, "vel" | "yaw" | "crouch" | "grounded" | "zoom" | "walking" | "moving" | "dir8">;
 
 /** one i3AIState: clip key, blend-in (s), duration (s) */
 export interface AnimState {
@@ -564,13 +566,59 @@ export class CharAnimator {
   }
 
   /** [RECRIADO] theater seek: a clean animator whose clock is the demo time (the idle clips' phase follows it) */
-  reset(clock: number): void {
+  reset(clock: number, phase = 0): void {
     this.undoAim();
     this.respawn();
     this.queued = null;
     this.t = clock;
-    this.phase = this.airTime = this.landT = this.pitch = this.pivotAngle = 0;
+    this.airTime = this.landT = this.pitch = this.pivotAngle = 0;
+    this.phase = phase;
     this.wasGrounded = true;
+  }
+
+  /** [RECRIADO] theater: the stride phase a seek or a model mount sets */
+  get stride(): number { return this.phase; }
+  set stride(phase: number) { this.phase = phase; }
+
+  /** [RECRIADO] theater seek: update()'s stride from 0 over recorded states; unbound stand-in tables would give another */
+  stridePhase(steps: Iterable<readonly [number, LowerInput & { alive: boolean }]>): number {
+    let phase = 0, air = 0;
+    for (const [dt, s] of steps) {
+      if (!s.alive) continue; // dead: update() runs only the death clip
+      air = s.grounded ? 0 : air + dt;
+      const { lowName, ls, moving, speed } = this.lowerPick(s, air, 0);
+      if (ls && moving && ls.loop) phase = (phase + dt * this.phaseRate(lowName, ls, s.crouch, speed)) % 1;
+    }
+    return phase;
+  }
+
+  private lowerPick(s: LowerInput, airTime: number, landT: number) {
+    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw); // forward
+    const rx = Math.cos(s.yaw), rz = -Math.sin(s.yaw); // right
+    const vf = s.vel.x * fx + s.vel.z * fz;
+    const vr = s.vel.x * rx + s.vel.z * rz;
+    const speed = Math.hypot(vf, vr);
+    const LT = s.crouch ? this.lowerT.Sit : this.lowerT.Stand;
+    const moving = s.moving ?? (speed > MOVE_EPS && s.grounded);
+    const walking = s.walking ?? speed < walkRunThreshold(s.crouch, !!s.zoom);
+    let lowName = "Idle";
+    if (!s.grounded && airTime > 0.12 && LT.JumpStart) lowName = "JumpStart";
+    else if (moving) {
+      const d = s.dir8 ?? dir8Of(vf, vr);
+      const pick = (n: string) => (LT[n] ? n : null);
+      // 4-direction stand-in tables: diagonal -> the dominant axis
+      const d4 = Math.abs(vf) >= Math.abs(vr) ? (vf >= 0 ? "Front" : "Back") : vr >= 0 ? "Right" : "Left";
+      lowName = (walking && (pick(`Walk${d}`) ?? pick(`Walk${d4}`))) || pick(d) || pick(d4) || "Idle";
+    } else if (landT > 0 && LT.JumpEnd) lowName = "JumpEnd";
+    return { lowName, ls: LT[lowName] ?? LT.Idle, moving, speed };
+  }
+
+  /**
+   * locomotion phase per second of a loop state: clip time advances at the PB time scale; on a direction change the new
+   * clip keeps the normalised phase (OnActionRunLower: newTime = localTime x newDur / oldDur)
+   */
+  private phaseRate(name: string, ls: AnimState, crouch: boolean, speed: number, clip = this.clips.get(ls.clip)): number {
+    return lowerTimeScale(name, crouch, speed) / Math.max(clip?.duration || ls.dur, 1e-3);
   }
 
   /** switch the base state of a layer: the other tracks of the layer fade out at the new state's blend rate */
@@ -605,11 +653,6 @@ export class CharAnimator {
     }
 
     // ---- lower: one PB state (stance x direction x gait) ----
-    const fx = -Math.sin(s.yaw), fz = -Math.cos(s.yaw); // forward
-    const rx = Math.cos(s.yaw), rz = -Math.sin(s.yaw); // right
-    const vf = s.vel.x * fx + s.vel.z * fz;
-    const vr = s.vel.x * rx + s.vel.z * rz;
-    const speed = Math.hypot(vf, vr);
     if (!s.grounded) this.airTime += dt;
     let landing = false;
     if (s.grounded && !this.wasGrounded && this.airTime > 0.25) (landing = true), (this.landT = 0.3);
@@ -617,27 +660,11 @@ export class CharAnimator {
     this.wasGrounded = s.grounded;
     this.landT = Math.max(0, this.landT - dt);
 
-    const LT = s.crouch ? this.lowerT.Sit : this.lowerT.Stand;
-    const moving = s.moving ?? (speed > MOVE_EPS && s.grounded);
-    const walking = s.walking ?? speed < walkRunThreshold(s.crouch, !!s.zoom);
-    let lowName = "Idle";
-    if (!s.grounded && this.airTime > 0.12 && LT.JumpStart) lowName = "JumpStart";
-    else if (moving) {
-      const d = s.dir8 ?? dir8Of(vf, vr);
-      const pick = (n: string) => (LT[n] ? n : null);
-      // 4-direction stand-in tables: diagonal -> the dominant axis
-      const d4 = Math.abs(vf) >= Math.abs(vr) ? (vf >= 0 ? "Front" : "Back") : vr >= 0 ? "Right" : "Left";
-      lowName = (walking && (pick(`Walk${d}`) ?? pick(`Walk${d4}`))) || pick(d) || pick(d4) || "Idle";
-    } else if (this.landT > 0 && LT.JumpEnd) lowName = "JumpEnd";
-    const ls = LT[lowName] ?? LT.Idle;
+    const { lowName, ls, moving, speed } = this.lowerPick(s, this.airTime, this.landT);
     if (ls) this.enter("low", ls, lowName, landing && lowName === "JumpEnd");
-    const lowTrack = this.lowKey ? this.tracks.get(this.lowKey) : null;
-    if (ls && moving && ls.loop) {
-      // clip time advances at the PB time scale; on a direction change the new clip keeps the normalised phase
-      // (OnActionRunLower: newTime = localTime x newDur / oldDur)
-      const dur = lowTrack?.action.getClip().duration || ls.dur;
-      this.phase = (this.phase + (dt * lowerTimeScale(lowName, s.crouch, speed)) / Math.max(dur, 1e-3)) % 1;
-    }
+    // the clip playing: a state whose clip is missing keeps the previous one
+    const playing = this.lowKey ? this.tracks.get(this.lowKey)?.action.getClip() : undefined;
+    if (ls && moving && ls.loop) this.phase = (this.phase + dt * this.phaseRate(lowName, ls, s.crouch, speed, playing)) % 1;
 
     // ---- upper: stance (AttackIdle | Zoom) x base (Idle | Move) + one-shot ----
     // RMB extension on (CrossFire / GrenadeLauncher): the AI's CrossIdle / Grenade stance

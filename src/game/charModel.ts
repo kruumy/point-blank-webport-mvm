@@ -604,11 +604,11 @@ export class CharVisual {
     this.anim?.respawn();
   }
 
-  /** [RECRIADO] theater seek: alive, no ragdoll, no pending hit; the animator restarts at `clock` */
-  resetAnim(clock: number): void {
+  /** [RECRIADO] theater seek: alive, no ragdoll, no pending hit; the animator restarts at `clock` with stride `phase` */
+  resetAnim(clock: number, phase = 0): void {
     this.respawn();
     this.lastHit = null;
-    this.anim?.reset(clock);
+    this.anim?.reset(clock, phase);
   }
 
   /** World position of a skeleton bone by its GLB node name (Neck, Spine3, IK...); null when the model has no such bone. */

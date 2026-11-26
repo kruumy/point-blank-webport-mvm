@@ -30,6 +30,7 @@ export class DemoNet implements NetAdapter {
     this.demo = demo;
     const dead = new Map<string, Death>(); // actor -> the death in progress
     for (const r of demo.recs) {
+      if (r.k === "leave") this.leaves.set(r.id, [...(this.leaves.get(r.id) ?? []), r.t]);
       if (r.k !== "state") continue;
       let tr = this.tracks.get(r.s.id);
       if (!tr) this.tracks.set(r.s.id, tr = { t: [], s: [] });
@@ -166,6 +167,14 @@ export class DemoNet implements NetAdapter {
       }
     }
   }
+
+  /** [RECRIADO] theater seek: that actor's states since it last joined before `t` (a rejoin is a new body, its stride from 0) */
+  trackOf(id: string, t: number): { t: number[]; s: PlayerState[] } | undefined {
+    const tr = this.tracks.get(id), left = Math.max(-Infinity, ...(this.leaves.get(id) ?? []).filter((x) => x <= t));
+    const from = tr?.t.findIndex((x) => x > left) ?? -1;
+    return from < 0 ? undefined : from === 0 ? tr : { t: tr!.t.slice(from), s: tr!.s.slice(from) };
+  }
+  private readonly leaves = new Map<string, number[]>();
 
   /** jumps to `t` without the events in between: plays each actor's last state (the caller snaps the bodies to it) */
   seek(t: number): PlayerState[] {

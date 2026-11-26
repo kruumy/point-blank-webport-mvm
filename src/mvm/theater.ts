@@ -298,6 +298,7 @@ export class Theater {
     this.pathViz.add(this.gizmoObj, this.gizmo.getHelper());
     this.looks = new LookStage(host.game.scene, host.renderer);
     host.game.scene.add(this.pathViz);
+    host.game.demoSource = { time: () => this.time, track: (id, t) => this.net.trackOf(id, t) };
     this.seek(0);
     this.setMode("pov", demo.pov);
     this.drawSide();
@@ -391,6 +392,7 @@ export class Theater {
     this.time = Math.max(0, target - WARM);
     game.snapRemotes(this.net.seek(this.time), this.time);
     this.replay(target);
+    game.restrideRemotes();
   }
 
   /** plays on from now to `target` at the fixed step, silently: an exact seek's replay, or a tick step forward */

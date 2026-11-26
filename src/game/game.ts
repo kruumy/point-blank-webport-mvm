@@ -1950,6 +1950,7 @@ export class Game implements BotHost {
       }
       if (!r) {
         r = new RemoteActor(s.id, s, this.scene);
+        r.demo = this.demoSource;
         r.protectTime = this.theater ? 0 : this.match.cfg.spawnProtect; // the theater: no spawn blink (a seek reads as a respawn)
         const ra = r;
         // scratch for the remote fire/extension events: every consumer (audio.start, effects, shoot) copies what it keeps
@@ -2513,6 +2514,13 @@ export class Game implements BotHost {
     this.helmetDrops.clear(); // the helmetOff of each state decides the heads; a pop in the replay window drops it again
     // a seek is no swap, shot or reload of the watched player: his arms show what he holds, as for a new target
     this.specWeapon = ""; this.specFireSeq = -1; this.specReloadSeq = -1; this.specReloadEnd = 0; this.specReloading = false;
+  }
+
+  /** [RECRIADO] theater: the demo clock and tracks every remote reads (RemoteActor.demo) */
+  demoSource?: RemoteActor["demo"];
+  /** [RECRIADO] theater exact seek, after its replay: each body's legs where its recorded states put them */
+  restrideRemotes(): void {
+    for (const r of this.remotes.values()) r.restride();
   }
 
   private dropRemote(id: string): void {

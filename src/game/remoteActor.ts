@@ -13,6 +13,30 @@ import { weaponFxInfo } from "../weapons/sights";
 import { norm } from "../weapons/worldModel";
 import { jsonOnce } from "../jsonOnce";
 
+/** the sender's own grounded flag; vel.y (a position difference) reads a stair climb / descent as a jump / fall */
+const groundedOf = (vel: THREE.Vector3, airborne: boolean | undefined) => (airborne === undefined ? Math.abs(vel.y) < 1.5 : !airborne);
+
+/** the replicated movement bits as the animator's lower-body input */
+function lowerInput(vel: THREE.Vector3, airborne: boolean | undefined, moving: boolean, running: boolean, moveDir: number) {
+  return {
+    grounded: groundedOf(vel, airborne),
+    moving,
+    walking: moving ? !running : undefined,
+    dir8: moving ? DIR8[moveDir] : undefined,
+  };
+}
+
+/** [RECRIADO] theater seek: a body's recorded states up to `clock` as apply() and update() feed them, each held until the next */
+function* strideSteps(track: { t: number[]; s: PlayerState[] }, clock: number) {
+  const vel = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let i = 0; i < track.t.length && track.t[i] <= clock; i++) {
+    const s = track.s[i];
+    if (s.vel) i ? vel.lerp(v.set(s.vel[0], s.vel[1], s.vel[2]), 0.4) : vel.set(s.vel[0], s.vel[1], s.vel[2]);
+    const input = { vel, yaw: s.yaw, crouch: s.crouch, alive: s.alive, ...lowerInput(vel, s.ladder ? false : s.airborne, s.moving ?? false, s.running ?? false, s.moveDir ?? 0) };
+    yield [Math.min(track.t[i + 1] ?? clock, clock) - track.t[i], input] as const;
+  }
+}
+
 /**
  * weapons.json name -> id, resolved locally (not through weapon-own-anim's worldModel cache) so remoteActor.ts
  * stays a self-contained consumer of the shared file.: the laser
@@ -129,13 +153,19 @@ export class RemoteActor implements Actor {
     void preloadChara(itemId, this.team).then((name) => {
       console.info(`[remote] ${this.id} chara ${itemId} team ${this.team}: model ${name ?? "none"}, now ${this.visual.charaName ?? "none"}${tok !== this.charaTok ? " (stale)" : ""}`);
       if (tok !== this.charaTok || !name || name === this.visual.charaName) return;
-      const old = this.visual;
+      const old = this.visual, was = old.anim;
       this.visual = createCharVisual(this.team, { itemId, equipActor: this.id });
       this.scene.add(this.visual.root);
+      // [RECRIADO] theater: the new model goes on in the old one's clock and step
+      if (this.demo) this.visual.resetAnim(was?.time ?? this.demo.time(), was?.stride ?? 0);
       old.dispose();
       if (this.weaponKey) {
         this.visual.setWeapon(this.weaponKey);
-        void bindWeaponAnim(this.visual.anim, this.weaponKey, undefined, this.visual.animSkel);
+        const anim = this.visual.anim;
+        // no old body to follow: where a seek puts it, after the bind (its Low_* tables, not the model's stand-ins)
+        void bindWeaponAnim(anim, this.weaponKey, undefined, this.visual.animSkel).then(() => {
+          if (!was && anim === this.visual.anim) this.restride();
+        });
       }
       if (!this.alive) this.visual.die(undefined, this.crouch);
       this.onVisualChanged?.();
@@ -242,6 +272,14 @@ export class RemoteActor implements Actor {
     this.visual.resetAnim(clock);
   }
 
+  /** [RECRIADO] theater: the demo clock and the actor's states since it joined (game.ts sets it on every remote) */
+  demo?: { time(): number; track(id: string, t: number): { t: number[]; s: PlayerState[] } | undefined };
+  /** [RECRIADO] theater: the legs where the recorded states put them now, so a seek and a model mount agree */
+  restride(): void {
+    const anim = this.visual.anim, t = this.demo?.time(), track = t === undefined ? undefined : this.demo!.track(this.id, t);
+    if (anim && track) anim.stride = anim.stridePhase(strideSteps(track, t!));
+  }
+
   /** [RECRIADO] demo playback: the clip pick of the coming death (the kill event or the dead state, whichever arrives first) */
   setDeathPick(pick: number | string): void {
     this.visual.deathPick = pick;
@@ -296,13 +334,9 @@ export class RemoteActor implements Actor {
       pitch: this.pitchV,
       vel: this.vel,
       crouch: this.crouch,
-      // the sender's own grounded flag; vel.y (a position difference) reads a stair climb / descent as a jump / fall
-      grounded: this.airborne === undefined ? Math.abs(this.vel.y) < 1.5 : !this.airborne,
       alive: this.alive,
       zoom: this.aiming,
-      moving: this.moving,
-      walking: this.moving ? !this.running : undefined,
-      dir8: this.moving ? DIR8[this.moveDir] : undefined,
+      ...lowerInput(this.vel, this.airborne, this.moving, this.running, this.moveDir),
     });
   }
 
@@ -361,7 +395,7 @@ export class RemoteActor implements Actor {
   private reloadSeq = 0;
   private reloadSecs = 2;
   obsState(): ObsState {
-    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: this.airborne === undefined ? Math.abs(this.vel.y) < 1.5 : !this.airborne, aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready", ext: this.extOn };
+    return { speed: Math.hypot(this.vel.x, this.vel.z), grounded: groundedOf(this.vel, this.airborne), aiming: this.aiming, fireSeq: this.fireSeq, reloadSeq: this.reloadSeq, reloadSecs: this.reloadSecs, firing: this.firing, planting: this.torsoAction === "plant", heavy: this.lastHeavy, reloading: this.torsoAction === "reload", ready: this.torsoAction === "ready", ext: this.extOn };
   }
   get visualRoot(): THREE.Object3D {
     return this.visual.root;
