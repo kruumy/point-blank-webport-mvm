@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import type { Game } from "../game/game";
 import { Campath, unwrap, type CamKey, type CamPose } from "./campath";
-import { DEMO_API, demoInfo, deleteDemo, listDemos, renameDemo, saveDemo, type DemoInfo, type DemoListing } from "./demo";
+import { DEMO_API, demoInfo, deleteDemo, listDemos, renameDemo, saveDemo, type Demo, type DemoInfo, type DemoListing } from "./demo";
 import { MAP_SHAPE, STAGE_SHAPE, mapShapeCell } from "../lobby/screensCross/crossMap";
 import { assetUrl } from "../assetMap";
 import { mapIndexEntry } from "../config";
@@ -28,6 +28,10 @@ export interface TheaterHost {
 type Mode = "pov" | "third" | "free" | "dolly";
 const SPEEDS = [0.05, 0.1, 0.2, 0.25, 0.5, 0.75, 1, 1.5, 2, 4, 8];
 const SKIP = 5; // s per arrow press
+const STEP_DELAY = 300, STEP_RATE = 30; // a held Ctrl + arrow: ms before it repeats, then ticks per second
+const ZOOMS = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const ZOOM_KEY = "mvm.uiZoom";
+const demoEdits = (d: Demo) => JSON.stringify({ deaths: d.deaths, charas: d.charas, hats: d.hats });
 /** depth of field (post.ts), kept apart from the looks: mode 0 off, 1 manual distance, 2 under the mouse, 3 a player;
  * blur in % of the image height; near / far scale it in front of / behind the focus; speed = mouse focus easing (1/s) */
 const DOF_DEFAULT = { mode: 0, focus: 10, speed: 5, aperture: 1, maxBlur: 1, near: 1, far: 1 };
@@ -122,7 +126,10 @@ const CSS = `
 #mvm .p{pointer-events:auto;background:rgba(18,20,24,.92);border:1px solid #333;border-radius:4px}
 #mvm button,#mvm select,#mvm input{font:inherit;color:#eee;background:#2a2e35;border:1px solid #444;border-radius:3px;padding:2px 7px}
 #mvm button:hover{background:#3a404a}#mvm button.on{background:#c47f12;border-color:#e09a2a;color:#111}
-#mvm .top{position:absolute;left:8px;top:8px;padding:5px 9px;display:flex;gap:10px;align-items:center}
+#mvm .top{position:absolute;left:8px;top:8px;padding:5px 9px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 310px)}
+#mvm>:not(.mvm-mask){zoom:var(--ui-zoom,1)}#mvm .zoom{display:flex}#mvm .zoom button{border-radius:0;min-width:24px}
+#mvm .zoom button:first-child{border-radius:3px 0 0 3px}#mvm .zoom button:last-child{border-radius:0 3px 3px 0}#mvm .zoom button+button{margin-left:-1px}
+#mvm .zoom [data-a="zoomReset"]{min-width:46px;font-variant-numeric:tabular-nums}
 #mvm .side{position:absolute;right:8px;top:8px;width:270px;max-height:calc(100% - 120px);display:flex;flex-direction:column}
 #mvm .tabs{display:flex;border-bottom:1px solid #333}#mvm .tabs button{flex:1;border:0;border-radius:0;background:none}
 #mvm .tabs button.on{background:#2a2e35;color:#f0a830}
@@ -213,6 +220,13 @@ export class Theater {
   private readonly tl: HTMLCanvasElement;
   private tab = "camera";
   private kills: number[];
+  /** the times of the recorded states, in order: Ctrl + arrow steps */
+  private readonly ticks: number[];
+  /** the demo edits as last saved: Discard goes back to them */
+  private savedEdits: string;
+  /** a held Ctrl + arrow: its way, when it steps next (performance.now ms), and whether it went back by rough seeks */
+  private stepHold: { dir: 1 | -1; next: number; rough: boolean } | null = null;
+  private uiZoom = 1;
   private lastUi = 0;
   /** demo editor: the player whose menu is open, and edits not yet written to the file */
   private editId: string | null = null;
@@ -243,12 +257,15 @@ export class Theater {
     const demo = net.demo;
     this.outPt = demo.dur;
     this.kills = demo.recs.filter((r) => r.k === "kill").map((r) => r.t);
+    this.ticks = [...new Set(demo.recs.filter((r) => r.k === "state").map((r) => r.t))];
+    this.savedEdits = demoEdits(demo);
     ensureCss();
     this.root.id = "mvm";
     this.root.innerHTML = `<div class="mvm-mask"></div>
-      <div class="p top"><b>${esc(demo.name)}</b><span class="hint">${esc(demo.map)} · ${fmt(demo.dur)}</span>
+      <div class="p top"><span class="zoom" title="UI size"><button data-a="zoomOut">−</button><button data-a="zoomReset" title="Back to 100%"></button><button data-a="zoomIn">+</button></span>
+        <b>${esc(demo.name)}</b><span class="hint">${esc(demo.map)} · ${fmt(demo.dur)}</span>
         <button data-a="clean">Hide HUD (G)</button><button data-a="exit">Exit</button>
-        <button data-a="save" class="on" style="display:none">Save changes</button></div>
+        <button data-a="save" class="on" style="display:none">Save changes</button><button data-a="discard" style="display:none">Discard changes</button></div>
       <div class="p edit" style="display:none"></div>
       <div class="p prev" style="display:none"></div>
       <div class="p side"><div class="tabs">${["camera", "campath", "visuals", "render", "controls"].map((t) => `<button data-tab="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
@@ -261,6 +278,9 @@ export class Theater {
         <canvas class="tl"></canvas></div>`;
     document.getElementById("app")!.appendChild(this.root);
     this.tl = this.root.querySelector("canvas.tl")!;
+    let z = 1;
+    try { z = Number(localStorage.getItem(ZOOM_KEY)); } catch { /* no storage: 100% */ }
+    this.setZoom(ZOOMS.includes(z) ? z : 1);
     this.wire();
     this.layoutMask();
     this.pathHead.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), HALO_MAT));
@@ -290,6 +310,7 @@ export class Theater {
   /** one rAF frame (main.ts animate); during a render the render loop steps the world itself */
   frame(raw: number): void {
     if (this.rendering) return;
+    if (this.stepHold) this.stepHeld();
     const dt = Math.min(raw, 0.05);
     let sim = 0;
     if (this.playing) {
@@ -364,20 +385,27 @@ export class Theater {
     if (!exact) {
       this.time = target;
       game.snapRemotes(this.net.seek(target));
-    } else {
-      this.time = Math.max(0, target - WARM);
-      game.snapRemotes(this.net.seek(this.time), this.time);
-      silently(() => {
-        while (this.time < target - 1e-9) {
-          const h = Math.min(WARM_STEP, target - this.time);
-          this.time += h;
-          this.net.advance(this.time);
-          game.poseRemotes(this.net.poses(this.time));
-          this.host.simulate(h);
-        }
-      });
-      this.time = target;
+      game.poseRemotes(this.net.poses(this.time));
+      return;
     }
+    this.time = Math.max(0, target - WARM);
+    game.snapRemotes(this.net.seek(this.time), this.time);
+    this.replay(target);
+  }
+
+  /** plays on from now to `target` at the fixed step, silently: an exact seek's replay, or a tick step forward */
+  private replay(target: number): void {
+    const game = this.host.game;
+    silently(() => {
+      while (this.time < target - 1e-9) {
+        const h = Math.min(WARM_STEP, target - this.time);
+        this.time += h;
+        this.net.advance(this.time);
+        game.poseRemotes(this.net.poses(this.time));
+        this.host.simulate(h);
+      }
+    });
+    this.time = target;
     game.poseRemotes(this.net.poses(this.time));
   }
 
@@ -713,6 +741,8 @@ export class Theater {
     window.addEventListener("keyup", (e) => { this.held.delete(e.code); e.stopImmediatePropagation(); }, { capture: true, ...sig });
     window.addEventListener("blur", () => { this.held.clear(); this.looking = false; }, sig);
     window.addEventListener("resize", () => this.layoutMask(), sig);
+    // no browser zoom (Ctrl + wheel, pinch): it would resize the frame; the UI has its own zoom
+    window.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { capture: true, passive: false, ...sig });
     const cv = this.host.renderer.domElement;
     cv.addEventListener("mousedown", (e) => {
       if (this.rendering) return;
@@ -844,8 +874,8 @@ export class Theater {
       case "Space": this.action("play"); break;
       case "ArrowUp": this.speedIdx = Math.min(SPEEDS.length - 1, this.speedIdx + 1); break;
       case "ArrowDown": this.speedIdx = Math.max(0, this.speedIdx - 1); break;
-      case "ArrowLeft": this.skip(-1); break;
-      case "ArrowRight": this.skip(1); break;
+      case "ArrowLeft": if (e.ctrlKey) this.holdStep(-1); else this.skip(-1); break;
+      case "ArrowRight": if (e.ctrlKey) this.holdStep(1); else this.skip(1); break;
       case "KeyB": this.action("setIn"); break;
       case "KeyN": this.action("setOut"); break;
       case "KeyF": this.setMode("free"); break;
@@ -891,6 +921,10 @@ export class Theater {
       case "render": void this.renderMovie(); break;
       case "clean": document.body.classList.toggle("mvm-clean"); break;
       case "save": void this.save(); break;
+      case "discard": if (window.confirm("Discard your unsaved demo changes?")) this.discard(); break;
+      case "zoomOut": this.setZoom(ZOOMS[Math.max(0, ZOOMS.indexOf(this.uiZoom) - 1)]); break;
+      case "zoomIn": this.setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(this.uiZoom) + 1)]); break;
+      case "zoomReset": this.setZoom(1); break;
       case "closeEdit": this.openEdit(null); break;
       case "focusActor":
         this.dofActor = this.editId;
@@ -908,18 +942,20 @@ export class Theater {
   private wireTimeline(): void {
     const cv = this.tl, sig = { signal: this.ac.signal };
     let drag: "seek" | number | null = null;
+    // the cursor in the timeline's own px, by ratio: right however the UI zoom scales its box on screen
+    const at = (e: MouseEvent) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * cv.clientWidth, y: (e.clientY - r.top) / r.height * cv.clientHeight }; };
     const tAt = (x: number) => (x / cv.clientWidth) * this.net.demo.dur;
     const keyAt = (x: number) => this.path.keys.findIndex((k) => Math.abs((k.t / this.net.demo.dur) * cv.clientWidth - x) < 6);
     cv.addEventListener("mousedown", (e) => {
-      const i = keyAt(e.offsetX);
+      const p = at(e), i = keyAt(p.x);
       if (e.button === 2) { if (i >= 0) this.removeKey(i); return; }
-      if (i >= 0 && e.offsetY < cv.clientHeight / 2) { this.snap(); this.keyDrag = true; drag = i; this.sel = i; this.drawSide(); return; }
+      if (i >= 0 && p.y < cv.clientHeight / 2) { this.snap(); this.keyDrag = true; drag = i; this.sel = i; this.drawSide(); return; }
       drag = "seek";
-      this.seek(tAt(e.offsetX), false);
+      this.seek(tAt(p.x), false);
     }, sig);
     window.addEventListener("mousemove", (e) => {
       if (drag === null) return;
-      const x = e.clientX - cv.getBoundingClientRect().left, t = Math.max(0, Math.min(this.net.demo.dur, tAt(x)));
+      const t = Math.max(0, Math.min(this.net.demo.dur, tAt(at(e).x)));
       if (drag === "seek") this.seek(t, false);
       else { drag = this.sel = this.path.retime(drag, t); }
     }, sig);
@@ -1060,7 +1096,7 @@ export class Theater {
         ${on.length ? `<div class="files" title="Saved to point-blank-webport/mvm/movies; # is the first free number"><div>${esc(name)}#</div><span>${on.map((p) => `<i>${p === "default" ? "" : `_${this.layersOf(p).join("-")}`}.mov</i>`).join("")}</span></div>` : ""}
         <button data-a="render" class="go" title="Game time, not real time: 1 s of demo is 1 s of video at any speed" ${on.length && frames ? "" : "disabled"}>${on.length ? `● Render ${on.length} pass${on.length > 1 ? "es" : ""}` : "Pick a pass to render"}</button>`;
     } else {
-      const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["B / N", "Set in / out point"],
+      const rows: [string, string][] = [["Space", "Play / pause"], ["↑ / ↓", "Faster / slower"], ["← / →", `Skip ${SKIP} s back / forward, stopping at deaths, dolly nodes and in / out points`], ["Ctrl + ← / →", "Pause and step one demo tick (hold to keep stepping)"], ["B / N", "Set in / out point"],
         ["F", "Free camera"], ["F2 / F3", "First / third person"], ["[ / ]", "Previous / next player"], ["W A S D", "Move (free camera)"], ["Q / E", "Down / up"],
         ["Shift / Ctrl", "Faster / slower move"], ["Right mouse", "Look (free camera)"], ["Wheel", "FOV (free, third)"], ["Alt + wheel", "Roll"], ["Middle mouse", "Reset angle / FOV"],
         ["K", "Add dolly node"], ["L", "Clear nodes"], ["J", "Play dolly path"], ["Delete / Backspace", "Remove selected node"], ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo campath edits"],
@@ -1092,8 +1128,9 @@ export class Theater {
     const el = this.root.querySelector<HTMLElement>(".edit")!;
     el.style.display = id ? "flex" : "none";
     if (!id) return;
-    el.style.left = `${Math.min(x + 8, window.innerWidth - 250)}px`;
-    el.style.top = `${Math.min(y + 8, window.innerHeight - 160)}px`;
+    const z = this.uiZoom; // its left / top are zoomed with it
+    el.style.left = `${Math.min(x + 8, window.innerWidth - 250 * z) / z}px`;
+    el.style.top = `${Math.min(y + 8, window.innerHeight - 160 * z) / z}px`;
     this.drawEdit();
   }
 
@@ -1182,6 +1219,44 @@ export class Theater {
     this.seek(to);
   }
 
+  /** held steps are rough (an exact seek costs ~75 ms); endHold lands the last one exactly, as a timeline drag */
+  private step(dir: 1 | -1, exact = true): void {
+    this.playing = false;
+    const t = this.time, eps = 1e-6;
+    let to = dir > 0 ? this.net.demo.dur : 0;
+    for (const x of this.ticks) {
+      if (dir > 0 && x > t + eps) { to = x; break; }
+      if (dir < 0) { if (x < t - eps) to = x; else break; }
+    }
+    if (to === t) return;
+    if (exact) this.seek(to);
+    else if (to > t && to - t <= WARM) this.replay(to); // playing on keeps the arms' clips running while held
+    else this.seek(to, false);
+  }
+
+  /** a Ctrl + arrow press: one step now, more from frame() at STEP_RATE while it is held */
+  private holdStep(dir: 1 | -1): void {
+    this.endHold();
+    this.step(dir);
+    this.stepHold = { dir, next: performance.now() + STEP_DELAY, rough: false };
+  }
+
+  private endHold(): void {
+    if (this.stepHold?.rough) this.seek(this.time);
+    this.stepHold = null;
+  }
+
+  private stepHeld(): void {
+    const s = this.stepHold!, h = this.held;
+    if (!h.has(s.dir > 0 ? "ArrowRight" : "ArrowLeft") || !(h.has("ControlLeft") || h.has("ControlRight"))) { this.endHold(); return; }
+    const now = performance.now();
+    s.next = Math.max(s.next, now - 100); // a stalled frame does not owe a burst of steps
+    for (; s.next <= now; s.next += 1000 / STEP_RATE) {
+      this.step(s.dir, false);
+      s.rough = true;
+    }
+  }
+
   /** this frame, split for the passes */
   private passFrame(): PassFrame {
     const cam = this.host.camera;
@@ -1264,13 +1339,34 @@ export class Theater {
 
   private setDirty(v: boolean): void {
     this.dirty = v;
-    this.root.querySelector<HTMLElement>('[data-a="save"]')!.style.display = v ? "" : "none";
+    for (const a of ["save", "discard"]) this.root.querySelector<HTMLElement>(`[data-a="${a}"]`)!.style.display = v ? "" : "none";
+  }
+
+  /** back to the edits last saved: each one set back through DemoNet, then the seek replays the bodies with them */
+  private discard(): void {
+    const s = JSON.parse(this.savedEdits) as Pick<Demo, "deaths" | "charas" | "hats">, d = this.net.demo;
+    const keys = (a?: object, b?: object) => new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})]);
+    for (const k of keys(d.deaths, s.deaths)) this.net.setDeathClip(k, s.deaths?.[k] ?? null);
+    for (const id of keys(d.charas, s.charas)) this.net.setChara(id, s.charas?.[id] ?? null);
+    for (const id of keys(d.hats, s.hats)) this.net.setHat(id, s.hats?.[id] ?? null);
+    this.setDirty(false);
+    this.seek(this.time);
+    this.toast("Changes discarded");
+  }
+
+  private setZoom(z: number): void {
+    this.uiZoom = z;
+    this.root.style.setProperty("--ui-zoom", String(z));
+    this.root.querySelector('[data-a="zoomReset"]')!.textContent = `${Math.round(z * 100)}%`;
+    try { localStorage.setItem(ZOOM_KEY, String(z)); } catch { /* private mode: this session only */ }
   }
 
   private async save(): Promise<void> {
     try {
+      const edits = demoEdits(this.net.demo); // what this save writes, not an edit made while it runs
       await saveDemo(this.net.demo);
-      this.setDirty(false);
+      this.savedEdits = edits;
+      this.setDirty(demoEdits(this.net.demo) !== edits);
       this.toast("Demo saved");
     } catch (e) {
       this.toast(`Could not save: ${String(e)}`, 5000);

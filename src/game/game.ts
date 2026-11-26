@@ -2511,6 +2511,8 @@ export class Game implements BotHost {
     this.remoteThrows.clear();
     this.remoteShots.length = 0;
     this.helmetDrops.clear(); // the helmetOff of each state decides the heads; a pop in the replay window drops it again
+    // a seek is no swap, shot or reload of the watched player: his arms show what he holds, as for a new target
+    this.specWeapon = ""; this.specFireSeq = -1; this.specReloadSeq = -1; this.specReloadEnd = 0; this.specReloading = false;
   }
 
   private dropRemote(id: string): void {
