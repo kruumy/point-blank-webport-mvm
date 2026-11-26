@@ -206,6 +206,20 @@ export function dualTables(ai: AnimAI, clips: Map<string, THREE.AnimationClip>, 
   return { ...ai, stances: { ...ai.stances, AttackIdle: merge(A, ""), ...(C?.RightIdle && C.LeftIdle ? { CrossIdle: merge(C, "Cross/") } : {}) } };
 }
 
+// [INFERIDO] i3 keeps an untracked bone's last pose, the mixer drops it to bind (M70 / Vz52 Up_Move_AttackIdle lack the arms)
+function holdTables(ai: AnimAI, clips: Map<string, THREE.AnimationClip>, aiName: string): AnimAI {
+  const stances = { ...ai.stances };
+  for (const [name, T] of Object.entries(stances) as [keyof AnimAI["stances"], StateTable | undefined][]) {
+    const move = T?.Move && clips.get(T.Move.clip), idle = T?.Idle && clips.get(T.Idle.clip);
+    if (!move || !idle || move === idle) continue;
+    const key = `hold:${aiName}/${name}Move`, c = dualClip(key, move, idle);
+    if (c.tracks.length === move.tracks.length) continue;
+    clips.set(key, c);
+    stances[name] = { ...T, Move: { ...T.Move, clip: key } };
+  }
+  return { ...ai, stances };
+}
+
 /** Match preload: the 3PV bundles of a weapon's AI (what bindWeaponAnim downloads on the first actor that holds it). */
 export async function preloadWeaponAnim3pv(key: string | number, cls: UpperClass, skel = "swat_male"): Promise<void> {
   const ix = await loadAnim3pv(skel);
@@ -232,6 +246,6 @@ export async function bindWeaponAnim(anim: CharAnimator | null | undefined, key:
   if (male && ix !== male) for (const [k, c] of await loadClips(male, need.filter((n) => !clips.has(n)))) clips.set(k, c);
   if (bindTok.get(anim) !== tok) return null;
   const id = ix.weapons[String(key)] ? String(key) : Object.keys(ix.weapons).find((k) => ix.weapons[k] === ai);
-  anim.useTables(ix.lower, dualTables(ix.ai[ai], clips, ai), ai, clips, id !== undefined ? ix.zoomType[id] ?? 0 : undefined);
+  anim.useTables(ix.lower, holdTables(dualTables(ix.ai[ai], clips, ai), clips, ai), ai, clips, id !== undefined ? ix.zoomType[id] ?? 0 : undefined);
   return ai;
 }

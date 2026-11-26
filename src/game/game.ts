@@ -1950,12 +1950,17 @@ export class Game implements BotHost {
       if (held && held.name !== s.weapon) s = { ...s, weapon: held.name };
       this.recState(s);
       let r = this.remotes.get(s.id);
-      if (r) {
-        r.fireGap = held?.fireDelay ?? 0;
-        r.fireHeld = !held || held.fireMode === "auto" || held.fireMode === "burst";
-      }
+      const timing = {
+        fireGap: held?.fireDelay ?? 0,
+        fireHeld: !held || held.fireMode === "auto" || held.fireMode === "burst",
+        // observeFire chambers no knife / grenade (Ballistic Knife, bow arrows carry NeedToLoadBullet)
+        boltTime: held && held.family !== "KNIFE" && held.family !== "GRENADE" ? held.params.loadBulletTime : undefined,
+        reloadTime: held?.params.reloadTime,
+        reloadPerShell: !!held?.params.reloadPerShell,
+      };
+      if (r) Object.assign(r, timing);
       if (!r) {
-        r = new RemoteActor(s.id, s, this.scene);
+        r = new RemoteActor(s.id, s, this.scene, timing);
         r.demo = this.demoSource;
         r.protectTime = this.theater ? 0 : this.match.cfg.spawnProtect; // the theater: no spawn blink (a seek reads as a respawn)
         const ra = r;

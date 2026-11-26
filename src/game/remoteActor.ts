@@ -63,6 +63,8 @@ async function hasLaser(weapon: string | number): Promise<boolean> {
 /** Network player driven by PlayerState snapshots (interpolated). Hit-testable like bots. */
 /** state packets come every 50 ms: this long without one and the replicated "firing" flag is stale */
 const REMOTE_FIRE_STALE = 0.4;
+/** [INFERIDO] WeaponSystem.startReload's lead-in, the 3PV opening runs over it as the 1PV readyPhase does */
+const RELOAD_LEAD = 0.3;
 
 export class RemoteActor implements Actor {
   readonly kind = "remote" as const;
@@ -101,6 +103,12 @@ export class RemoteActor implements Actor {
   fireGap = 0;
   /** the held weapon repeats while "firing" (auto / burst); unknown weapon = true, the old behaviour */
   fireHeld = true;
+  boltTime: number | undefined;
+  // the remote's own reload scale is not networked: [INFERIDO] 1
+  reloadTime: number | undefined;
+  reloadPerShell = false;
+  private reloadAge = 0;
+  private shells = 0;
   private clock = 0;
   private lastFireAt = -999;
   /** seconds since the last apply() */
@@ -137,7 +145,9 @@ export class RemoteActor implements Actor {
   private changeTok = 0;
   private beam: THREE.Mesh | null = null;
 
-  constructor(readonly id: string, s: PlayerState, private scene: THREE.Scene) {
+  // timing before the first apply: its fire / reload edge plays at once
+  constructor(readonly id: string, s: PlayerState, private scene: THREE.Scene, timing?: Partial<Pick<RemoteActor, "fireGap" | "fireHeld" | "boltTime" | "reloadTime" | "reloadPerShell">>) {
+    Object.assign(this, timing);
     if (s.bot) noteBotEquip(id); // an AI seat: no 5138 reaches us, so no head item from the player who held the seat before
     this.name = s.name;
     this.team = s.team;
@@ -319,6 +329,14 @@ export class RemoteActor implements Actor {
     if (this.sinceState > REMOTE_FIRE_STALE) this.firing = false;
     // held repeat only for auto / burst: a semi-auto shot keeps "fire" set ~150 ms, which would read as a second shot
     if (this.firing && this.fireHeld && this.alive && this.fireAnimCd <= 0 && this.torsoAction !== "plant") this.playFire();
+    // shell-by-shell: one LoadMagazine per ReloadTime after the 0.3 s lead-in (WeaponSystem.startReload) while "reload" holds
+    if (this.torsoAction === "reload" && this.reloadPerShell && this.reloadTime) {
+      this.reloadAge += dt;
+      while (this.alive && this.reloadAge >= RELOAD_LEAD + this.shells * this.reloadTime) {
+        this.shells++;
+        this.visual.reloadShell(this.reloadTime);
+      }
+    }
     const dummy = this.alive ? this.visual.laserDummy : null;
     if (this.laserOn && dummy) {
       if (this.beam?.parent !== dummy) {
@@ -353,13 +371,18 @@ export class RemoteActor implements Actor {
     this.lastHeavy = heavy;
     this.fireAnimCd = this.fireGap || 0.1;
     this.visual.fire(heavy);
+    // [INFERIDO] Fire is 1 frame, LoadBullet follows at once (as observeFire); no ammo count, so the last round chambers too
+    if (this.boltTime !== undefined && !heavy) this.visual.loadBullet(this.boltTime);
     this.onFire?.(heavy);
   }
   /** seconds = the weapon's weapon.pef ReloadTime: the whole Up_Reload clip is stretched over it */
-  playReload(seconds?: number): void {
+  playReload(seconds = this.reloadTime): void {
     this.reloadSeq++;
     this.reloadSecs = seconds ?? 2;
-    this.visual.reload(seconds);
+    this.reloadAge = 0;
+    this.shells = 0;
+    if (this.reloadPerShell && seconds) this.visual.reloadOpen(RELOAD_LEAD);
+    else this.visual.reload(seconds);
   }
   /**
    * Flinch on a bullet hit. The shooter's own client drives it: the victim is client-authoritative (game.ts

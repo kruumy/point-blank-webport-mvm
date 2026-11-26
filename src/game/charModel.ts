@@ -465,6 +465,7 @@ export class CharVisual {
       void inst?.animator("3pv").then((a) => {
         if (tok !== this.weaponTok) return;
         this.weaponAnim = a;
+        if (a) a.gender = this.animSkel === "swat_female" ? "female" : "male"; // M70 / L115A1 key the grip per gender (LoadBullet3PVFemale)
         a?.syncExt(this.extOn);
       });
       if (this.weaponObj) {
@@ -485,7 +486,7 @@ export class CharVisual {
       this.weaponObjL = l.object;
       this.muzzleNodeL = l.muzzle;
       void l.animator("3pv").then((a) => {
-        if (a) a.hand = "L"; // DualKnife: Idle_Male_Left / Change_Left ...
+        if (a) { a.hand = "L"; a.gender = this.animSkel === "swat_female" ? "female" : "male"; } // DualKnife: Idle_Male_Left / Change_Left ...
         if (tok === this.weaponTok) this.weaponAnimL = a;
       });
     });
@@ -516,6 +517,19 @@ export class CharVisual {
     this.anim?.reload(duration);
     this.weaponAnim?.play("reload", duration); // LoadMag over ReloadTime, like the upper LoadMagazine (exe 0x611980)
     this.weaponAnimL?.play("reload", duration);
+  }
+  reloadOpen(lead: number): void {
+    this.anim?.reloadOpen(lead);
+  }
+  reloadShell(duration: number): void {
+    this.anim?.reloadShell(duration);
+    this.weaponAnim?.play("reload", duration);
+    this.weaponAnimL?.play("reload", duration);
+  }
+  // NeedToLoadBullet: OnLoadBullet 0xa14ef0
+  loadBullet(duration: number): void {
+    this.anim?.loadBullet(duration);
+    this.weaponAnim?.play("loadBullet", duration);
   }
   change(since = 0): void {
     this.anim?.change(since);

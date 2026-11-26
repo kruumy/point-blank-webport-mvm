@@ -489,6 +489,14 @@ export class CharAnimator {
       this.queued = { state: "LoadMagazine", dur: duration && duration > rc.duration + 0.1 ? duration - rc.duration : duration, at: this.t + rc.duration };
       return;
     }
+    this.reloadShell(duration);
+  }
+  // [INFERIDO] the Ready -> LoadMagazine rule is not decoded: Ready over the lead-in, the shells follow
+  reloadOpen(lead: number): void {
+    this.queued = null;
+    this.playUpper("LoadMagazineReady", lead);
+  }
+  reloadShell(duration?: number): void {
     this.playUpper("LoadMagazine", duration) || this.playUpper("LoadBullet", duration);
   }
   /** LoadMagazine waiting for LoadMagazineReady to end */
