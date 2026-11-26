@@ -99,9 +99,9 @@ const depthUniforms = () => ({ tDepth: { value: null }, tVm: { value: null }, ne
 type Bytes = Uint8Array<ArrayBuffer>;
 
 /** [RECRIADO] effects' alpha as coverage: alpha-blended (smoke) covers, additive (flashes) adds light at 0; returns the undo (shared materials) */
-function fxCoverage(scene: THREE.Scene): () => void {
+function fxCoverage(roots: readonly THREE.Object3D[]): () => void {
   const saved = new Map<THREE.Material, [THREE.Blending, THREE.BlendingSrcFactor, THREE.BlendingDstFactor, number | null, number | null]>();
-  scene.traverse((o) => {
+  for (const root of roots) root.traverse((o) => {
     const m = (o as THREE.Mesh).material;
     if (!(o.layers.mask & (1 << FX_LAYER)) || !(m instanceof THREE.Material) || !m.transparent || saved.has(m)) return;
     const rgb: [THREE.BlendingSrcFactor, THREE.BlendingDstFactor] | null = m.blending === THREE.NormalBlending ? [THREE.SrcAlphaFactor, THREE.OneMinusSrcAlphaFactor]
@@ -208,24 +208,23 @@ export class Passes {
     const groups = layerPasses(f.joined).filter((g) => has(g[0])), of = (l: Layer) => groups.find((g) => g.includes(l));
     const first = (l: Layer) => of(l)?.[0] === l;
     // without alpha the effects alone go over black (their light adds, a key would not); with the players or gun, on green
-    const matteOf = (g: Layer[]): Matte => (g[0] === "world" || (g.length === 1 && g[0] === "effects" && !f.alpha) ? 0 : f.alpha && g.includes("effects") ? 2 : 1);
-    // a pass done at its top layer: the depth of field, then what sits over it sharp, as in the default pass (flash, gun)
+    // the gun's pass holds its flash: light, like the effects
+    const matteOf = (g: Layer[]): Matte => (g[0] === "world" || (g.length === 1 && g[0] === "effects" && !f.alpha) ? 0 : f.alpha && (g.includes("effects") || g.includes("viewmodel")) ? 2 : 1);
+    // a pass done at its top layer: the depth of field, then the gun over it sharp, as in the default pass
     const end = (l: Layer) => {
       const g = of(l);
       if (!g || g[g.length - 1] !== l) return;
       const matte = matteOf(g);
+      if (l === "viewmodel") {
+        // the first-person flash goes with the gun, behind it by the gun's depth; drawn after depth / normals read that depth
+        r.setRenderTarget(this.vm);
+        camera.layers.set(FX_LAYER);
+        const undo = fxCoverage(f.viewmodel);
+        try { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); } finally { undo(); }
+      }
       if (g[0] === "viewmodel") { image("viewmodel", this.vm.texture, matte); return; }
       const top = f.dof ? this.soft : this.geo;
       soft(this.geo.texture, matte);
-      if (g.includes("effects")) {
-        // the first-person flash, behind the gun
-        r.setRenderTarget(top);
-        r.clearDepth();
-        camera.layers.set(0);
-        this.depthOnly(() => { for (const o of f.viewmodel) if (o.visible) r.render(o, camera); });
-        camera.layers.set(FX_LAYER);
-        for (const o of f.viewmodel) if (o.visible) r.render(o, camera);
-      }
       if (l === "viewmodel") { this.overMat.uniforms.t.value = this.vm.texture; this.quad.material = this.overMat; r.setRenderTarget(top); r.render(this.quad, this.cam); }
       image(g[0], top.texture, matte);
     };
@@ -270,7 +269,7 @@ export class Passes {
         if (first("effects")) clear(true, false, false);
         scene.background = null;
         camera.layers.set(FX_LAYER);
-        if (matteOf(fx)) restoreFx = fxCoverage(scene);
+        if (matteOf(fx)) restoreFx = fxCoverage([scene]);
         withHidden([...f.editor, ...f.viewmodel], () => r.render(scene, camera));
         end("effects");
       }
@@ -295,12 +294,6 @@ export class Passes {
     try { draw(); } finally { s.setLocked(false); }
     this.quad.material = this.matteMat;
     this.r.render(this.quad, this.cam);
-  }
-
-  private depthOnly(draw: () => void): void {
-    const c = this.r.state.buffers.color;
-    c.setMask(false); c.setLocked(true);
-    try { draw(); } finally { c.setLocked(false); c.setMask(true); }
   }
 
   dispose(): void {

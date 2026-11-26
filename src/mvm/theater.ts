@@ -99,7 +99,7 @@ const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => str
     swatch: () => svg(`${WORLD_SVG}<g transform="translate(-3.5 2.6) scale(.82)">${PLAYER_SVG}</g><g transform="translate(9 6) scale(.7)">${GUN_SVG}</g>`) },
   world: { label: "World", note: () => "Map only: no players or effects", swatch: () => svg(WORLD_SVG) },
   players: { label: "Players", note: (a) => (a ? "Alpha matte" : "On green screen"), swatch: (a) => matteSvg(a, PLAYER_SVG) },
-  viewmodel: { label: "Viewmodel", note: (a) => `Arms and gun · ${a ? "alpha matte" : "on green"}`, swatch: (a) => matteSvg(a, GUN_SVG) },
+  viewmodel: { label: "Viewmodel", note: (a) => `Arms, gun and its flash · ${a ? "premultiplied alpha" : "on green"}`, swatch: (a) => matteSvg(a, GUN_SVG) },
   effects: { label: "Effects", note: (a) => `Flashes, smoke, tracers ${a ? "· premultiplied alpha" : "on black"}`,
     swatch: () => "radial-gradient(circle at 55% 50%,#fff6d0 0 9%,#ffb84a 20%,rgba(255,120,20,.35) 38%,transparent 58%),#050505" },
   depth: { label: "Depth", note: () => "16-bit · white near, black far", swatch: () => "linear-gradient(90deg,#f2f2f2,#101010)" },
