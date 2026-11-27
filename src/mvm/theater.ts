@@ -13,12 +13,14 @@ import { LAYERS, PASSES, Passes, hudKey, layerPasses, type PassFrame, type PassN
 import { CROSSHAIR, CROSSHAIR_COLORS } from "../game/pbHud/layout";
 import { HudCapture } from "./hudCapture";
 import { renderOnTop } from "../render/onTop";
+import { renderPbShadows } from "../render/pbShadow";
 import { charaChoices } from "../game/charModel";
 import { actorEquip, hatChoices } from "../game/charEquip";
 import { WeaponDb } from "../weapons/data";
 import { loadWeaponModelIndex } from "../weapons/worldModel";
 import { isItemShown, loadWeaponSupport } from "../lobby/state/weaponSupport";
-import { brightnessFactor, crosshairIndex } from "../gameplay/settings";
+import { brightnessFactor, crosshairIndex, type GameSettings } from "../gameplay/settings";
+import { aoOn } from "./lookFx";
 import { LookStage, deleteLook, listLooks, listSkies, readLook, writeLook, type Look } from "./looks";
 
 export interface TheaterHost {
@@ -89,6 +91,12 @@ const MODES: [Mode, string, string][] = [["pov", "POV", "First person (F2)"], ["
 const icon = (k: keyof typeof ICON, size = 14) =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const TEAM = [{ name: "Red", color: "#d33a2c" }, { name: "Blue", color: "#2c6fd3" }];
+/** [RECRIADO] best graphics while the theater is open (never saved); Rim Light and antialias off by user choice */
+export const THEATER_GRAPHICS: Partial<GameSettings> = {
+  shadowQuality: 3, dynamicLight: true, normalMap: true, specularMap: true, reflection: true, rimLight: false, ibl: true, anisotropic: true,
+  antialias: false, dynamicRes: false,
+};
+
 /** depth of field (post.ts), kept apart from the looks: mode 0 off, 1 manual distance, 2 under the mouse, 3 a player;
  * blur in % of the image height; near / far scale it in front of / behind the focus; speed = mouse focus easing (1/s) */
 const DOF_DEFAULT = { mode: 0, focus: 10, speed: 5, aperture: 1, maxBlur: 1, near: 1, far: 1 };
@@ -802,6 +810,7 @@ export class Theater {
         // on screen: the previewed pass when it is recorded, else the first one (1 - 7 switch it while it renders)
         const want = this.passOf(this.preview), shown = passes.includes(want) ? want : passes[0];
         const hud = hudRoot ? await this.hudCap.capture(hudRoot, w, h) : null;
+        renderPbShadows(this.host.renderer, this.host.game.scene, this.host.camera);
         reading.push({ n: i, bytes: Promise.all(passer.capture(passes, this.passFrame(hud), bf, () => this.drawFrame(step), shown)) });
         // the GPU draws the next frame while this one's pixels come back and upload
         if (reading.length > 2) await send(reading.shift()!);
@@ -1410,6 +1419,8 @@ export class Theater {
         ${head("Sky")}${row("Sky", opts("sky", [["", "Map's own"], ["none", "None"], ...this.skyNames.map((n): [string, string] => [n, n])]))}
         ${row("Tint", color("skyColor") + slider("skyStrength", 0, 3, 0.05))}
         ${row("Background", color("background"))}
+        ${head("Effects")}${row("Occlusion", slider("aoStrength", 0, 1, 0.05))}
+        ${row("AO radius", slider("aoRadius", 0.1, 3, 0.05))}
         ${head("Depth of field")}${row("Focus", `<select data-dof="mode" style="flex:1;min-width:0">${([[0, "Off"], [1, "Manual"], [2, "Mouse"], [3, "Player"]] as const).map(([v, t]) => `<option value="${v}" ${v === d.mode ? "selected" : ""}>${t}</option>`).join("")}</select>`)}
         ${d.mode === 1 ? row("Distance", slider("focus", 0.2, 100, 0.1, "dof")) : ""}
         ${d.mode === 2 ? row("Speed", slider("speed", 0.5, 30, 0.5, "dof")) + `<div class="hint">Focuses on what is under the cursor, also while rendering. Speed: how fast it follows.</div>` : ""}
@@ -1588,6 +1599,7 @@ export class Theater {
   // ---- looks ----
   /** the frame, through the depth of field when it is on; the first-person gun and the campath stay sharp on top */
   private draw(dt: number): void {
+    renderPbShadows(this.host.renderer, this.host.game.scene, this.host.camera);
     const p = this.rendering ? "default" : this.preview;
     // a pass shows its file (the layers joined into it), the whole frame for the default one; a joined layer, itself alone
     const frame = p === "default" || (this.heads(p) && this.passOf(p) === "default");
@@ -1602,11 +1614,11 @@ export class Theater {
 
   /** the default pass: the frame, through the depth of field when it is on (which also moves the focus) */
   private drawFrame(dt: number): void {
-    const d = this.dof;
-    if (!d.mode) { this.host.render(); return; }
+    const d = this.dof, l = this.looks.current, fx = aoOn(l);
+    if (!d.mode && !fx) { this.host.render(); return; }
     this.post ??= new Post(this.host.renderer);
     if (d.mode === 3) this.dofZ = this.actorDepth(this.dofTarget()) ?? this.dofZ; // held while the player is gone
-    this.post.render(this.host.game.scene, this.host.camera, this.dofParams(dt), [...this.host.camera.children, this.pathViz]);
+    this.post.render(this.host.game.scene, this.host.camera, d.mode ? this.dofParams(dt) : null, [...this.host.camera.children, this.pathViz], fx ? l : null);
   }
 
   private dofParams(dt: number): DofParams {

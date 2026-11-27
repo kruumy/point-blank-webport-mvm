@@ -12,7 +12,7 @@ import { I3Gui, cloneNode as clone, findNode as find, relayout, renameTree, type
 import { loadStrings, tOr } from "../lobby/ui/i18n.ts";
 import { jsonOnce } from "../jsonOnce.ts";
 import { CROSSHAIR, CROSSHAIR_COLORS, type CrosshairType, crosshairShape } from "./pbHud/layout.ts";
-import { DEFAULT_SETTINGS, type GameSettings, crosshairIndex, setCrosshairIndex, crosshairType, setCrosshairType, RENDER_SCALES, type RenderScale, LOBBY_UIS, type LobbyUi, LOBBY_UI_AT_LOAD, getSettings, MOUSE_SENS_MAX, MOUSE_SENS_MIN, MOUSE_SENS_STEP, saveSettings } from "../gameplay/settings.ts";
+import { DEFAULT_SETTINGS, type GameSettings, crosshairIndex, setCrosshairIndex, crosshairType, setCrosshairType, RENDER_SCALES, type RenderScale, SHADOW_QUALITIES, type ShadowQuality, LOBBY_UIS, type LobbyUi, LOBBY_UI_AT_LOAD, getSettings, MOUSE_SENS_MAX, MOUSE_SENS_MIN, MOUSE_SENS_STEP, saveSettings } from "../gameplay/settings.ts";
 import { PB_FPS_CAMERA } from "../gameplay/pbConfig.ts";
 import { isFullscreen, toggleFullscreen } from "../ui/fullscreen.ts";
 import { playUiClick, playUiSound, UI_CLICK_OK, UI_CLICK_CANCEL } from "../ui/uiClick.ts";
@@ -71,6 +71,7 @@ const TEXT: Record<string, [key: string, fallback: string]> = {
   opGfx: ["", "Graphics"], // [RECRIADO] tab; rows = names of the official DX11 launcher
   opGfxNormalKey: ["", "Normal Mapping"], opGfxSpecKey: ["", "Specular"], opGfxReflectKey: ["", "Reflection"], opGfxRimKey: ["", "Rim Light"],
   opGfxIblKey: ["", "Image Based Light"], opGfxAnisoKey: ["", "Anisotropic filter (Tri-Linear)"],
+  opGfxShadowKey: ["STR_POPUP_SHADOW_EFFECT", "Shadow effects"], opGfxLightKey: ["STR_POPUP_DYNAMIC_LIGHT", "Dynamic lighting"], // the exe's own rows (opCapacityShadow / Light)
   opGfxPhysicsKey: ["STR_POPUP_PHYSICS_EFFECT", "Physics effects"], // the exe's own row (opCapacityPhysX), moved to Gráficos
   opInterfaceEffectKey: ["STR_POPUP_DISPLAY_EFFECT", "Text effect"],
   opInterfaceRadarKey: ["", "Lobby interface"], // [RECRIADO] the hidden radar combo row, repurposed (settings.lobbyUi)
@@ -123,6 +124,7 @@ const CHECKS: CheckDef[] = [
   { box: "opGfxRim", get: (s) => s.rimLight, set: (s, v) => (s.rimLight = v) },
   { box: "opGfxIbl", get: (s) => s.ibl, set: (s, v) => (s.ibl = v) },
   { box: "opGfxAniso", get: (s) => s.anisotropic, set: (s, v) => (s.anisotropic = v) },
+  { box: "opGfxLight", get: (s) => s.dynamicLight, set: (s, v) => (s.dynamicLight = v) },
   { box: "opGfxPhysics", get: (s) => s.ragdoll, set: (s, v) => (s.ragdoll = v) },
   { box: "opControlReverse", get: (s) => s.invertMouse, set: (s, v) => (s.invertMouse = v) },
 ];
@@ -142,6 +144,8 @@ const COLOR_ROW = { y: 226, swatchY: 246, size: 16, gap: 3, x: 14 };
 /** Vídeo > render scale combo labels [RECRIADO] (supersampling is NOT ORIGINAL) */
 const SCALE_LABEL: Record<RenderScale, string> = { "70": "70%", "100": "100%", native: "Nativa", "150": "150%", "200": "200%" };
 const POPUP_ROW_H = 17;
+/** Gráficos > shadow combo: Shadow_Quality_Type 0..3 [INFERIDO] the exe's labels are not decoded (STR_POPUP_LOW / MID / HIGH_QUALITY read "Low" / "Normal" / "High") */
+const SHADOW_LABEL: Record<ShadowQuality, string> = { 0: "Off", 1: "Low", 2: "Normal", 3: "High" };
 /** Interface > lobby combo labels [RECRIADO] */
 const LOBBY_LABEL: Record<LobbyUi, string> = { cross: "Cross" };
 /** [RECRIADO] restart note + Recarregar button under the lobby combo (y inside the tab), shown while the saved lobby differs from this load's */
@@ -176,11 +180,14 @@ function withLowTexRow(root: GNode): void {
 }
 
 /** [RECRIADO] Gráficos tab: the Controle tab button + a section shell with one checkbox row (copy of the window mode row) per effect */
-const GFX_ROWS = ["opGfxNormal", "opGfxSpec", "opGfxReflect", "opGfxRim", "opGfxIbl", "opGfxAniso", "opGfxDynRes", "opGfxAntialias", "opGfxPhysics"];
-const GFX_Y0 = 60, GFX_STEP = 35; // 9 rows must fit the 385 px frame (last at y 340, as before)
+const GFX_ROWS = ["opGfxShadow", "opGfxLight", "opGfxNormal", "opGfxSpec", "opGfxReflect", "opGfxRim", "opGfxIbl", "opGfxAniso", "opGfxDynRes", "opGfxAntialias", "opGfxPhysics"];
+const GFX_Y0 = 60, GFX_STEP = 28; // 11 rows must fit the 385 px frame (last at y 340, as before)
+/** the exe's own Capacidade rows moved to Gráficos: the shadow combo, the dynamic light checkbox is a window mode copy like the rest */
+const GFX_FROM_CAPACITY: Record<string, string> = { opGfxShadow: "opCapacityShadow" };
 
 function withGraphicsTab(root: GNode): void {
   const frame = find(root, "opFrame"), vsect = find(root, "opVideoSect"), mode = vsect && find(vsect, "opVideoWindowMode"), ctl = find(root, "opControl");
+  const csect = find(root, "opCapacitySect");
   if (!frame?.children || !vsect || !mode || !ctl) return;
   const tab = clone(ctl);
   renameTree(tab, "opControl", "opGfx");
@@ -188,8 +195,10 @@ function withGraphicsTab(root: GNode): void {
   const sect = clone(vsect);
   renameTree(sect, "opVideo", "opGfx");
   sect.children = GFX_ROWS.map((name, i) => {
-    const row = clone(mode);
-    renameTree(row, "opVideoWindowMode", name);
+    const from = GFX_FROM_CAPACITY[name], src = (from && csect && find(csect, from)) || null;
+    const row = clone(src ?? mode);
+    renameTree(row, src ? from : "opVideoWindowMode", name);
+    row.x = mode.x;
     row.y = GFX_Y0 + i * GFX_STEP;
     return row;
   });
@@ -327,6 +336,7 @@ export class ClassicOptionWindow {
     this.wireWindowMode();
     this.wireCombo("opVideoResolution", RENDER_SCALES, SCALE_LABEL, (s) => s.renderScale, (s, v) => (s.renderScale = v));
     this.wireCombo("opInterfaceRadar", LOBBY_UIS, LOBBY_LABEL, (s) => s.lobbyUi, (s, v) => (s.lobbyUi = v));
+    this.wireCombo("opGfxShadow", SHADOW_QUALITIES, SHADOW_LABEL, (s) => s.shadowQuality, (s, v) => (s.shadowQuality = v));
     this.wireLobbyNote();
     for (const v of VOLUMES) this.wireVolume(v);
     for (const g of GAUGES) this.wireGauge(g);
@@ -460,7 +470,7 @@ export class ClassicOptionWindow {
   }
 
   /** a combo of the original layout (<base>Combo / Button / Popup): box + arrow button open the Dropdown popup, one row per value */
-  private wireCombo<T extends string>(base: string, values: readonly T[], label: Record<T, string>, get: (s: GameSettings) => T, setV: (s: GameSettings, v: T) => void): void {
+  private wireCombo<T extends string | number>(base: string, values: readonly T[], label: Record<T, string>, get: (s: GameSettings) => T, setV: (s: GameSettings, v: T) => void): void {
     const combo = this.byName.get(`${base}Combo`), button = this.byName.get(`${base}Button`), popup = this.byName.get(`${base}Popup`);
     if (!combo || !popup) return;
     const pad = 4, h = values.length * POPUP_ROW_H + pad * 2;

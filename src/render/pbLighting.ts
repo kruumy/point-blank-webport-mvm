@@ -68,6 +68,16 @@ const U = {
   pbFogParams: { value: new THREE.Vector3(1, 1000, 1) }, // near, far, density
   pbLuxLit: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its lit (sun) parts
   pbLuxShade: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its shaded parts
+  // DirSHM_ (g_texShadow0 / g_mShadowMap0 / g_vShadowMapFactor0): filled by render/pbShadow.ts while a shadow map is live
+  pbShadowOn: { value: 0 },
+  pbShadowMap: { value: null as THREE.Texture | null },
+  pbShadowMatrix: { value: new THREE.Matrix4() },
+  pbShadowFactor: { value: new THREE.Vector4(1024, 1 / 1024, 100, 1) }, // size, 1 / size, depth scale and offset of the soft compare
+  // _Point (g_vLightPos1 / g_vLightDiffuse1 / g_vLightFactor1): the muzzle i3Lights (tickPbPointLights)
+  pbPointCount: { value: 0 },
+  pbPointPos: { value: Array.from({ length: 4 }, () => new THREE.Vector3()) },
+  pbPointColor: { value: Array.from({ length: 4 }, () => new THREE.Vector3()) },
+  pbPointFactor: { value: [0, 0, 0, 0] },
 };
 /** [RECRIADO] the live engine constants, for the theater looks (src/mvm/looks.ts) */
 export const pbUniforms = U;
@@ -217,7 +227,98 @@ export function createPbFallbackLights(): THREE.Object3D {
   return g;
 }
 
+// ---- muzzle point lights ------------------------------------------------------------------------------------------
+
+// the chara's muzzle i3Light: created 0x63af86, fired 0x609c00 (diffuse, range), removed after 0.05 s 0x60b72f
+const POINT_MAX = 4; // [INFERIDO] the i3 shaders take one point light per draw; four live at once here, summed
+const POINT_RGB = new THREE.Vector3(1.4, 1.3, 1.2);
+const POINT_RANGE = 3;
+const POINT_LIFE = 0.05;
+const points: { pos: THREE.Vector3; t: number }[] = [];
+
+export function flashPbPointLight(pos: THREE.Vector3): void {
+  if (!getSettings().dynamicLight) return;
+  let p = points.find((x) => x.pos.distanceToSquared(pos) < 1); // [INFERIDO] the same shooter's light: within 1 m
+  if (!p) {
+    if (points.length >= POINT_MAX) points.sort((a, b) => a.t - b.t).pop();
+    points.push((p = { pos: new THREE.Vector3(), t: 0 }));
+  }
+  p.pos.copy(pos);
+  p.t = 0;
+  syncPoints();
+}
+
+export function tickPbPointLights(dt: number): void {
+  if (!points.length) return;
+  for (const p of points) p.t += dt;
+  for (let i = points.length - 1; i >= 0; i--) if (points[i].t > POINT_LIFE) points.splice(i, 1);
+  syncPoints();
+}
+
+export function clearPbPointLights(): void {
+  points.length = 0;
+  syncPoints();
+}
+
+function syncPoints(): void {
+  U.pbPointCount.value = points.length;
+  points.forEach((p, i) => {
+    U.pbPointPos.value[i].copy(p.pos);
+    U.pbPointColor.value[i].copy(POINT_RGB);
+    U.pbPointFactor.value[i] = 1 / (POINT_RANGE * POINT_RANGE); // [INFERIDO] g_vLightFactor1.x = 1 / range^2 (att = 1 - d^2 * x)
+  });
+}
+
 // ---- GLSL ---------------------------------------------------------------------------------------------------------
+
+// DirSHM_ ps (Cache.i3GL): 4 taps sat((stored - z) * 100 + 1) blended by frac(uv * size); here * 100 / + 1 = pbShadowFactor.z / .w (pbShadow.ts depth)
+const SHADOW_PARS = /* glsl */ `
+#include <packing>
+uniform float pbShadowOn;
+uniform sampler2D pbShadowMap;
+uniform vec4 pbShadowFactor;
+varying vec4 vPbShadow;
+float pbShadowTap(vec2 uv, float z) { return clamp((unpackRGBAToDepth(texture2D(pbShadowMap, uv)) - z) * pbShadowFactor.z + pbShadowFactor.w, 0.0, 1.0); }
+float pbShadowLit() {
+  if (pbShadowOn < 0.5) return 1.0;
+  vec3 p = vPbShadow.xyz / vPbShadow.w;
+  if (p.z >= 1.0 || any(lessThan(p.xy, vec2(0.0))) || any(greaterThan(p.xy, vec2(1.0)))) return 1.0;
+  float s = pbShadowFactor.y;
+  vec2 f = fract(p.xy * pbShadowFactor.x);
+  float lit = mix(mix(pbShadowTap(p.xy, p.z), pbShadowTap(p.xy + vec2(s, 0.0), p.z), f.x),
+                  mix(pbShadowTap(p.xy + vec2(0.0, s), p.z), pbShadowTap(p.xy + vec2(s), p.z), f.x), f.y);
+  vec2 e = min(p.xy, 1.0 - p.xy);
+  return mix(1.0, lit, clamp(min(e.x, e.y) * 10.0, 0.0, 1.0)); // [RECRIADO] fades out at the map's edge, no hard line
+}`;
+
+// _Point ps (Cache.i3GL Phong_*_Dir_Point); spec1 = light x material specular: 0 on the chara packs, [INFERIDO] 0 on the world
+const POINT_PARS = /* glsl */ `
+uniform int pbPointCount;
+uniform vec3 pbPointPos[4];
+uniform vec3 pbPointColor[4];
+uniform float pbPointFactor[4];
+vec3 pbPoints(vec3 P, vec3 N, vec3 B, vec3 tint) {
+  vec3 c = vec3(0.0);
+  for (int i = 0; i < 4; i++) {
+    if (i >= pbPointCount) break;
+    vec3 v = pbPointPos[i] - P;
+    float att = max(1.0 - dot(v, v) * pbPointFactor[i], 0.0);
+    float w = clamp(dot(normalize(v), N), 0.0, 1.0) * att;
+    c += pbPointColor[i] * tint * w * (B * ((B + w) * 0.3 + 1.0));
+  }
+  return c;
+}`;
+
+/** [RECRIADO] lightmap level in a chara's shadow, tuned by eye against the baked shadows (0.25 read too dark) */
+const PB_SHADE = "0.32";
+
+// the merged world has no vertex normals: the face normal from screen derivatives, turned to the eye
+const FACE_NORMAL = /* glsl */ `
+#define PB_SHADE ${PB_SHADE}
+vec3 pbFaceNormal(vec3 P) {
+  vec3 n = normalize(cross(dFdx(P), dFdy(P)));
+  return dot(n, cameraPosition - P) < 0.0 ? -n : n;
+}`;
 
 const FOG_PARS = /* glsl */ `
 uniform int pbFogMode;
@@ -241,12 +342,17 @@ attribute vec2 uv1;
 varying vec2 vPbUv;
 varying vec2 vPbUv1;
 varying float vPbFogDepth;
+varying vec3 vPbWorldPos;
+varying vec4 vPbShadow;
+uniform mat4 pbShadowMatrix;
 void main() {
   vPbUv = uv;
   vPbUv1 = uv1;
   #include <begin_vertex>
   #include <project_vertex>
   vPbFogDepth = -mvPosition.z; // table fog: view-space depth (W-friendly projection)
+  vPbWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vPbShadow = pbShadowMatrix * vec4(vPbWorldPos, 1.0);
 }`;
 
 const WORLD_FS = /* glsl */ `
@@ -255,18 +361,31 @@ uniform sampler2D luxMap;
 uniform vec4 pbLightDiffuse;
 uniform vec3 pbLuxLit;
 uniform vec3 pbLuxShade;
+uniform vec3 pbLightDir;
 uniform float alphaTest;
 varying vec2 vPbUv;
 varying vec2 vPbUv1;
+varying vec3 vPbWorldPos;
+${SHADOW_PARS}
+${POINT_PARS}
+${FACE_NORMAL}
 ${FOG_PARS}
 void main() {
   vec4 D = texture2D(map, vPbUv);
   vec3 L = texture2D(luxMap, vPbUv1).rgb;
+  bool dyn = pbShadowOn + float(pbPointCount) > 0.5;
+  vec3 N = dyn ? pbFaceNormal(vPbWorldPos) : vec3(0.0, 1.0, 0.0);
+  // [RECRIADO] down to PB_SHADE, as dark as the baked shadows (the exe's rgb * (1 - g_vAmbient.x) is far lighter); shaded texels stay
+  if (pbShadowOn > 0.5 && dot(pbLightDir, N) > 0.01) {
+    float lum = dot(L, vec3(0.3333));
+    L = mix(L, L * min(1.0, PB_SHADE / max(lum, 1e-3)), 1.0 - pbShadowLit());
+  }
   // [RECRIADO] the sun is baked into the lightmap with everything else: its bright end stands for the sunlit parts
   L *= mix(pbLuxShade, pbLuxLit, smoothstep(0.25, 0.7, dot(L, vec3(0.3333))));
   float a = D.a * pbLightDiffuse.a;
   if (a <= alphaTest) discard;
   vec3 c = 2.0 * D.rgb * (L * ((L + D.rgb) * 0.3 + 1.0)); // Phong_DLX_Dir_
+  if (dyn) c += pbPoints(vPbWorldPos, N, c, vec3(1.0));
   gl_FragColor = vec4(pbFog(clamp(c, 0.0, 1.0)), a);
 }`;
 
@@ -277,6 +396,8 @@ varying vec2 vPbUv;
 varying vec3 vPbNormal;
 varying vec3 vPbWorldPos;
 varying float vPbFogDepth;
+varying vec4 vPbShadow;
+uniform mat4 pbShadowMatrix;
 void main() {
   vPbUv = uv;
   #include <beginnormal_vertex>
@@ -288,6 +409,7 @@ void main() {
   #include <project_vertex>
   vPbNormal = inverseTransformDirection(transformedNormal, viewMatrix); // vs_1_1: normalised per vertex
   vPbWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vPbShadow = pbShadowMatrix * vec4(vPbWorldPos, 1.0);
   vPbFogDepth = -mvPosition.z;
 }`;
 
@@ -321,10 +443,13 @@ uniform vec3 mtlSpecular;
 uniform float mtlShininess;
 uniform float alphaTest;
 uniform float useFog;
+uniform float shadowRecv;
 varying vec2 vPbUv;
 varying vec3 vPbNormal;
 varying vec3 vPbWorldPos;
 ${FOG_PARS}
+${SHADOW_PARS}
+${POINT_PARS}
 float d3dPow(float x, float y) { return y <= 0.0 ? 1.0 : pow(x, y); }
 void main() {
   vec4 D = hasMap > 0.5 ? texture2D(map, vPbUv) : vec4(1.0);
@@ -351,6 +476,7 @@ void main() {
   if (a <= alphaTest) discard;
   float nl = dot(L, N);
   float ndl = clamp(nl, 0.0, 1.0);
+  if (ndl > 0.01 && shadowRecv > 0.5) ndl *= pbShadowLit(); // Phong_D_DirSHM_: N.L x lit, kept where N.L <= 0.01
   vec3 R = 2.0 * nl * N - L;
   vec3 V = normalize(cameraPosition - vPbWorldPos);
   float rv = clamp(dot(R, V), 0.0, 1.0);
@@ -363,6 +489,7 @@ void main() {
   }
   vec3 k = (D.rgb + ndl) * 0.3 + 1.0;
   vec3 c = LD.rgb * (ndl * (D.rgb * k + spec)) + D.rgb * pbAmbient;   // Phong_D_Dir_
+  if (pbPointCount > 0) c += pbPoints(vPbWorldPos, N, D.rgb, mtlDiffuse.rgb); // g_vLightDiffuse1 = light x material diffuse
   if (hasEmissive * pbReflectOn > 0.5) c += texture2D(emissiveMap, vPbUv).rgb * emissiveColor * 4.0; // Phong_*E*: E * g_vMtlEmissive * 4
   if (hasRef * pbHasEnv * pbReflectOn > 0.5) {
     // Phong_*RM*: rgb += texCUBE(g_texReflect, g_mInvView * reflect(nrm(viewPos), N)) * reflectMask.rgb (additive, unlit). Done in world space:
@@ -398,6 +525,12 @@ void main() {
 }`;
 
 // ---- materials ----------------------------------------------------------------------------------------------------
+
+/** the shadow map and point lights, shared by every PB material */
+const dynamicUniforms = () => ({
+  pbShadowOn: U.pbShadowOn, pbShadowMap: U.pbShadowMap, pbShadowMatrix: U.pbShadowMatrix, pbShadowFactor: U.pbShadowFactor,
+  pbPointCount: U.pbPointCount, pbPointPos: U.pbPointPos, pbPointColor: U.pbPointColor, pbPointFactor: U.pbPointFactor,
+});
 
 /** Textures are sampled raw like DX9 (the value in the file is the value the shader sees). */
 function rawTexture(t: THREE.Texture | null | undefined): THREE.Texture | null {
@@ -435,9 +568,11 @@ export function pbWorldMaterial(src: THREE.MeshStandardMaterial): THREE.ShaderMa
       pbLightDiffuse: U.pbLightDiffuse,
       pbLuxLit: U.pbLuxLit,
       pbLuxShade: U.pbLuxShade,
+      pbLightDir: U.pbLightDir,
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      ...dynamicUniforms(),
     },
   });
   return common(src, m);
@@ -455,6 +590,9 @@ varying vec2 vPbUv;
 varying vec2 vPbUv1;
 varying vec2 vPbLayer;
 varying float vPbFogDepth;
+varying vec3 vPbWorldPos;
+varying vec4 vPbShadow;
+uniform mat4 pbShadowMatrix;
 void main() {
   vPbUv = uv;
   vPbUv1 = uv1;
@@ -462,6 +600,8 @@ void main() {
   #include <begin_vertex>
   #include <project_vertex>
   vPbFogDepth = -mvPosition.z;
+  vPbWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vPbShadow = pbShadowMatrix * vec4(vPbWorldPos, 1.0);
 }`;
 
 const WORLD_ARRAY_FS = /* glsl */ `
@@ -470,19 +610,32 @@ uniform sampler2DArray luxArr;
 uniform vec4 pbLightDiffuse;
 uniform vec3 pbLuxLit;
 uniform vec3 pbLuxShade;
+uniform vec3 pbLightDir;
 uniform float alphaTest;
 varying vec2 vPbUv;
 varying vec2 vPbUv1;
+varying vec3 vPbWorldPos;
+${SHADOW_PARS}
+${POINT_PARS}
+${FACE_NORMAL}
 varying vec2 vPbLayer;
 ${FOG_PARS}
 void main() {
   vec4 D = texture(mapArr, vec3(vPbUv, vPbLayer.x));
   vec3 L = texture(luxArr, vec3(vPbUv1, vPbLayer.y)).rgb;
+  bool dyn = pbShadowOn + float(pbPointCount) > 0.5;
+  vec3 N = dyn ? pbFaceNormal(vPbWorldPos) : vec3(0.0, 1.0, 0.0);
+  // [RECRIADO] down to PB_SHADE, as dark as the baked shadows (the exe's rgb * (1 - g_vAmbient.x) is far lighter); shaded texels stay
+  if (pbShadowOn > 0.5 && dot(pbLightDir, N) > 0.01) {
+    float lum = dot(L, vec3(0.3333));
+    L = mix(L, L * min(1.0, PB_SHADE / max(lum, 1e-3)), 1.0 - pbShadowLit());
+  }
   // [RECRIADO] the sun is baked into the lightmap with everything else: its bright end stands for the sunlit parts
   L *= mix(pbLuxShade, pbLuxLit, smoothstep(0.25, 0.7, dot(L, vec3(0.3333))));
   float a = D.a * pbLightDiffuse.a;
   if (a <= alphaTest) discard;
   vec3 c = 2.0 * D.rgb * (L * ((L + D.rgb) * 0.3 + 1.0)); // Phong_DLX_Dir_
+  if (dyn) c += pbPoints(vPbWorldPos, N, c, vec3(1.0));
   gl_FragColor = vec4(pbFog(clamp(c, 0.0, 1.0)), a);
 }`;
 
@@ -498,9 +651,11 @@ export function pbWorldArrayMaterial(src: THREE.ShaderMaterial, mapArr: THREE.Te
       pbLightDiffuse: U.pbLightDiffuse,
       pbLuxLit: U.pbLuxLit,
       pbLuxShade: U.pbLuxShade,
+      pbLightDir: U.pbLightDir,
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      ...dynamicUniforms(),
     },
   });
   return common(src, m);
@@ -608,6 +763,8 @@ export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): T
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      shadowRecv: { value: mtl === PB_VIEWER_MTL ? 0 : 1 }, // [INFERIDO] the arms sit inside the own body's shadow caster
+      ...dynamicUniforms(),
     },
   });
   if (s.userData.pbNormalUrl || s.userData.pbSpecUrl || s.userData.pbRefUrl || s.userData.pbEmissiveUrl) {

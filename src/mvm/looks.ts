@@ -2,9 +2,10 @@ import * as THREE from "three";
 import { disposeTree, loadSky } from "../realLevel";
 import { configurePbRenderer, pbUniforms as U } from "../render/pbLighting";
 import { DEMO_API } from "./demo";
+import { LOOK_FX_DEFAULT, type LookFxParams } from "./lookFx";
 
 /** colours "#rrggbb" in the engine's gamma space, strengths multiply them, angles in degrees */
-export interface Look {
+export interface Look extends LookFxParams {
   sunAzimuth: number; sunElevation: number; sunColor: string; sunStrength: number;
   ambientColor: string; ambientStrength: number;
   /** baked light: lit (mostly sun) / shaded parts of the lightmap */
@@ -50,7 +51,7 @@ export class LookStage {
       sunAzimuth: round(THREE.MathUtils.radToDeg(Math.atan2(d.x, d.z)), 10), sunElevation: round(THREE.MathUtils.radToDeg(Math.asin(d.y)), 10),
       sunColor, sunStrength, ambientColor, ambientStrength, worldLitColor, worldLit, worldShadeColor, worldShade,
       fogMode: U.pbFogMode.value, fogColor: hex([fc.x, fc.y, fc.z]), fogNear: f.x, fogFar: f.y, fogDensity: f.z,
-      sky: "", skyColor: "#ffffff", skyStrength: 1, background: bg,
+      sky: "", skyColor: "#ffffff", skyStrength: 1, background: bg, ...LOOK_FX_DEFAULT,
     };
     this.look = { ...this.base };
   }

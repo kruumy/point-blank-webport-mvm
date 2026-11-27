@@ -9,6 +9,8 @@ export { MOUSE_SENS_MAX, MOUSE_SENS_MIN, MOUSE_SENS_STEP };
 
 export const RENDER_SCALES = ["70", "100", "native", "150", "200"] as const;
 export type RenderScale = (typeof RENDER_SCALES)[number];
+export const SHADOW_QUALITIES = [0, 1, 2, 3] as const;
+export type ShadowQuality = (typeof SHADOW_QUALITIES)[number];
 export const LOBBY_UIS = ["cross"] as const;
 export type LobbyUi = (typeof LOBBY_UIS)[number];
 
@@ -63,6 +65,10 @@ export interface GameSettings {
   ibl: boolean;
   /** Filtro anisotrópico (Tri-Linear): 16x anisotropy on every texture */
   anisotropic: boolean;
+  /** "Efeitos de sombra" (env Shadow_Quality_Type, opCapacityShadow combo), live: 0 off, 1 / 2 / 3 = 512 / 1024 / 2048 px map (render/pbShadow.ts) */
+  shadowQuality: ShadowQuality;
+  /** "Iluminação dinâmica" (env Enable_DynamicLight, opCapacityLight): the muzzle point light of every shot (render/pbLighting.ts) */
+  dynamicLight: boolean;
   /** Gráficos > "Efeitos de física" (STR_POPUP_PHYSICS_EFFECT; exe env PhysXEnable / Option opCapacityPhysX): the death ragdoll
    *  of the character's PhysX bodies (game/ragdoll.ts, DeathHuman 0x5738fa); off = the Death clip. Read at each death */
   ragdoll: boolean;
@@ -84,13 +90,16 @@ export const pixelRatioFor = (s: Pick<GameSettings, "renderScale">, dpr: number,
 export const DEFAULT_SETTINGS: GameSettings = {
   sensitivity: MOUSE_SENS_DEFAULT, invertMouse: false, sfxVolume: 100, brightness: 50, fov: PB_FPS_CAMERA.fov, aimSensitivity: 50, showBlood: true,
   bgmVolume: 60, bgmOn: true, sfxOn: true, uiVolume: 100, uiOn: true, radioMessage: true, textEffect: true, lowTextures: false, renderScale: "100", dynamicRes: true, antialias: true,
-  normalMap: true, specularMap: true, reflection: true, rimLight: false, ibl: true, anisotropic: true, ragdoll: false, lobbyUi: "cross", // new players: every Gráficos effect on except Rim Light and the ragdoll (user choice: the ragdoll lagged, 2026-10-12)
+  normalMap: true, specularMap: true, reflection: true, rimLight: false, ibl: true, anisotropic: true, shadowQuality: 2, dynamicLight: true, ragdoll: false, lobbyUi: "cross", // new players: every Gráficos effect on except Rim Light and the ragdoll (user choice: the ragdoll lagged, 2026-10-12)
 };
 const KEY = "pb.settings";
 
-let current: GameSettings = load();
+/** what the player saved; `current` is it with the override on top */
+let saved: GameSettings = load();
+let override: Partial<GameSettings> | null = null;
+let current: GameSettings = saved;
 /** the lobby interface this page load started with (boot.ts reads it once): the Option window warns while the saved one differs */
-export const LOBBY_UI_AT_LOAD: LobbyUi = current.lobbyUi;
+export const LOBBY_UI_AT_LOAD: LobbyUi = saved.lobbyUi;
 const listeners = new Set<(s: GameSettings) => void>();
 
 /** exe 0x4cec2a: a stored value outside 0.10..1.20 falls back to the 0.5 default */
@@ -126,6 +135,7 @@ function load(): GameSettings {
     delete saved.bloom; delete saved.fxaa; // "HDR e Bloom" and "Anti-aliasing (FXAA)" removed (FPS cost)
     delete (saved as { physicsEffects?: boolean }).physicsEffects; // renamed to ragdoll (default off): an old "on" from the first build does not carry over
     if (!RENDER_SCALES.includes(saved.renderScale)) saved.renderScale = "100";
+    if (saved.shadowQuality !== undefined && !SHADOW_QUALITIES.includes(saved.shadowQuality)) delete saved.shadowQuality;
     if (saved.lobbyUi !== undefined && !LOBBY_UIS.includes(saved.lobbyUi)) delete saved.lobbyUi;
     const s = { ...DEFAULT_SETTINGS, ...saved };
     s.sensitivity = sensOk(s.sensitivity);
@@ -137,8 +147,17 @@ export function getSettings(): GameSettings { return current; }
 
 export function saveSettings(s: GameSettings): void {
   const clamp = (v: number) => Math.max(0, Math.min(100, Math.round(v)));
-  current = { ...s, sensitivity: sensOk(s.sensitivity), sfxVolume: clamp(s.sfxVolume), bgmVolume: clamp(s.bgmVolume), uiVolume: clamp(s.uiVolume), brightness: clamp(s.brightness) };
-  try { localStorage.setItem(KEY, JSON.stringify({ ...current, sensVer: 2 })); } catch { /* storage blocked: still applies this session */ }
+  const kept = override ? Object.fromEntries(Object.keys(override).map((k) => [k, saved[k as keyof GameSettings]])) : {}; // overridden keys keep the saved value
+  saved = { ...s, ...kept, sensitivity: sensOk(s.sensitivity), sfxVolume: clamp(s.sfxVolume), bgmVolume: clamp(s.bgmVolume), uiVolume: clamp(s.uiVolume), brightness: clamp(s.brightness) };
+  try { localStorage.setItem(KEY, JSON.stringify({ ...saved, sensVer: 2 })); } catch { /* storage blocked: still applies this session */ }
+  current = { ...saved, ...override };
+  for (const l of listeners) l(current);
+}
+
+/** Settings applied on top of the saved ones for a while (the theater's best graphics), never saved; null = back to the saved ones. */
+export function setSettingsOverride(o: Partial<GameSettings> | null): void {
+  override = o;
+  current = { ...saved, ...o };
   for (const l of listeners) l(current);
 }
 

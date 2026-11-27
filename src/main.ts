@@ -11,18 +11,19 @@ import { PB_KEYS } from "./game/keymap";
 import { AssetPaths, CurrentMap, MAP_LABELS, setCurrentMap, type MapId } from "./config";
 import type { LevelBuildResult } from "./testLevel";
 import { setBattleProgress } from "./game/battleLoading";
-import { configurePbRenderer, pbLighting } from "./render/pbLighting";
+import { clearPbPointLights, configurePbRenderer, pbLighting } from "./render/pbLighting";
 import { acquireRenderer, memSnap, releaseMatch, rendererStats } from "./render/sharedRenderer";
 import { levelCacheStats } from "./levelCache";
-import { brightnessFactor, getSettings, onSettings, pixelRatioFor, type GameSettings } from "./gameplay/settings";
+import { brightnessFactor, getSettings, onSettings, pixelRatioFor, setSettingsOverride, type GameSettings } from "./gameplay/settings";
 import { preloadMatch, type MatchSet } from "./game/matchPreload";
 import { warmScene } from "./render/warmup";
 import { renderWithViewmodel } from "./render/onTop";
+import { disposePbShadows, renderPbShadows } from "./render/pbShadow";
 import { TEST_EQUIPPED } from "./game/testLoadout";
 import { BOT_WEAPON } from "./game/weaponAdapter";
 import { DemoRecorder } from "./mvm/demo";
 import type { DemoNet } from "./mvm/demoNet";
-import { Theater } from "./mvm/theater";
+import { THEATER_GRAPHICS, Theater } from "./mvm/theater";
 import { FX_LAYER } from "./render/layers";
 
 export interface StartGameOptions extends Pick<GameDeps, "net" | "localTeam" | "localName" | "localRank" | "match" | "onMatchEnd" | "respawnInventory" | "localChara" | "itemEffects" | "botCount" | "botSkill" | "botAllies" | "missions" | "missionPanel" | "clanMatch" | "stageType" | "room"> {
@@ -136,7 +137,7 @@ async function prepare(map: MapId | undefined, set: MatchSet): Promise<Prepared>
   renderer.setSize(window.innerWidth, window.innerHeight);
   // DX9 pipeline: no tone mapping, gamma-space maths. The PB ShaderMaterials (src/render/pbLighting.ts) read their
   // textures raw and write raw values, so the sRGB output setting only affects the three.js materials left unported.
-  // PB's shadow maps are off in the reference config (EnvSet Shadow_Quality_Type = 0), so no three.js shadows either.
+  // PB's shadow map (EnvSet Shadow_Quality_Type) is the port's own pass (render/pbShadow.ts), not three.js shadows.
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -194,6 +195,7 @@ async function prepare(map: MapId | undefined, set: MatchSet): Promise<Prepared>
 }
 
 export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle> {
+  if (opts.theater) setSettingsOverride(THEATER_GRAPHICS); // before prepare's renderer: its antialias is read at creation
   // a room battle takes its prepareGame (same map); anything else prepares here
   let prepP: Promise<Prepared>;
   if (opts.net && pending && pending.map === (opts.map ?? CurrentMap)) {
@@ -364,6 +366,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
     const t1 = performance.now();
     world.step();
     const t2 = performance.now();
+    renderPbShadows(renderer, scene, camera);
     renderWithViewmodel(renderer, scene, camera);
     const t3 = performance.now();
     lastCpu = t3 - t0;
@@ -403,6 +406,9 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
       // the renderer stays for the next match (render/sharedRenderer.ts): the match's own GPU resources go now, the level cache's stay.
       // Before game.dispose, which detaches the actors from the scene
       releaseMatch(renderer, [scene, camera]);
+      disposePbShadows();
+      clearPbPointLights();
+      if (opts.theater) setSettingsOverride(null);
       game.dispose();
       world.free();
       blocker.classList.add("hidden");

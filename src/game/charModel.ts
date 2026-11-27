@@ -286,9 +286,10 @@ function makeShadowOnly(o: THREE.Object3D): void {
     m.material = Array.isArray(m.material) ? m.material.map(conv) : conv(m.material);
     m.castShadow = true;
     m.receiveShadow = false;
-    // shadowMap is off and colorWrite=false: never drawn. Hidden meshes keep the node graph, animation and matrixWorld
-    // (updateMatrixWorld ignores visible); helmetSource / muzzleWorld only read matrices.
+    // colorWrite=false: never drawn, only shown for the shadow pass (render/pbShadow.ts). Hidden meshes keep the node graph,
+    // animation and matrixWorld (updateMatrixWorld ignores visible); helmetSource / muzzleWorld only read matrices.
     m.visible = false;
+    m.userData.shadowOnly = true;
   });
 }
 
@@ -398,7 +399,7 @@ export class CharVisual {
       this.equipObjs = objs;
       for (const o of objs) {
         if (o.userData.helmet) o.visible = this.helmetOn;
-        if (this.shadowOnly) { makeShadowOnly(o); if ((o as THREE.Mesh).isMesh) o.visible = false; }
+        if (this.shadowOnly) { makeShadowOnly(o); if ((o as THREE.Mesh).isMesh) { o.visible = false; if (o.userData.helmet) o.userData.shadowOnly = this.helmetOn; } }
         else applyPbCharaLighting(o, this.pbMtl);
       }
     });
@@ -408,7 +409,10 @@ export class CharVisual {
   setHelmet(on: boolean): void {
     if (on === this.helmetOn) return;
     this.helmetOn = on;
-    for (const o of this.equipObjs) if (o.userData.helmet) o.visible = on && !(this.shadowOnly && (o as THREE.Mesh).isMesh);
+    for (const o of this.equipObjs) if (o.userData.helmet) {
+      o.visible = on && !(this.shadowOnly && (o as THREE.Mesh).isMesh);
+      if (this.shadowOnly && (o as THREE.Mesh).isMesh) o.userData.shadowOnly = on; // the shadow pass shows shadowOnly meshes: a lost helmet must not
+    }
   }
 
   /** What a dropped helmet copies: the chara, its equipment and the helmet's current world matrix (null = none drawn). */

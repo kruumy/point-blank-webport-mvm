@@ -6,7 +6,7 @@ import {
 } from "./sights";
 import { smokeField, type SmokeSphere } from "./throwables";
 import type { Family } from "./types";
-import { applyPbCharaLighting, PB_VIEWER_MTL } from "../render/pbLighting";
+import { applyPbCharaLighting, clearPbPointLights, flashPbPointLight, PB_VIEWER_MTL, tickPbPointLights } from "../render/pbLighting";
 import { markFx } from "../render/layers";
 
 /**
@@ -954,9 +954,6 @@ export class WeaponEffects {
   }
   private tracerMat: THREE.MeshBasicMaterial | null = null;
   private smokeMat: THREE.MeshBasicMaterial | null = null;
-  /** muzzle i3Light: 0x60f840, diffuse (1.4, 1.3, 1.2), range 3. Duration [RECRIADO] 0.05 s. */
-  private light = new THREE.PointLight(new THREE.Color(1, 0.93, 0.86), 0, 3, 2);
-  private lightT = 0;
   /** weapon of the next fire / impact / shell (WeaponSystem hook) */
   weaponId = 0;
   family: Family = "AR";
@@ -970,7 +967,6 @@ export class WeaponEffects {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.decalBatcher = new DecalBatcher(scene);
-    scene.add(this.light);
   }
 
   /** set by WeaponSystem before a shot */
@@ -1016,8 +1012,7 @@ export class WeaponEffects {
     this.timed = [];
     for (const s of this.strips) { s.mesh.removeFromParent(); releaseStrip(s); }
     this.strips = [];
-    this.light.intensity = 0;
-    this.lightT = 0;
+    clearPbPointLights();
   }
 
   /** Play an i3 effect: `parent` (default scene) at `pos`, local +Y along `axis`. Returns null when not exported. */
@@ -1178,15 +1173,13 @@ export class WeaponEffects {
    * perpendicular to +Y) lie flat, edge-on to every viewer, and its sparks fly straight up (remote / bot shots showed
    * no flash at all).
    */
-  muzzleFlash(parent: THREE.Object3D, worldPos: THREE.Vector3, scale = 1, axis?: THREE.Vector3, tint?: Tint): void {
+  muzzleFlash(parent: THREE.Object3D, worldPos: THREE.Vector3, axis?: THREE.Vector3, tint?: Tint): void {
     const info = weaponFxInfo(this.weaponId);
     const name = (this.firstPerson && info?.fire1st) || info?.fire || "Fir_Ar_M4A1";
     const world = parent === this.scene;
     const local = world ? worldPos : new THREE.Vector3();
     if (this.data) this.play(name, local, world ? axis : undefined, parent, 0, tint);
-    this.light.position.copy(worldPos);
-    this.light.intensity = 2.5 * scale;
-    this.lightT = 0.05;
+    flashPbPointLight(worldPos); // the shooter's muzzle i3Light (render/pbLighting.ts)
   }
 
   /**
@@ -1313,12 +1306,6 @@ export class WeaponEffects {
         this.strips.splice(i, 1);
       }
     }
-    if (this.lightT > 0) {
-      this.lightT -= dt;
-      if (this.lightT <= 0) {
-        this.light.intensity = 0;
-        this.light.distance = 3;
-      }
-    }
+    tickPbPointLights(dt);
   }
 }

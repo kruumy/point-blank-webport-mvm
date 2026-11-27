@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { renderOnTop, withHidden } from "../render/onTop";
+import { LookFx, aoOn, type LookFxParams } from "./lookFx";
 
 /**
  * focus = view-space distance (m), or with focusUv the depth under that point of the image (0..1, origin bottom left),
@@ -85,6 +86,9 @@ export function canvasTarget(r: THREE.WebGLRenderer, stencil = false): THREE.Web
   return rt;
 }
 
+/** a plain copy: blur() with no blur */
+const NO_DOF: DofParams = { focus: 1, focusUv: null, focusLerp: 1, aperture: 0, maxBlur: 0, near: 1, far: 1 };
+
 const focusTarget = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
 
 /** [RECRIADO] theater post effects: the frame drawn off-screen with its depth, filtered, then put on the canvas */
@@ -110,6 +114,9 @@ export class Post {
   private readonly focusRt = [focusTarget(), focusTarget()];
   private focusLive = false;
   private readonly quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
+  /** the look's ambient occlusion (lookFx.ts), before the depth of field */
+  private lookFx: LookFx | null = null;
+  private readonly aoRt = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
   private readonly cam = new THREE.OrthographicCamera();
   private readonly size = new THREE.Vector2();
 
@@ -118,14 +125,14 @@ export class Post {
     this.quad.frustumCulled = false;
   }
 
-  /** the scene with depth of field; `overlays` are drawn sharp on top (first-person gun, campath) */
-  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dof: DofParams, overlays: THREE.Object3D[]): void {
+  /** the scene with ambient occlusion and depth of field; `overlays` are drawn sharp on top (first-person gun, campath) */
+  render(scene: THREE.Scene, camera: THREE.PerspectiveCamera, dof: DofParams | null, overlays: THREE.Object3D[], fx: LookFxParams | null = null): void {
     const r = this.renderer, target = r.getRenderTarget(); // the canvas, or the theater's render target
     r.getDrawingBufferSize(this.size);
     if (this.rt.width !== this.size.x || this.rt.height !== this.size.y) this.rt.setSize(this.size.x, this.size.y);
     r.setRenderTarget(this.rt);
     const shown = withHidden(overlays, () => r.render(scene, camera));
-    if (dof.focusUv) {
+    if (dof?.focusUv) {
       const f = this.focusMat.uniforms, [prev, next] = this.focusRt;
       f.tDepth.value = this.rt.depthTexture;
       f.tPrev.value = prev.texture;
@@ -139,8 +146,15 @@ export class Post {
       this.quad.material = this.mat;
       this.focusRt.reverse();
     }
-    this.focusLive = !!dof.focusUv;
-    this.blur(this.rt.texture, this.rt.depthTexture!, camera, dof, target, 0);
+    this.focusLive = !!dof?.focusUv;
+    const w = this.size.x, h = this.size.y;
+    let color: THREE.Texture = this.rt.texture;
+    if (fx && aoOn(fx)) {
+      if (this.aoRt.width !== w || this.aoRt.height !== h) this.aoRt.setSize(w, h);
+      (this.lookFx ??= new LookFx(r)).ao(color, this.rt.depthTexture!, camera, fx, w, h, this.aoRt);
+      color = this.aoRt.texture;
+    }
+    this.blur(color, this.rt.depthTexture!, camera, dof ?? NO_DOF, target, 0);
     renderOnTop(r, shown, camera);
   }
 
@@ -170,6 +184,8 @@ export class Post {
     this.rt.depthTexture?.dispose();
     this.rt.dispose();
     for (const t of this.focusRt) t.dispose();
+    this.lookFx?.dispose();
+    this.aoRt.dispose();
     this.mat.dispose();
     this.focusMat.dispose();
     this.quad.geometry.dispose();

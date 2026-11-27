@@ -561,7 +561,7 @@ export class WeaponSystem {
     this.effects.setWeapon(def.id, def.family);
     for (const side of both ? ["R", "L"] as const : ["R"] as const) {
       if (both) vm.side = side; // crossed: a flash at each gun, as our own shot
-      this.effects.muzzleFlash(vm.muzzleNode, vm.muzzleWorld(), def.family === "SG" || def.family === "SR" ? 1.5 : 1, undefined, tint);
+      this.effects.muzzleFlash(vm.muzzleNode, vm.muzzleWorld(), undefined, tint);
     }
     if (both) vm.side = "R";
     if (def.params.loadBulletTime !== undefined) vm.loadBullet();
@@ -1493,7 +1493,7 @@ export class WeaponSystem {
       vm.fireKick(kick, guns.length === 2 ? "both" : guns[0] === "L");
       guns.forEach((g, i) => {
         vm.side = g === "L" && vm.dual ? "L" : "R";
-        this.effects.muzzleFlash(vm.muzzleNode, muzzles[i], def.family === "SG" || def.family === "SR" ? 1.5 : 1, undefined, this.ownMuzzleTint());
+        this.effects.muzzleFlash(vm.muzzleNode, muzzles[i], undefined, this.ownMuzzleTint());
         if (def.fireMode !== "pump" && def.fireMode !== "bolt") this.ejectShell();
       });
     }
@@ -2363,7 +2363,7 @@ export class WeaponSystem {
     const dir = to.clone().sub(muzzle).normalize();
     if (opts.flash !== false) { // the watched player's shot (observer FPS): observeFire already flashed the arms' muzzle
       this.effects.firstPerson = false;
-      this.effects.muzzleFlash(this.effects.scene, muzzle, def.family === "SG" || def.family === "SR" ? 1.5 : 1, dir, opts.tint);
+      this.effects.muzzleFlash(this.effects.scene, muzzle, dir, opts.tint);
       this.effects.firstPerson = true;
     }
     this.effects.tracer(muzzle, to);

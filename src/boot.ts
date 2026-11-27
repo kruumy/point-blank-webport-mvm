@@ -22,6 +22,7 @@ import { CHANNEL_TYPE_CLAN } from "./net/authClient.ts";
 import { ClanClient } from "./net/clanClient.ts";
 import type { MissionClient } from "./net/missionClient.ts";
 import { installAssetCache } from "./cache/register.ts";
+import { setSettingsOverride } from "./gameplay/settings.ts";
 import { jsonOnce } from "./jsonOnce.ts";
 import { getSettings } from "./gameplay/settings.ts";
 
@@ -153,7 +154,7 @@ async function openTheater(screen?: LobbyScreenLike): Promise<void> {
           const leave = () => { left = true; handle?.stop(); done(); };
           startGame({ map: demo.map as MapId, theater: new DemoNet(demo), onLeave: leave })
             .then((h) => { handle = h; if (left) h.stop(); })
-            .catch((err) => { console.error("[mvm] theater", err); done(); });
+            .catch((err) => { console.error("[mvm] theater", err); setSettingsOverride(null); done(); }); // no handle to stop: the theater graphics go here
         });
       } catch (err) { console.error("[mvm] demo", err); }
     }
