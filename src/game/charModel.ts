@@ -442,6 +442,8 @@ export class CharVisual {
     if (k === this.weaponKey) return;
     this.weaponKey = k;
     const tok = ++this.weaponTok;
+    this.changeAt = -1;
+    this.weaponAnim = this.weaponAnimL = null; // the outgoing gun must not take the new one's clips while that loads
     void (async () => {
       const fam = family ?? (await weaponFamily(key));
       if (tok !== this.weaponTok) return;
@@ -457,7 +459,7 @@ export class CharVisual {
       if (!inst) this.weaponKey = "";
       if (this.weaponObj) this.weaponObj.removeFromParent();
       this.weaponObjL?.removeFromParent();
-      this.weaponObjL = this.muzzleNodeL = this.weaponAnimL = null;
+      this.weaponObjL = this.muzzleNodeL = null;
       this.dual = inst && this.handL ? dual : null;
       this.nextLeft = false;
       this.side = "R";
@@ -465,12 +467,12 @@ export class CharVisual {
       this.weaponObj = inst?.object ?? null;
       this.muzzleNode = inst?.muzzle ?? null;
       this.laserDummy = inst?.object.getObjectByName("FXLaserSightDummy") ?? null;
-      this.weaponAnim = null;
       void inst?.animator("3pv").then((a) => {
         if (tok !== this.weaponTok) return;
         this.weaponAnim = a;
         if (a) a.gender = this.animSkel === "swat_female" ? "female" : "male"; // M70 / L115A1 key the grip per gender (LoadBullet3PVFemale)
         a?.syncExt(this.extOn);
+        this.joinChange(a);
       });
       if (this.weaponObj) {
         if (this.shadowOnly) makeShadowOnly(this.weaponObj);
@@ -491,13 +493,14 @@ export class CharVisual {
       this.muzzleNodeL = l.muzzle;
       void l.animator("3pv").then((a) => {
         if (a) { a.hand = "L"; a.gender = this.animSkel === "swat_female" ? "female" : "male"; } // DualKnife: Idle_Male_Left / Change_Left ...
-        if (tok === this.weaponTok) this.weaponAnimL = a;
+        if (tok === this.weaponTok) { this.weaponAnimL = a; this.joinChange(a); }
       });
     });
   }
 
   /** One shot: upper Attack (dual: the hand whose turn it is, or both) + the firing gun's own Fire clip. */
   fire(heavy = false): void {
+    this.changeAt = -1;
     let hand: "L" | "both" | undefined;
     // the extension flag on an alternating dual = HK45 Dual crossed (CrossFire): both guns each pull (0x644ee0)
     if (this.dual === "both" || ((this.dual === "alt" || this.dual === "pair") && this.extOn)) hand = "both";
@@ -518,6 +521,7 @@ export class CharVisual {
   }
   reload(duration?: number): void {
     this.nextLeft = false; // WeaponDualHandGun reload 0x649c60: the right gun fires first again
+    this.changeAt = -1;
     this.anim?.reload(duration);
     this.weaponAnim?.play("reload", duration); // LoadMag over ReloadTime, like the upper LoadMagazine (exe 0x611980)
     this.weaponAnimL?.play("reload", duration);
@@ -526,19 +530,28 @@ export class CharVisual {
     this.anim?.reloadOpen(lead);
   }
   reloadShell(duration: number): void {
+    this.changeAt = -1;
     this.anim?.reloadShell(duration);
     this.weaponAnim?.play("reload", duration);
     this.weaponAnimL?.play("reload", duration);
   }
   // NeedToLoadBullet: OnLoadBullet 0xa14ef0
   loadBullet(duration: number): void {
+    this.changeAt = -1;
     this.anim?.loadBullet(duration);
     this.weaponAnim?.play("loadBullet", duration);
   }
   change(since = 0): void {
     this.anim?.change(since);
+    this.changeAt = (this.anim?.time ?? 0) - since;
     this.weaponAnim?.play("change", undefined, since);
     this.weaponAnimL?.play("change", undefined, since);
+  }
+  /** [RECRIADO] anim clock at the last Change (-1 once a later one-shot replaced it): a seek's replay swaps before the new weapon's animator loads, which then joins the draw */
+  private changeAt = -1;
+  private joinChange(a: WeaponAnimator | null): void {
+    const since = (this.anim?.time ?? 0) - this.changeAt;
+    if (a && this.changeAt >= 0 && since >= 0) a.play("change", undefined, since);
   }
   /** Bomb Mission C4 held plant: the upper Install clip (Mission/C4 Attack, 5 s) until released; the LCD on the C4 types along */
   private plantT = -1;
@@ -591,6 +604,7 @@ export class CharVisual {
   die(shotDir?: THREE.Vector3, crouch = false): void {
     this.deadT = 0;
     this.wasAlive = false;
+    this.changeAt = -1;
     if (!this.anim) return;
     // the noted hit is the killing one when it is recent [INFERIDO window: the death state follows the hit by a few frames]
     const hit = this.lastHit && this.clock - this.lastHit.at < 1.5 ? this.lastHit : null;
@@ -626,6 +640,7 @@ export class CharVisual {
   resetAnim(clock: number, phase = 0): void {
     this.respawn();
     this.lastHit = null;
+    this.changeAt = -1;
     this.anim?.reset(clock, phase);
   }
 
