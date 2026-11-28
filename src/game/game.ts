@@ -59,7 +59,7 @@ import { TEST_EQUIPPED } from "./testLoadout";
 import { setViewmodelChara } from "../weapons/viewmodel";
 import { getSettings, lookScale, onSettings } from "../gameplay/settings";
 import { tOr } from "../lobby/ui/i18n";
-import type { PbItemEffects } from "../weapons/types";
+import type { LoadoutIds, PbItemEffects } from "../weapons/types";
 import type { Tint } from "../weapons/effects";
 import { NICK_COLORS } from "./battleChatModel.ts";
 import { isMissionWeapon } from "../weapons/mission";
@@ -110,6 +110,8 @@ export interface GameDeps {
   /** Respawn weapon change (T): owned items + equipped loadout (online: inventoryFromPlayer(PlayerStore)).
    *  Omitted: offline = default loadout + every weapon with a model; net = equipped loadout only. */
   respawnInventory?: RespawnInventory;
+  /** the first life's weapons: set before the first frame, whose state the others and the demo already receive */
+  firstLoadout?: Partial<LoadoutIds>;
   /**
    * Equipped character itemId of the local side (chara_red_side / chara_blue_side, the RESPAWN pair 8): body shadow +
    * 1PV arms (loadout.ts resolveChara; no model -> the side's basic character). Omitted: the team default.
@@ -537,8 +539,9 @@ export class Game implements BotHost {
     if (ws.system instanceof PbWeaponsBridge) {
       ws.system.ws.setItemEffects(d.itemEffects ?? {});
       ws.system.ws.ownMuzzleTint = () => g.muzzleTintOfId(g.net.localId);
+      if (d.firstLoadout) ws.system.ws.setLoadout(d.firstLoadout);
       // offline ?play: first life with the test loadout (testLoadout.ts, same list as the respawn panel)
-      if (g.net.mode === "local" && !d.respawnInventory) {
+      else if (g.net.mode === "local" && !d.respawnInventory) {
         const { primary, secondary, melee, grenade, special } = TEST_EQUIPPED;
         ws.system.ws.setLoadout({ primary, secondary, melee, grenade, special });
       }

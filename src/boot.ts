@@ -113,27 +113,28 @@ function playLocal(screen?: LobbyScreenLike, map?: MapId, allWeapons?: boolean, 
       import("./game/loadout.ts"),
       allWeapons ? allWeaponsInventory() : null,
     ]))
-    .then(([{ startGame }, { inventoryFromPlayer }, { itemEffectsOf, allItemEffects }, all]) => startGame({
-      map,
-      respawnInventory: all ? all.inventory : player ? inventoryFromPlayer(player) : undefined,
-      localChara: player?.teamCharas().red || undefined, // no room/side offline: red-side chara
-      localRank: player?.state.profile?.rank,
-      itemEffects: allItems ? allItemEffects() : player ? itemEffectsOf(player.items(), player.equipPairs()[EquipSlot.Beret]?.itemId) : undefined,
-      botCount: bots?.botCount,
-      botSkill: bots?.botSkill,
-      onLeave: screen ? finish : undefined,
-    }).then((h) => ({ h, all })))
-    .then(({ h, all }) => {
+    .then(([{ startGame }, { inventoryFromPlayer }, { itemEffectsOf, allItemEffects }, all]) => {
+      // Local mode only auto-equips testLoadout.ts's TEST_EQUIPPED when no respawnInventory was given (game.ts);
+      // with a real player inventory, or ?play=all's full one, the first life's weapons are given here (playBattle below).
+      const w = all ? all.defaults : player?.weaponLoadout();
+      return startGame({
+        map,
+        respawnInventory: all ? all.inventory : player ? inventoryFromPlayer(player) : undefined,
+        // ?play=fist: the Clube da Luta loadout (respawnSelect enforceRoomWeapons KNUCKLE_STAGE) to test the bare fist offline;
+        // an explicit 0 keeps a slot empty
+        firstLoadout: fist ? { primary: 0, secondary: 0, melee: 323001, grenade: 0 }
+          : w && Object.fromEntries(Object.entries({ primary: w.primary, secondary: w.secondary, melee: w.melee, grenade: w.grenade, special: w.special }).filter(([, id]) => id > 0)),
+        localChara: player?.teamCharas().red || undefined, // no room/side offline: red-side chara
+        localRank: player?.state.profile?.rank,
+        itemEffects: allItems ? allItemEffects() : player ? itemEffectsOf(player.items(), player.equipPairs()[EquipSlot.Beret]?.itemId) : undefined,
+        botCount: bots?.botCount,
+        botSkill: bots?.botSkill,
+        onLeave: screen ? finish : undefined,
+      });
+    })
+    .then((h) => {
       if (ended) { h.stop(); return; }
       handle = h;
-      // Local mode only auto-equips testLoadout.ts's TEST_EQUIPPED when no respawnInventory was given (game.ts);
-      // with a real player inventory, or ?play=all's full one, set the first life's weapons ourselves (playBattle below).
-      const w = all ? all.defaults : player?.weaponLoadout();
-      const ws = (h.game.weapons as { ws?: { setLoadout(ids: Record<string, number>): void } }).ws;
-      // ?play=fist: the Clube da Luta loadout (respawnSelect enforceRoomWeapons KNUCKLE_STAGE) to test the bare fist offline;
-      // an explicit 0 keeps a slot empty
-      if (fist && ws) { ws.setLoadout({ primary: 0, secondary: 0, melee: 323001, grenade: 0 }); return; }
-      if (w && ws) ws.setLoadout(Object.fromEntries(Object.entries({ primary: w.primary, secondary: w.secondary, melee: w.melee, grenade: w.grenade, special: w.special }).filter(([, id]) => id > 0)));
     })
     .catch((err) => { finish(); fatal(err); });
 }
@@ -225,51 +226,52 @@ function playBattle(screen: LobbyScreenLike, net: PbBattleNet, room: RoomClient)
   const player = screen.player;
   void loadMapIndex()
     .then(() => Promise.all([import("./main.ts"), import("./game/respawnSelect.ts"), import("./game/loadout.ts")]))
-    .then(([{ startGame }, { inventoryFromPlayer }, { itemEffectsOf }]) => startGame({
-      net,
-      respawnInventory: player ? inventoryFromPlayer(player) : undefined,
-      // ?: the side's equipped character (same pick as the RESPAWN pair 8, respawnEquipFor) + Quick Change items
-      localChara: player ? (slot % 2 === 0 ? player.teamCharas().red : player.teamCharas().blue) || undefined : undefined,
-      itemEffects: player ? itemEffectsOf(player.items(), player.equipPairs()[EquipSlot.Beret]?.itemId) : undefined,
-      // mission panel / Tab list / "Task Completed": the lobby's MissionClient (2359 / 2361 keep coming on the Game connection)
-      missions: screen.missions ?? undefined,
-      missionPanel: missionPanelOn(room.room?.roomType ?? 4),
-      // stage type = STAGE_ID >> 24 = roomType >> 2 (missionHud.ts): the mission HUD's Y0 (stageY0 in crossScore.ts)
-      stageType: (room.room?.roomType ?? 4) >> 2,
-      // HeadHunter / Chaos: the room rule decides the damage of every hit (damage.ts ruleDamage)
-      room: room.room ? { rule: room.room.rule, roomType: room.room.roomType } : undefined,
-      clanMatch: isClanMatch(screen, room),
-      map: mapFromRoomMapId(room.room?.mapId ?? 4),
-      localTeam: (slot % 2) as 0 | 1,
-      localName: room.slots[slot]?.nick || `slot ${slot + 1}`,
-      localRank: player?.state.profile?.rank,
-      // AI room: AiCount enemies on the other team at AiLevel (lobby2017 aiSkill); guests don't know AiCount yet -> 8.
-      // botAllies [RECRIADO]: leader-local choice (room.ai.allies, never sent to the server); guests default to 0.
-      ...(botRoom ? { botCount: (room.ai?.count ?? 8) + (room.ai?.allies ?? 0), botSkill: aiSkill(room.ai?.level ?? 1), botAllies: room.ai?.allies ?? 0 } : {}),
-      // Server owns the round: kill goal ends it there, the leader's clock ends it via TIMERSYNC 0.
-      // Bomb Mission: the rounds are the room's ROUNDS count, the server ends each one (5155) and restarts it (5153)
-      match: ROUND_MATCH_MODE[room.room?.roomType ?? -1]
-        ? { mode: ROUND_MATCH_MODE[room.room!.roomType], roundLimit: ROUNDS[kt & 15] ?? 3, killLimit: 0, timeLimit: (TIMES_MIN[(kt >> 4) & 15] ?? 3) * 60, endScreen: Infinity }
-        : { killLimit: KILLS[kt & 15] ?? 60, timeLimit: (TIMES_MIN[(kt >> 4) & 15] ?? 10) * 60, endScreen: Infinity },
-      onMatchEnd: () => { if (room.isLeader) room.timerSync(0); },
-      onLeave: (reason) => {
-        room.giveUp();
-        room.onEndBattle?.({ winner: 2, left: true, away: reason === "away" }); // GIVEUPBATTLE_ACK only: close the battle locally (RoomScreen + game)
-      },
-    }))
-    .then((h) => {
-      hideBattleLoading(); // the curtain (game/battleLoading.ts) stayed up from START until the game is ready
-      if (ended) { h.stop(); return; } // ENDBATTLE arrived while the map was loading
-      handle = h;
+    .then(([{ startGame }, { inventoryFromPlayer }, { itemEffectsOf }]) => {
       // First life: the server spawned us with the equipped weapons (RESPAWN 5137, lobbyScreen respawnWithLoadout);
       // show the same ones (later lives go through the respawn menu, which starts from the same loadout).
       // (Sniper / Shotgun / Knife rooms: the barred weapons already swapped, same as respawnWithLoadout)
       const e = player ? respawnEquipFor(player, slot, undefined, room.room?.weaponsFlag, room.room?.stage) : null;
-      const ws = (h.game.weapons as { ws?: { setLoadout(ids: Record<string, number>): void } }).ws;
       // Room weapon limit: a barred slot arrives as 0 and must stay empty. setLoadout fills a missing slot with the
       // default weapon, an explicit 0 leaves it empty (`ids.x ?? default`).
       const limited = ((room.room?.weaponsFlag ?? 0x1ff) & 0x1ff) !== 0x1ff;
-      if (e && ws) ws.setLoadout(Object.fromEntries(Object.entries({ primary: e[0].itemId, secondary: e[1].itemId, melee: e[2].itemId, grenade: e[3].itemId, special: e[4].itemId }).filter(([k, id]) => id > 0 || (limited && k !== "special"))));
+      return startGame({
+        net,
+        respawnInventory: player ? inventoryFromPlayer(player) : undefined,
+        firstLoadout: e ? Object.fromEntries(Object.entries({ primary: e[0].itemId, secondary: e[1].itemId, melee: e[2].itemId, grenade: e[3].itemId, special: e[4].itemId }).filter(([k, id]) => id > 0 || (limited && k !== "special"))) : undefined,
+        // ?: the side's equipped character (same pick as the RESPAWN pair 8, respawnEquipFor) + Quick Change items
+        localChara: player ? (slot % 2 === 0 ? player.teamCharas().red : player.teamCharas().blue) || undefined : undefined,
+        itemEffects: player ? itemEffectsOf(player.items(), player.equipPairs()[EquipSlot.Beret]?.itemId) : undefined,
+        // mission panel / Tab list / "Task Completed": the lobby's MissionClient (2359 / 2361 keep coming on the Game connection)
+        missions: screen.missions ?? undefined,
+        missionPanel: missionPanelOn(room.room?.roomType ?? 4),
+        // stage type = STAGE_ID >> 24 = roomType >> 2 (missionHud.ts): the mission HUD's Y0 (stageY0 in crossScore.ts)
+        stageType: (room.room?.roomType ?? 4) >> 2,
+        // HeadHunter / Chaos: the room rule decides the damage of every hit (damage.ts ruleDamage)
+        room: room.room ? { rule: room.room.rule, roomType: room.room.roomType } : undefined,
+        clanMatch: isClanMatch(screen, room),
+        map: mapFromRoomMapId(room.room?.mapId ?? 4),
+        localTeam: (slot % 2) as 0 | 1,
+        localName: room.slots[slot]?.nick || `slot ${slot + 1}`,
+        localRank: player?.state.profile?.rank,
+        // AI room: AiCount enemies on the other team at AiLevel (lobby2017 aiSkill); guests don't know AiCount yet -> 8.
+        // botAllies [RECRIADO]: leader-local choice (room.ai.allies, never sent to the server); guests default to 0.
+        ...(botRoom ? { botCount: (room.ai?.count ?? 8) + (room.ai?.allies ?? 0), botSkill: aiSkill(room.ai?.level ?? 1), botAllies: room.ai?.allies ?? 0 } : {}),
+        // Server owns the round: kill goal ends it there, the leader's clock ends it via TIMERSYNC 0.
+        // Bomb Mission: the rounds are the room's ROUNDS count, the server ends each one (5155) and restarts it (5153)
+        match: ROUND_MATCH_MODE[room.room?.roomType ?? -1]
+          ? { mode: ROUND_MATCH_MODE[room.room!.roomType], roundLimit: ROUNDS[kt & 15] ?? 3, killLimit: 0, timeLimit: (TIMES_MIN[(kt >> 4) & 15] ?? 3) * 60, endScreen: Infinity }
+          : { killLimit: KILLS[kt & 15] ?? 60, timeLimit: (TIMES_MIN[(kt >> 4) & 15] ?? 10) * 60, endScreen: Infinity },
+        onMatchEnd: () => { if (room.isLeader) room.timerSync(0); },
+        onLeave: (reason) => {
+          room.giveUp();
+          room.onEndBattle?.({ winner: 2, left: true, away: reason === "away" }); // GIVEUPBATTLE_ACK only: close the battle locally (RoomScreen + game)
+        },
+      });
+    })
+    .then((h) => {
+      hideBattleLoading(); // the curtain (game/battleLoading.ts) stayed up from START until the game is ready
+      if (ended) { h.stop(); return; } // ENDBATTLE arrived while the map was loading
+      handle = h;
     })
     .catch((err) => {
       console.error("[boot] battle start failed", err);

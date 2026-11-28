@@ -26,7 +26,7 @@ import type { DemoNet } from "./mvm/demoNet";
 import { THEATER_GRAPHICS, Theater } from "./mvm/theater";
 import { FX_LAYER } from "./render/layers";
 
-export interface StartGameOptions extends Pick<GameDeps, "net" | "localTeam" | "localName" | "localRank" | "match" | "onMatchEnd" | "respawnInventory" | "localChara" | "itemEffects" | "botCount" | "botSkill" | "botAllies" | "missions" | "missionPanel" | "clanMatch" | "stageType" | "room"> {
+export interface StartGameOptions extends Pick<GameDeps, "net" | "localTeam" | "localName" | "localRank" | "match" | "onMatchEnd" | "respawnInventory" | "firstLoadout" | "localChara" | "itemEffects" | "botCount" | "botSkill" | "botAllies" | "missions" | "missionPanel" | "clanMatch" | "stageType" | "room"> {
   /** Client map to load (default: ?map= / nstation). */
   map?: MapId;
   /** Net mode: "Sair da partida" button on the pause overlay. */
@@ -109,9 +109,9 @@ export function discardPrepared(): void {
 
 /** Match set of a startGame without a room prepare (offline ?play / Treino com bots): the local loadout, the bots' K-2, the local character. */
 function localMatchSet(opts: StartGameOptions): MatchSet {
-  const e = opts.respawnInventory?.equipped ?? TEST_EQUIPPED;
+  const e: Partial<Record<keyof typeof TEST_EQUIPPED, number>> = opts.firstLoadout ?? opts.respawnInventory?.equipped ?? TEST_EQUIPPED;
   const team = opts.localTeam ?? (new URLSearchParams(location.search).get("team")?.toLowerCase().startsWith("b") ? 1 : 0); // as Game's constructor
-  const weapons = [e.primary, e.secondary, e.melee, e.grenade, e.special].filter((id) => id > 0);
+  const weapons = [e.primary, e.secondary, e.melee, e.grenade, e.special].filter((id): id is number => !!id && id > 0);
   return { weapons: [...weapons, BOT_WEAPON.id], charas: [{ itemId: opts.localChara, team }], local: { chara: opts.localChara, team, weapons }, bomb: opts.match?.mode === "BOMB" };
 }
 
@@ -298,6 +298,7 @@ export async function startGame(opts: StartGameOptions = {}): Promise<GameHandle
     onMatchEnd: opts.onMatchEnd,
     onLeave: opts.onLeave,
     respawnInventory: opts.respawnInventory,
+    firstLoadout: opts.firstLoadout,
     localChara: opts.localChara,
     itemEffects: opts.itemEffects,
     botCount: opts.botCount,
