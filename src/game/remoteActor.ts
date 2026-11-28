@@ -6,6 +6,7 @@ import { actorHasHelmet, actorHeadgearOn, noteBotEquip } from "./charEquip";
 import { charaMaxHp } from "../gameplay/charaHp";
 import { createCharVisual, preloadChara, spawnBlinkAlpha, type CharVisual } from "./charModel";
 import type { PlayerState } from "./netAdapter";
+import { replicatedZoom } from "./replicatedZoom";
 import type { Actor, ObsState, Team } from "./types";
 import type { DeathHit } from "./ragdoll";
 import { createLaserBeam } from "../weapons/laser";
@@ -243,7 +244,8 @@ export class RemoteActor implements Actor {
     // torsoAction (net/battle.ts action bits 10-13): edge-triggered one-shots for reload/change/fire, and the
     // persistent ADS flag (ahead of / behind a transient torsoAction, "zoom" is the only state that carries it).
     const torso = s.torsoAction ?? (s.firing ? "fire" : "idle");
-    if (torso === "zoom" || torso === "idle") this.aiming = torso === "zoom" && (s.zoomType === 2 || s.zoomType === 3);
+    const now = snap ? this.demo?.time() : undefined;
+    this.aiming = replicatedZoom(this.aiming, s, weaponChanged, now === undefined ? undefined : this.demo!.track(this.id, now), now);
     if (torso !== this.torsoAction) {
       const was = this.torsoAction;
       this.torsoAction = torso;

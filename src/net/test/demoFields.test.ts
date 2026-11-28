@@ -34,6 +34,26 @@ test("save / load keeps helmetOff, ladder, helmetBlocked and the equip record; s
   assert.equal(actorEquip("slot2")?.head, 701002);
 });
 
+test("a swap drops the replicated zoom; a seek takes it from the states since the weapon was taken", async () => {
+  const { replicatedZoom } = await import("../../game/replicatedZoom.ts");
+  const recs = [
+    state(0, { weaponId: 301007, torsoAction: "idle" }),
+    state(1, { weaponId: 103037, torsoAction: "zoom", zoomType: 2 }),
+    state(2, { weaponId: 103037, torsoAction: "fire", zoomType: 2 }),
+    state(3, { weaponId: 103037, torsoAction: "fire", zoomType: 2 }),
+    state(4, { weaponId: 202007, torsoAction: "change", zoomType: 2 }),
+  ];
+  const s = (i: number) => (recs[i] as Extract<DemoRecord, { k: "state" }>).s;
+  // live: the sniper's zoom does not follow the swap, a shot keeps it
+  assert.equal(replicatedZoom(true, s(4), true), false);
+  assert.equal(replicatedZoom(true, s(3), false), true);
+  const net = new DemoNet({ v: 1, map: "marinewave", mode: "DM", date: "2026-11-27", pov: "slot1", name: "zoom.pbdemo", dur: 4, recs });
+  // a seek from the knife into the scoped spray
+  assert.equal(replicatedZoom(false, s(3), true, net.trackOf("slot2", 3), 3), true);
+  assert.equal(replicatedZoom(true, s(0), true, net.trackOf("slot2", 0.5), 0.5), false);
+  assert.equal(replicatedZoom(true, s(4), true, net.trackOf("slot2", 4), 4), false);
+});
+
 test("an old demo (no helmetOff / ladder / helmetBlocked / equip) still loads: the fields read as absent", async () => {
   const lines = [{ v: 1, map: "luxville", mode: "DM", date: "2026-10-01", pov: "slot1" }, state(0, {}), state(1, { silencer: true })]
     .map((o) => JSON.stringify(o) + "\n");
