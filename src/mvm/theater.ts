@@ -722,7 +722,7 @@ export class Theater {
   }
 
   // ---- render ----
-  private renderOpts = { w: 1920, h: 1080, fps: 250, codec: "prores422lt", name: "", passes: ["world"] as PassName[], joined: ["players", "effects", "viewmodel"] as PassName[], depthRange: 50 };
+  private renderOpts = { w: 1920, h: 1080, fps: 250, codec: "prores422lt", name: "", passes: ["world"] as PassName[], joined: ["players", "effects", "viewmodel"] as PassName[], depthRange: 50, hudScale: 100 };
 
   /** [RECRIADO] the game's stage at the output's shape in the viewport slot (the window with the UI hidden): the preview is the render's frame */
   private layout(): void {
@@ -734,6 +734,9 @@ export class Theater {
     Object.assign(this.root.querySelector<HTMLElement>(".frame")!.style, box);
     this.root.style.setProperty("--vx", `${Math.round(r.left + r.width / 2)}px`);
     this.root.style.setProperty("--vy", `${Math.round(r.top + (r.height - h) / 2) + 16}px`);
+    // [RECRIADO] the HUD laid out as the game would for output / scale (the exe uses fixed px), shrunk to the frame; capped at 8K wide
+    const hud = document.getElementById("pbhud"), hw = Math.min(7680, Math.round(o.w * 100 / o.hudScale)), hh = Math.round(hw * o.h / o.w);
+    if (hud) Object.assign(hud.style, { inset: "0 auto auto 0", width: `${hw}px`, height: `${hh}px`, transformOrigin: "0 0", transform: `scale(${w / hw})` });
     const { renderer, camera } = this.host, cv = renderer.domElement;
     if (this.rendering) { cv.style.width = `${w}px`; cv.style.height = `${h}px`; return; } // the drawing buffer stays the output's
     renderer.setSize(w, h);
@@ -773,11 +776,7 @@ export class Theater {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     this.layout();
-    // the HUD laid out for the output size, as the game lays it out for its window
     const hudRoot = passes.some((p) => (p === "default" ? this.layersOf("world") : this.layersOf(p)).includes("hud")) ? document.getElementById("pbhud") : null;
-    hudRoot?.style.setProperty("inset", "auto");
-    hudRoot?.style.setProperty("width", `${w}px`);
-    hudRoot?.style.setProperty("height", `${h}px`);
     const step = 1 / fps; // game time, like IWXMVM: the playback speed is a preview setting only
     const frames = Math.round((b - a) / step);
     const bf = brightnessFactor(), passer = (this.passes ??= new Passes(renderer));
@@ -835,7 +834,6 @@ export class Theater {
       this.rendering = false;
       this.root.classList.remove("off", "rendering");
       void audio.resume();
-      for (const k of ["inset", "width", "height"]) hudRoot?.style.removeProperty(k);
       renderer.setPixelRatio(ratio);
       this.layout();
       const saved = `${ends[0].file}${ends.length > 1 ? ` + ${ends.length - 1} more pass${ends.length > 2 ? "es" : ""}` : ""}`;
@@ -1026,6 +1024,7 @@ export class Theater {
       else if (t.name === "povfov") this.setPovFov(t.value === "" ? null : +t.value || null);
       else if (t.name === "name") { o.name = t.value; const el = this.root.querySelector(".files>div"); if (el) el.textContent = `${this.movieName()}#`; } // a redraw here would eat the click that blurred it
       else if (t.name === "depthrange") { o.depthRange = Math.max(1, +t.value || 50); t.value = String(o.depthRange); }
+      else if (t.name === "hudscale") { o.hudScale = Math.max(25, Math.min(400, +t.value || 100)); t.value = String(o.hudScale); this.layout(); }
       else if (t.name === "lookname") this.lookName = t.value;
       else if (t.name === "dofactor") this.dofActor = t.value || null;
       else if (t.name === "chara" && this.editId) {
@@ -1440,7 +1439,8 @@ export class Theater {
             ${link}<span class="recdot"></span>${((s) => (s.startsWith("<") ? `<span class="sw">${s}</span>` : `<span class="sw" style="background:${s}"></span>`))(info.swatch(alpha))}
             <span class="nm"><b>${info.label}</b></span>
             <button class="eye${eye ? " on" : ""}" ${na ? "disabled" : `data-eye="${p}"`} title="${eye ? "Back to the default view" : `Preview ${info.label} alone in the viewport`} (${i + 1})">${EYE}<kbd>${i + 1}</kbd></button></div>`
-          + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "");
+          + (p === "depth" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}">Black at <input name="depthrange" type="number" min="1" step="1" value="${o.depthRange}"> m</div>` : "")
+          + (p === "hud" && (rec || eye) ? `<div class="pass-opt${rec ? " rec" : ""}" title="100% draws it as the game would at this resolution">Scale <input name="hudscale" type="number" min="25" max="400" step="5" value="${o.hudScale}"> %</div>` : "");
       };
       body.innerHTML = `<div class="row"><label>Resolution</label><input name="w" type="number" min="16" max="7680" step="2" value="${o.w}" style="flex:1;min-width:0"> ×
           <input name="h" type="number" min="16" max="4320" step="2" value="${o.h}" style="flex:1;min-width:0"></div>
@@ -1821,7 +1821,7 @@ export class Theater {
     this.post?.dispose();
     this.passes?.dispose();
     this.hudCap.dispose();
-    document.getElementById("pbhud")?.style.removeProperty("opacity");
+    for (const k of ["opacity", "inset", "width", "height", "transform-origin", "transform"]) document.getElementById("pbhud")?.style.removeProperty(k);
     this.cancelRender = true;
     this.ac.abort();
     this.slotSeen.disconnect();

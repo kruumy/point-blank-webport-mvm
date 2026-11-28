@@ -42,7 +42,8 @@ export class HudCapture {
     for (const el of root.children) {
       if (el.classList.contains("pbhud-dbg") || getComputedStyle(el).display === "none") continue; // the port's debug lines are not the game's
       if (el instanceof HTMLCanvasElement) { place(el, el); continue; }
-      const { img, sprites } = await this.raster(el, css, rr.width, rr.height);
+      // laid out at the HUD's own size (the theater shrinks it with a transform), drawn at w x h
+      const { img, sprites } = await this.raster(el, css, root.offsetWidth, root.offsetHeight, w, h);
       for (const sp of sprites) {
         const sheet = await this.sheet(sp.url), r = sp.el.getBoundingClientRect(), kx = sp.bw / sheet.naturalWidth, ky = sp.bh / sheet.naturalHeight;
         if (r.width && r.height) draws.push(() => {
@@ -63,7 +64,7 @@ export class HudCapture {
   }
 
   // plain sprites come out to their sheet so a moving one never re-rasters; shortcut: they go under the layer's text (none over it in PbHud)
-  private async raster(el: Element, css: string, W: number, H: number): Promise<{ img: HTMLImageElement | null; sprites: Sprite[] }> {
+  private async raster(el: Element, css: string, W: number, H: number, w: number, h: number): Promise<{ img: HTMLImageElement | null; sprites: Sprite[] }> {
     // without what draws nothing (the hidden result window alone is ~1000 nodes)
     const clone = el.cloneNode(true) as Element, src = el.querySelectorAll("*"), dst = clone.querySelectorAll("*"), sprites: Sprite[] = [];
     let hidden: Element | null = null;
@@ -77,7 +78,7 @@ export class HudCapture {
       if (sp || e instanceof HTMLCanvasElement) dst[i].remove();
     }
     const html = new XMLSerializer().serializeToString(clone);
-    const key = `${W}x${H}|${html}`, old = this.rasters.get(el);
+    const key = `${W}x${H}>${w}x${h}|${html}`, old = this.rasters.get(el);
     if (old?.key === key) return { img: old.img, sprites };
     if (!clone.querySelector("*") && !clone.textContent?.trim()) return { img: null, sprites }; // sprites only
     // each sheet once, as a custom property: a panel names the same sheet in every sprite
@@ -88,8 +89,8 @@ export class HudCapture {
       return `var(${v})`;
     }));
     const decl = [...vars].map(([data, v]) => `${v}:url(${data})`).join(";");
-    const svg = `<svg xmlns="${SVG_NS}" width="${W}" height="${H}"><foreignObject width="100%" height="100%">`
-      + `<div xmlns="http://www.w3.org/1999/xhtml" id="pbhud" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;${decl}"><style>${css}</style>${body}</div></foreignObject></svg>`;
+    const svg = `<svg xmlns="${SVG_NS}" width="${w}" height="${h}"><foreignObject width="100%" height="100%">`
+      + `<div xmlns="http://www.w3.org/1999/xhtml" id="pbhud" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px;transform-origin:0 0;transform:scale(${w / W},${h / H});${decl}"><style>${css}</style>${body}</div></foreignObject></svg>`;
     const img = new Image();
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
     await img.decode();

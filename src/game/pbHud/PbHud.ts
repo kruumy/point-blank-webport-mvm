@@ -474,7 +474,7 @@ export class PbHud {
   /** Window size -> design box + anchors. Called every frame (cheap when unchanged). */
   private fit(): boolean {
     const W = this.root.clientWidth || window.innerWidth, H = this.root.clientHeight || window.innerHeight;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(2, window.devicePixelRatio || 1, 7680 / W); // the theater lays the HUD out up to 7680 px wide: 2x that is ~1 GB of canvases
     if (this.fx.width !== Math.round(W * dpr) || this.fx.height !== Math.round(H * dpr)) {
       this.fx.width = this.bloodCv.width = Math.round(W * dpr);
       this.fx.height = this.bloodCv.height = Math.round(H * dpr);
