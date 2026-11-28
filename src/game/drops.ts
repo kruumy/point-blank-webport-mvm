@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { DropField, type DroppedWeapon, type Vec3 } from "../gameplay/pbDrop";
 import { createWeaponModel } from "../weapons/worldModel";
-import { applyPbCharaLighting, createPbMtl, disposePbMtl, type PbMtl } from "../render/pbLighting";
+import { applyPbCharaLighting, createPbMtl, disposePbMtl, pbUniforms, type PbMtl } from "../render/pbLighting";
 import { WORLD_ONLY_QUERY } from "./types";
 
 /*
@@ -66,7 +66,7 @@ export class DropVisuals {
         if (mesh.isMesh) mesh.castShadow = true;
       });
       // per-drop materials (the fade sets transparent on them), so the template's are not touched
-      v.mats = applyPbCharaLighting(m.object, v.mtl);
+      v.mats = applyPbCharaLighting(m.object, v.mtl, pbUniforms.pbFogPlayers);
     });
     return w;
   }

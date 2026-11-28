@@ -198,7 +198,7 @@ body.mvm-on{background:#0d0f12}body.mvm-on #app{overflow:hidden}
 #mvm button,#mvm select,#mvm input{font:inherit;color:var(--tx);background:var(--bg2);border:1px solid var(--ln);border-radius:4px;padding:3px 8px;outline:none}
 #mvm button:hover{background:var(--bg3)}#mvm button.on{background:var(--am);border-color:var(--am);color:#1a1408}
 #mvm :is(button,select,input):focus-visible{box-shadow:0 0 0 2px rgba(242,169,59,.55)}
-#mvm input[type=range]{accent-color:var(--am);padding:0;border:0;background:none}#mvm input[type=color]{padding:1px 2px;width:32px;height:24px}
+#mvm input[type=range]{accent-color:var(--am);padding:0;border:0;background:none}#mvm input[type=checkbox]{accent-color:var(--am);width:16px;height:16px;margin:0;padding:0}#mvm input[type=color]{padding:1px 2px;width:32px;height:24px}
 #mvm .hint{color:var(--mu)}#mvm .grow{flex:1}
 #mvm .shell{position:absolute;inset:0;display:grid;grid-template:"bar bar bar" 38px "stage side rail" minmax(0,1fr) "dock dock dock" auto/minmax(0,1fr) 300px 54px}
 #mvm .shell>.p{border:0;border-radius:0}
@@ -1068,18 +1068,19 @@ export class Theater {
     this.root.addEventListener("input", (e) => {
       const t = e.target as HTMLInputElement, k = t.dataset.look as keyof Look | undefined, d = t.dataset.dof as keyof Dof | undefined;
       if (t.name === "speed") { this.speedIdx = +t.value; this.drawBar(); return; }
-      if (k) this.looks.set({ [k]: typeof this.looks.base[k] === "number" ? +t.value || 0 : t.value });
+      if (k) this.looks.set({ [k]: t.type === "checkbox" ? +t.checked : typeof this.looks.base[k] === "number" ? +t.value || 0 : t.value });
       else if (d) this.dof[d] = +t.value || 0;
       else return;
       if (t.type === "range") t.nextElementSibling!.textContent = t.value;
-      if (d === "mode") this.drawSide(); // its own controls per mode
+      if (d === "mode" || k === "fogMode" || k === "fogHeightOn") this.drawSide(); // their own controls per mode
     }, sig);
     // right-click a look / depth of field control: back to the map's own value / the default
     this.root.addEventListener("contextmenu", (e) => {
       const t = e.target as HTMLInputElement, k = t.dataset.look as keyof Look | undefined, d = t.dataset.dof as keyof Dof | undefined;
       if (!k && !d) return;
       e.preventDefault();
-      t.value = String(k ? this.looks.base[k] : DOF_DEFAULT[d!]);
+      if (t.type === "checkbox") t.checked = !!this.looks.base[k!];
+      else t.value = String(k ? this.looks.base[k] : DOF_DEFAULT[d!]);
       t.dispatchEvent(new Event("input", { bubbles: true }));
     }, sig);
     this.wireTimeline();
@@ -1401,7 +1402,8 @@ export class Theater {
         const v = set === "dof" ? this.dof[k as keyof Dof] : l[k as keyof Look];
         return `<input type="range" data-${set}="${k}" min="${min}" max="${Math.max(max, +v)}" step="${step}" value="${v}" style="flex:1;min-width:0"><span class="hint" style="width:34px;text-align:right">${v}</span>`;
       };
-      const num = (k: keyof Look, step: number) => `<input type="number" data-look="${k}" min="0" step="${step}" value="${l[k]}" style="width:70px">`;
+      const num = (k: keyof Look, step: number, min: number | null = 0) => `<input type="number" data-look="${k}" ${min === null ? "" : `min="${min}"`} step="${step}" value="${l[k]}" style="width:70px">`;
+      const toggle = (k: keyof Look) => `<input type="checkbox" data-look="${k}" ${l[k] ? "checked" : ""}>`;
       const opts = (k: keyof Look, list: [string | number, string][]) => `<select data-look="${k}" style="flex:1;min-width:0">${list.map(([v, t]) => `<option value="${v}" ${v === l[k] ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>`;
       body.innerHTML = `<div class="row"><select name="looksel" style="flex:1;min-width:0">${(this.lookNames ?? []).map((n) => `<option ${n === this.lookName ? "selected" : ""}>${esc(n)}</option>`).join("") || "<option value=\"\">No saved looks</option>"}</select>${btn("lookLoad", "Load")}${btn("lookDel", "✕")}</div>
         <div class="row"><input name="lookname" placeholder="Look name" value="${esc(this.lookName)}" style="flex:1;min-width:0">${btn("lookSave", "Save")}${btn("lookReset", "Map default")}</div>
@@ -1413,8 +1415,11 @@ export class Theater {
         ${row("Tint", color("ambientColor") + slider("ambientStrength", 0, 3, 0.05))}
         ${head("Fog")}${row("Mode", opts("fogMode", [[0, "Off"], [3, "Linear"], [1, "Exponential"], [2, "Exponential²"]]))}
         ${row("Colour", color("fogColor"))}
-        ${row("Near / far", num("fogNear", 1) + num("fogFar", 1))}
-        ${row("Density", num("fogDensity", 0.0005))}
+        ${l.fogMode === 3 ? row("Near / far", num("fogNear", 1) + num("fogFar", 1)) : ""}
+        ${l.fogMode === 1 || l.fogMode === 2 ? row("Density", num("fogDensity", 0.0005)) : ""}
+        ${row("On players", toggle("fogPlayers"))}
+        ${row("Height", toggle("fogHeightOn"))}
+        ${l.fogHeightOn ? row("Top / fade", num("fogHeight", 0.5, null) + num("fogFade", 0.5)) + `<div class="hint">Fog up to Top (map height in metres), thinning out over Fade above it, sky included.</div>` : ""}
         ${head("Sky")}${row("Sky", opts("sky", [["", "Map's own"], ["none", "None"], ...this.skyNames.map((n): [string, string] => [n, n])]))}
         ${row("Tint", color("skyColor") + slider("skyStrength", 0, 3, 0.05))}
         ${row("Background", color("background"))}
@@ -1424,8 +1429,7 @@ export class Theater {
         ${d.mode === 1 ? row("Distance", slider("focus", 0.2, 100, 0.1, "dof")) : ""}
         ${d.mode === 2 ? row("Speed", slider("speed", 0.5, 30, 0.5, "dof")) + `<div class="hint">Focuses on what is under the cursor, also while rendering. Speed: how fast it follows.</div>` : ""}
         ${d.mode === 3 ? row("Player", `<select name="dofactor" style="flex:1;min-width:0">${this.net.roster().map((a) => `<option value="${esc(a.id)}" ${a.id === this.dofTarget() ? "selected" : ""}>${esc(a.name)}</option>`).join("")}</select>`) : ""}
-        ${d.mode ? row("Aperture", slider("aperture", 0, 5, 0.05, "dof")) + row("Near blur", slider("near", 0, 3, 0.05, "dof")) + row("Far blur", slider("far", 0, 3, 0.05, "dof")) + row("Max blur", slider("maxBlur", 0, 5, 0.05, "dof")) : ""}
-        <div class="hint">Right-click a control to reset it. Looks are saved to point-blank-webport/mvm/looks.</div>`;
+        ${d.mode ? row("Aperture", slider("aperture", 0, 5, 0.05, "dof")) + row("Near blur", slider("near", 0, 3, 0.05, "dof")) + row("Far blur", slider("far", 0, 3, 0.05, "dof")) + row("Max blur", slider("maxBlur", 0, 5, 0.05, "dof")) : ""}`;
     } else if (this.tab === "render") {
       const alpha = this.alphaFormat(), on = this.recorded(), name = this.movieName();
       const span = Math.max(0, this.outPt - this.inPt), frames = Math.round(span * o.fps);

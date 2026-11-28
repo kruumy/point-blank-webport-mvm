@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { loadHelmetModel, type HeadEquip } from "./charEquip";
-import { applyPbCharaLighting, createPbMtl, disposePbMtl, type PbMtl } from "../render/pbLighting";
+import { applyPbCharaLighting, createPbMtl, disposePbMtl, pbUniforms, type PbMtl } from "../render/pbLighting";
 import { WORLD_ONLY_QUERY } from "./types";
 
 /*
@@ -64,7 +64,7 @@ export class HelmetDrops {
     this.live.add(f);
     void loadHelmetModel(src.charaName, src.equip).then((m) => {
       if (!m || !this.live.has(f)) return;
-      applyPbCharaLighting(m, f.mtl);
+      applyPbCharaLighting(m, f.mtl, pbUniforms.pbFogPlayers);
       root.add(m);
     });
   }

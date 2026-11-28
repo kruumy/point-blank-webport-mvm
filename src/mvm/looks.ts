@@ -12,6 +12,8 @@ export interface Look extends LookFxParams {
   worldLitColor: string; worldLit: number; worldShadeColor: string; worldShade: number;
   /** D3DFOGMODE: 0 off, 1 EXP, 2 EXP2, 3 LINEAR */
   fogMode: number; fogColor: string; fogNear: number; fogFar: number; fogDensity: number;
+  /** [RECRIADO] 1: the world fog on the players too; height: 1 = only up to fogHeight (world y), thinning out over fogFade m above it */
+  fogPlayers: number; fogHeightOn: number; fogHeight: number; fogFade: number;
   /** "" = the map's own, "none", or another map's id */
   sky: string; skyColor: string; skyStrength: number;
   background: string;
@@ -38,6 +40,8 @@ export class LookStage {
   private readonly loaded: THREE.Object3D[] = [];
   private shown: THREE.Object3D | null;
   private disposed = false;
+  // the map's own sky fog (fog 1): the look's fog stands in for it until dispose
+  private readonly mapSkyFog: [number, THREE.Vector3, THREE.Vector3];
 
   constructor(private readonly scene: THREE.Scene, private readonly renderer: THREE.WebGLRenderer) {
     this.ownSky = this.shown = scene.getObjectByName("pbSky") ?? null;
@@ -51,9 +55,12 @@ export class LookStage {
       sunAzimuth: round(THREE.MathUtils.radToDeg(Math.atan2(d.x, d.z)), 10), sunElevation: round(THREE.MathUtils.radToDeg(Math.asin(d.y)), 10),
       sunColor, sunStrength, ambientColor, ambientStrength, worldLitColor, worldLit, worldShadeColor, worldShade,
       fogMode: U.pbFogMode.value, fogColor: hex([fc.x, fc.y, fc.z]), fogNear: f.x, fogFar: f.y, fogDensity: f.z,
+      fogPlayers: 0, fogHeightOn: 0, fogHeight: 0, fogFade: 10,
       sky: "", skyColor: "#ffffff", skyStrength: 1, background: bg, ...LOOK_FX_DEFAULT,
     };
     this.look = { ...this.base };
+    this.mapSkyFog = [U.pbSkyFogMode.value, U.pbSkyFogColor.value.clone(), U.pbSkyFogParams.value.clone()];
+    this.set({}); // the look's fog on the sky from the start
   }
 
   get current(): Look { return { ...this.look }; }
@@ -70,6 +77,11 @@ export class LookStage {
     U.pbFogMode.value = k.fogMode;
     U.pbFogColor.value.set(...rgb(k.fogColor));
     U.pbFogParams.value.set(k.fogNear, k.fogFar, k.fogDensity);
+    U.pbFogPlayers.value = k.fogPlayers ? 1 : 0;
+    U.pbFogHeight.value.set(k.fogHeightOn ? 1 : 0, k.fogHeight, k.fogFade);
+    U.pbSkyFogMode.value = k.fogMode;
+    U.pbSkyFogColor.value.copy(U.pbFogColor.value);
+    U.pbSkyFogParams.value.copy(U.pbFogParams.value);
     configurePbRenderer(this.renderer, this.scene);
     if (this.scene.background instanceof THREE.Color) this.scene.background.set(k.background);
     void this.showSky(k.sky);
@@ -104,6 +116,9 @@ export class LookStage {
   /** the map's own values back; the other maps' skies freed */
   dispose(): void {
     this.set(this.base);
+    [U.pbSkyFogMode.value] = this.mapSkyFog;
+    U.pbSkyFogColor.value.copy(this.mapSkyFog[1]);
+    U.pbSkyFogParams.value.copy(this.mapSkyFog[2]);
     this.disposed = true;
     for (const s of this.loaded) { s.removeFromParent(); disposeTree(s); }
   }

@@ -20,7 +20,10 @@ import { loadCubeDds, loadDetailTexture } from "./compressedTex";
  *           a    = D.a * g_vLightDiffuse0.a
  *         g_vLightDiffuse0  = light.diffuse * material.diffuse (material.diffuse.rgb = light-volume colour)
  *         g_vLightSpecular0 = light.specular * material.specular, .w = material.shininess
- *  fog    fixed-function D3D table fog (D3DRS_FOGTABLEMODE) on the world root only, applied after the shader.
+ *  fog    fixed-function D3D table fog (i3GfxDx i3RenderContext::SetFog*: D3DRS_FOGENABLE / FOGTABLEMODE / FOGSTART / FOGEND /
+ *         FOGDENSITY), applied after the shader by view depth. i3World::CreateFogAttr puts fog 0 on the world root and fog 1 on the
+ *         sky root. Map objects take the world fog. [INFERIDO] none on the chara layer root (i3FogEnableAttr defaults off); the
+ *         EffectRoot sets it off (CGameFramework::OnCreate 0x51dfc0).
  */
 
 export interface PbFog {
@@ -66,6 +69,11 @@ const U = {
   pbFogMode: { value: 0 }, // 0 = off
   pbFogColor: { value: new THREE.Vector3(1, 1, 1) },
   pbFogParams: { value: new THREE.Vector3(1, 1000, 1) }, // near, far, density
+  pbSkyFogMode: { value: 0 }, // the sky root's own fog (lighting.json fog index 1)
+  pbSkyFogColor: { value: new THREE.Vector3(1, 1, 1) },
+  pbSkyFogParams: { value: new THREE.Vector3(1, 1000, 1) },
+  pbFogPlayers: { value: 0 }, // [RECRIADO] theater looks: the world fog on the players too (vanilla: none)
+  pbFogHeight: { value: new THREE.Vector3(0, 0, 10) }, // [RECRIADO] theater looks: on, top (world y), fade (m above the top)
   pbLuxLit: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its lit (sun) parts
   pbLuxShade: { value: new THREE.Vector3(1, 1, 1) }, // [RECRIADO] theater looks: lightmap colour in its shaded parts
   // DirSHM_ (g_texShadow0 / g_mShadowMap0 / g_vShadowMapFactor0): filled by render/pbShadow.ts while a shadow map is live
@@ -189,27 +197,38 @@ export function setPbLighting(j: PbLightingJson | null): void {
   } else {
     U.pbLightDiffuse.value.set(0, 0, 0, 1);
   }
-  const f = j.fog.find((x) => x.index === 0);
-  U.pbFogMode.value = f && f.enable ? f.mode : 0;
-  if (f) {
-    U.pbFogColor.value.set(f.color[0] / 255, f.color[1] / 255, f.color[2] / 255);
-    U.pbFogParams.value.set(f.near, f.far, f.density);
+  for (const [i, mode, color, params] of [[0, U.pbFogMode, U.pbFogColor, U.pbFogParams], [1, U.pbSkyFogMode, U.pbSkyFogColor, U.pbSkyFogParams]] as const) {
+    const f = j.fog.find((x) => x.index === i);
+    mode.value = f && f.enable ? f.mode : 0;
+    if (!f) continue;
+    color.value.set(f.color[0] / 255, f.color[1] / 255, f.color[2] / 255);
+    params.value.set(f.near, f.far, f.density);
   }
   for (const m of viewers) m.reset();
 }
 
-/**
- * Renderer / scene state matching the DX9 pipeline: no tone mapping. The world fog is also given to three's own
- * fog so non-PB materials (effects, decals) fade like the world ([RECRIADO] three mixes it in linear space).
- */
+/** Renderer / scene state matching the DX9 pipeline: no tone mapping, and no three fog: effects are not fogged (EffectRoot) */
 export function configurePbRenderer(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.toneMappingExposure = 1;
-  // from the uniforms, not lighting.json: a theater look changes them
-  const mode = current ? U.pbFogMode.value : 0, k = U.pbFogColor.value, p = U.pbFogParams.value;
-  const c = new THREE.Color().setRGB(k.x, k.y, k.z, THREE.SRGBColorSpace);
-  scene.fog = mode === 3 ? new THREE.Fog(c, p.x, p.y) : mode === 2 ? new THREE.FogExp2(c, p.z) : null;
+  scene.fog = null;
 }
+
+/** [RECRIADO] `draw` with both fogs' colours black: what is left of each pixel after its fog (the theater's AO goes under the fog) */
+export function withFogBlack(draw: () => void): void {
+  const w = U.pbFogColor.value.clone(), s = U.pbSkyFogColor.value.clone();
+  U.pbFogColor.value.set(0, 0, 0); U.pbSkyFogColor.value.set(0, 0, 0);
+  try { draw(); } finally { U.pbFogColor.value.copy(w); U.pbSkyFogColor.value.copy(s); }
+}
+
+/** the table fog's kept fraction (1 = no fog) at view depth z, for D3DFOGMODE `mode` 1 EXP, 2 EXP2, 3 LINEAR (p: near, far,
+ * density); with h.x the theater's height fog: full up to h.y (world y), thinning out over h.z m above it */
+export const FOG_KEEP = /* glsl */ `
+float pbFogKeep(int mode, vec3 p, float z, vec3 h, float y) {
+  float f = mode == 3 ? (p.y - z) / max(p.y - p.x, 1e-3) : mode == 1 ? exp(-p.z * z) : exp(-(p.z * z) * (p.z * z));
+  f = clamp(f, 0.0, 1.0);
+  return h.x > 0.5 ? mix(1.0, f, clamp((h.y - y) / max(h.z, 1e-3) + 1.0, 0.0, 1.0)) : f;
+}`;
 
 /**
  * [RECRIADO] Plain three lights carrying the PB light values, for materials that are not ported to the PB shaders
@@ -320,18 +339,47 @@ vec3 pbFaceNormal(vec3 P) {
   return dot(n, cameraPosition - P) < 0.0 ? -n : n;
 }`;
 
+const pbFogGates = new WeakMap<THREE.Material, { value: number }>();
+/** [RECRIADO] the PB table fog (height fog included) on a three material, mixed on the written colour like DX9; `gate` 1 = on
+ * (pbFogPlayers: the theater's switch). For world meshes without a lightmap (wires, plain props) and the blood */
+export function addPbFog(m: THREE.Material, gate: { value: number } = { value: 1 }): void {
+  if (pbFogGates.has(m)) return;
+  pbFogGates.set(m, gate);
+  const prev = m.onBeforeCompile, key = m.customProgramCacheKey();
+  m.onBeforeCompile = (s, r) => {
+    prev.call(m, s, r);
+    Object.assign(s.uniforms, { pbFogMode: U.pbFogMode, pbFogColor: U.pbFogColor, pbFogParams: U.pbFogParams, pbFogHeight: U.pbFogHeight, pbFogGate: gate });
+    s.vertexShader = s.vertexShader.replace("#include <common>", "#include <common>\nvarying float vPbFogDepth, vPbFogY;")
+      .replace("#include <project_vertex>", `#include <project_vertex>
+  vPbFogDepth = -mvPosition.z;
+  vec4 pbFogWp = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+  pbFogWp = instanceMatrix * pbFogWp;
+  #endif
+  vPbFogY = (modelMatrix * pbFogWp).y;`);
+    s.fragmentShader = s.fragmentShader.replace("#include <common>", `#include <common>\nuniform int pbFogMode;\nuniform vec3 pbFogColor, pbFogParams, pbFogHeight;\nuniform float pbFogGate;\nvarying float vPbFogDepth, vPbFogY;${FOG_KEEP}`)
+      .replace("#include <fog_fragment>", "if (pbFogGate > 0.5 && pbFogMode != 0) gl_FragColor.rgb = mix(pbFogColor, gl_FragColor.rgb, pbFogKeep(pbFogMode, pbFogParams, vPbFogDepth, pbFogHeight, vPbFogY));");
+  };
+  m.customProgramCacheKey = () => `pbFog|${key}`;
+  m.needsUpdate = true;
+}
+
+/** addPbFog on a clone of a fogged material (clone drops onBeforeCompile) */
+export function copyPbFog(src: THREE.Material, dst: THREE.Material): void {
+  const gate = pbFogGates.get(src);
+  if (gate) addPbFog(dst, gate);
+}
+
+// after vPbWorldPos (the height fog)
 const FOG_PARS = /* glsl */ `
 uniform int pbFogMode;
 uniform vec3 pbFogColor;
 uniform vec3 pbFogParams;
+uniform vec3 pbFogHeight;
 varying float vPbFogDepth;
+${FOG_KEEP}
 vec3 pbFog(vec3 c) {
-  if (pbFogMode == 0) return c;
-  float z = vPbFogDepth, f;
-  if (pbFogMode == 3) f = (pbFogParams.y - z) / (pbFogParams.y - pbFogParams.x);
-  else if (pbFogMode == 1) f = exp(-pbFogParams.z * z);
-  else f = exp(-(pbFogParams.z * z) * (pbFogParams.z * z));
-  return mix(pbFogColor, c, clamp(f, 0.0, 1.0));
+  return pbFogMode == 0 ? c : mix(pbFogColor, c, pbFogKeep(pbFogMode, pbFogParams, vPbFogDepth, pbFogHeight, vPbWorldPos.y));
 }`;
 
 const WORLD_VS = /* glsl */ `
@@ -572,6 +620,7 @@ export function pbWorldMaterial(src: THREE.MeshStandardMaterial): THREE.ShaderMa
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      pbFogHeight: U.pbFogHeight,
       ...dynamicUniforms(),
     },
   });
@@ -655,6 +704,7 @@ export function pbWorldArrayMaterial(src: THREE.ShaderMaterial, mapArr: THREE.Te
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      pbFogHeight: U.pbFogHeight,
       ...dynamicUniforms(),
     },
   });
@@ -721,8 +771,8 @@ export function disposePbMtl(m: PbMtl): void {
   if (m !== PB_VIEWER_MTL) viewers.delete(m);
 }
 
-/** Character / weapon / viewmodel material (Phong_D_Dir_). `fog` = [NÃO CONFIRMADO] world fog on this object. */
-export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): THREE.ShaderMaterial {
+/** Character / weapon / viewmodel material (Phong_D_Dir_). `fog`: 1 = the world fog on it (map objects; pbFogPlayers = the theater's switch for players) */
+export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog: { value: number } = { value: 0 }): THREE.ShaderMaterial {
   const s = src as THREE.MeshStandardMaterial;
   const map = rawTexture(s.map);
   const base = s.color ? s.color.clone() : new THREE.Color(1, 1, 1);
@@ -746,7 +796,7 @@ export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): T
       pbHasEnv: U.pbHasEnv,
       baseColor: { value: new THREE.Vector3(base.r, base.g, base.b) },
       alphaTest: { value: s.alphaTest > 0 ? s.alphaTest : -1 },
-      useFog: { value: fog ? 1 : 0 },
+      useFog: fog,
       mtlDiffuse: mtl.diffuse,
       mtlSpecular: mtl.specular,
       mtlShininess: mtl.shininess,
@@ -763,6 +813,7 @@ export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): T
       pbFogMode: U.pbFogMode,
       pbFogColor: U.pbFogColor,
       pbFogParams: U.pbFogParams,
+      pbFogHeight: U.pbFogHeight,
       shadowRecv: { value: mtl === PB_VIEWER_MTL ? 0 : 1 }, // [INFERIDO] the arms sit inside the own body's shadow caster
       ...dynamicUniforms(),
     },
@@ -783,7 +834,7 @@ export function pbCharaMaterial(src: THREE.Material, mtl: PbMtl, fog = false): T
  * Swaps every mesh material under `root` for the PB chara shader bound to `mtl` (a character and its 3rd-person
  * weapon share one PbMtl, like the chara's material context drives both). Already-converted materials are kept.
  */
-export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl): THREE.Material[] {
+export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl, fog?: { value: number }): THREE.Material[] {
   const done = new Map<THREE.Material, THREE.Material>();
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -792,7 +843,7 @@ export function applyPbCharaLighting(root: THREE.Object3D, mtl: PbMtl): THREE.Ma
       if (mat.userData.pb || !mat.colorWrite) return mat; // PB already / shadow-only proxies
       let n = done.get(mat);
       if (!n) {
-        n = pbCharaMaterial(mat, mtl);
+        n = pbCharaMaterial(mat, mtl, fog);
         done.set(mat, n);
       }
       return n;

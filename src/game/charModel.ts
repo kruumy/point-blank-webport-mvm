@@ -12,7 +12,7 @@ import type { WeaponAnimator } from "../weapons/weaponAnim";
 import { CharAnimator, upperClassOf, type CharAnimInput, type Dir8 } from "./charAnim";
 import { dualTreeOf } from "./charAnimLib";
 import type { Team } from "./types";
-import { applyPbCharaLighting, createPbMtl, disposePbMtl } from "../render/pbLighting";
+import { applyPbCharaLighting, createPbMtl, disposePbMtl, pbUniforms } from "../render/pbLighting";
 import { resolveChara } from "./loadout";
 import { actorEquip, attachHeadgear, equipKey, keepCharaCulling, type HeadEquip } from "./charEquip";
 import { loadRagdoll, ragdolls, type DeathHit, type Ragdoll } from "./ragdoll";
@@ -380,7 +380,7 @@ export class CharVisual {
     }
     this.root.userData.charVisual = this;
     if (this.shadowOnly) makeShadowOnly(this.root);
-    else applyPbCharaLighting(this.root, this.pbMtl);
+    else applyPbCharaLighting(this.root, this.pbMtl, pbUniforms.pbFogPlayers);
     live.add(this);
     this.equipActor = opts.equipActor;
     this.setEquip(opts.equip ?? (this.equipActor ? actorEquip(this.equipActor) : undefined));
@@ -401,7 +401,7 @@ export class CharVisual {
       for (const o of objs) {
         if (o.userData.helmet) o.visible = this.helmetOn;
         if (this.shadowOnly) { makeShadowOnly(o); if ((o as THREE.Mesh).isMesh) { o.visible = false; if (o.userData.helmet) o.userData.shadowOnly = this.helmetOn; } }
-        else applyPbCharaLighting(o, this.pbMtl);
+        else applyPbCharaLighting(o, this.pbMtl, pbUniforms.pbFogPlayers);
       }
     });
   }
@@ -477,7 +477,7 @@ export class CharVisual {
       });
       if (this.weaponObj) {
         if (this.shadowOnly) makeShadowOnly(this.weaponObj);
-        else applyPbCharaLighting(this.weaponObj, this.pbMtl);
+        else applyPbCharaLighting(this.weaponObj, this.pbMtl, pbUniforms.pbFogPlayers);
         this.hand.add(this.weaponObj);
       }
     })();
@@ -488,7 +488,7 @@ export class CharVisual {
     void createWeaponModel(key, fam).then((l) => {
       if (!l || tok !== this.weaponTok || !this.handL || !live.has(this)) return;
       if (this.shadowOnly) makeShadowOnly(l.object);
-      else applyPbCharaLighting(l.object, this.pbMtl);
+      else applyPbCharaLighting(l.object, this.pbMtl, pbUniforms.pbFogPlayers);
       this.handL.add(l.object);
       this.weaponObjL = l.object;
       this.muzzleNodeL = l.muzzle;

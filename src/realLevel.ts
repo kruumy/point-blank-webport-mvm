@@ -6,7 +6,7 @@ import type RAPIER from "@dimforge/rapier3d-compat";
 import { AssetPaths, CurrentMap, MovementConfig } from "./config";
 import { cachedOnce, cloneGltf, levelCacheScope, loadGltfShared } from "./levelCache";
 import { mapMergeEnabled, mergeWorldMeshes } from "./render/mapMerge";
-import { createPbFallbackLights, loadPbLighting, pbWorldMaterial } from "./render/pbLighting";
+import { FOG_KEEP, addPbFog, createPbFallbackLights, loadPbLighting, pbUniforms, pbWorldMaterial } from "./render/pbLighting";
 import { loadMapProps } from "./game/mapProps";
 import { clearColliderShapes, loadSurfaceTable, registerColliderShape, registerColliderTriangles } from "./weapons/effects";
 import type { LevelBuildResult } from "./testLevel";
@@ -106,7 +106,8 @@ function applyBakedLightmaps(root: THREE.Object3D): void {
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     const src = obj.material as THREE.MeshStandardMaterial;
-    if (!src.userData?.lightMap || !src.aoMap) return;
+    // the rest of the world root (wires, plain meshes) keeps three's material, under the world fog all the same
+    if (!src.userData?.lightMap || !src.aoMap) { for (const m of [obj.material].flat()) addPbFog(m); return; }
     let dst = converted.get(src);
     if (!dst) {
       dst = pbWorldMaterial(src);
@@ -175,7 +176,15 @@ export async function loadSky(url: string): Promise<THREE.Object3D | null> {
   gltf.scene.traverse((o) => {
     if (!(o instanceof THREE.Mesh)) return;
     const m = new THREE.MeshBasicMaterial({ map: (o.material as THREE.MeshStandardMaterial).map, fog: false, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
-    m.onBeforeCompile = (s) => { s.vertexShader = s.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\n\tgl_Position.z = gl_Position.w * 0.9999;"); };
+    // the sky root's own table fog (fog index 1), on the written colour: DX9 mixes the raw gamma values. The theater's height
+    // fog goes by the sky's own height, so a top above the map keeps rising up the sky
+    m.onBeforeCompile = (s) => {
+      for (const k of ["pbSkyFogMode", "pbSkyFogColor", "pbSkyFogParams", "pbFogHeight"] as const) s.uniforms[k] = pbUniforms[k];
+      s.vertexShader = s.vertexShader.replace("#include <common>", "#include <common>\nvarying float vSkyFogDepth, vSkyY;")
+        .replace("#include <project_vertex>", "#include <project_vertex>\n\tvSkyFogDepth = -mvPosition.z;\n\tvSkyY = (modelMatrix * vec4(transformed, 1.0)).y;\n\tgl_Position.z = gl_Position.w * 0.9999;");
+      s.fragmentShader = s.fragmentShader.replace("#include <common>", `#include <common>\nuniform int pbSkyFogMode;\nuniform vec3 pbSkyFogColor, pbSkyFogParams, pbFogHeight;\nvarying float vSkyFogDepth, vSkyY;${FOG_KEEP}`)
+        .replace("#include <fog_fragment>", "if (pbSkyFogMode != 0) gl_FragColor.rgb = mix(pbSkyFogColor, gl_FragColor.rgb, pbFogKeep(pbSkyFogMode, pbSkyFogParams, vSkyFogDepth, pbFogHeight, vSkyY));");
+    };
     (o.material as THREE.Material).dispose();
     o.material = m;
     o.renderOrder = -1;

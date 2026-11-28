@@ -239,7 +239,7 @@ function pbMaterial(src: THREE.Material, mtl: PbMtl, done: Map<THREE.Material, T
   let m = done.get(src);
   if (!m) {
     const s = src as THREE.MeshStandardMaterial;
-    m = s.userData?.lightMap && s.aoMap ? pbWorldMaterial(s) : pbCharaMaterial(s, mtl, true);
+    m = s.userData?.lightMap && s.aoMap ? pbWorldMaterial(s) : pbCharaMaterial(s, mtl, { value: 1 });
     done.set(src, m);
   }
   return m;

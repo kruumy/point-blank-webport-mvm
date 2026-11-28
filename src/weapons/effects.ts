@@ -6,7 +6,7 @@ import {
 } from "./sights";
 import { smokeField, type SmokeSphere } from "./throwables";
 import type { Family } from "./types";
-import { applyPbCharaLighting, clearPbPointLights, flashPbPointLight, PB_VIEWER_MTL, tickPbPointLights } from "../render/pbLighting";
+import { addPbFog, applyPbCharaLighting, clearPbPointLights, copyPbFog, flashPbPointLight, PB_VIEWER_MTL, pbUniforms, tickPbPointLights } from "../render/pbLighting";
 import { markFx } from "../render/layers";
 
 /**
@@ -118,6 +118,8 @@ function layerMaterial(p: FxParticle): THREE.MeshBasicMaterial {
  * key again on every shot; a clone per particle made one material per live quad.
  */
 const LAYER_MAT = new WeakMap<FxParticle, THREE.MeshBasicMaterial>();
+/** [RECRIADO] the blood (hit spray, marks) takes the theater's players fog (addPbFog): effects have none in vanilla */
+const isBlood = (name: string) => /^(ExpHu|Bmk_)/.test(name);
 function layerMaterialOf(p: FxParticle): THREE.MeshBasicMaterial {
   let m = LAYER_MAT.get(p);
   if (!m) LAYER_MAT.set(p, (m = layerMaterial(p)));
@@ -282,6 +284,7 @@ class DecalBatch {
     g.setIndex([0, 1, 2, 0, 2, 3]);
     // the batch has no corner colours: colour and alpha of its look go into its own material
     const mat = src.mat.clone(), v = cornerRGBA(src.mesh.geometry);
+    copyPbFog(src.mat, mat);
     mat.vertexColors = false;
     mat.color.setRGB(v[0], v[1], v[2]);
     mat.opacity = v[3];
@@ -371,6 +374,7 @@ class FxInstance {
     // MESH layers (shell casings) are drawn by WeaponEffects.addShellMesh, not as quads
     // a layer without a texture would draw a flat white quad (the P90 MC square): i3 always binds one, so skip it
     for (const p of def.particles) if (p.type !== "mesh" && p.tex) this.layers.push({ p, mat: tint ? tintedLayerMaterialOf(p, tint) : layerMaterialOf(p), live: [], emitted: 0, nextEmit: 0, started: false });
+    if (isBlood(name)) for (const l of this.layers) addPbFog(l.mat, pbUniforms.pbFogPlayers);
     // >= : Hmk_Ar_So / _Gl / _Wo carry exactly 1e6 s and were left out, so they never died and were never capped by the fxList pool
     this.persistent = def.particles.some((p) => p.life >= 1e6);
     /** bullet-hole style effect: every persistent layer is a decal (safe to evict under the draw-call budget) */
@@ -767,7 +771,11 @@ export async function preloadFx(weapons: { id: number; family: Family }[], extra
       if (p.type === "mesh") {
         const s = shellName(typeof p.mesh === "string" ? p.mesh : undefined);
         if (s) waits.push(loadShellMesh(s).then((m) => { if (m) out.push(m.clone()); }));
-      } else if (p.tex) quad(layerMaterialOf(p));
+      } else if (p.tex) {
+        const m = layerMaterialOf(p);
+        if (isBlood(n)) addPbFog(m, pbUniforms.pbFogPlayers); // warm the fogged program, not the plain one
+        quad(m);
+      }
     }
   }
   const g = d.globals;

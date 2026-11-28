@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { renderOnTop, withHidden } from "../render/onTop";
+import { pbUniforms, withFogBlack } from "../render/pbLighting";
 import { LookFx, aoOn, type LookFxParams } from "./lookFx";
 
 /**
@@ -94,6 +95,8 @@ const focusTarget = () => new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatT
 /** [RECRIADO] theater post effects: the frame drawn off-screen with its depth, filtered, then put on the canvas */
 export class Post {
   private readonly rt: THREE.WebGLRenderTarget;
+  // the frame again with the fog black, for the AO under the fog (lookFx.ts)
+  private readonly litRt: THREE.WebGLRenderTarget;
   private readonly mat = new THREE.ShaderMaterial({
     vertexShader: QUAD_VS,
     fragmentShader: DOF_FS,
@@ -122,6 +125,7 @@ export class Post {
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
     this.rt = canvasTarget(renderer);
+    this.litRt = canvasTarget(renderer);
     this.quad.frustumCulled = false;
   }
 
@@ -150,8 +154,14 @@ export class Post {
     const w = this.size.x, h = this.size.y;
     let color: THREE.Texture = this.rt.texture;
     if (fx && aoOn(fx)) {
-      if (this.aoRt.width !== w || this.aoRt.height !== h) this.aoRt.setSize(w, h);
-      (this.lookFx ??= new LookFx(r)).ao(color, this.rt.depthTexture!, camera, fx, w, h, this.aoRt);
+      for (const t of [this.aoRt, this.litRt]) if (t.width !== w || t.height !== h) t.setSize(w, h);
+      let lit = color;
+      if (pbUniforms.pbFogMode.value || pbUniforms.pbSkyFogMode.value) {
+        r.setRenderTarget(this.litRt);
+        withFogBlack(() => withHidden(overlays, () => r.render(scene, camera)));
+        lit = this.litRt.texture;
+      }
+      (this.lookFx ??= new LookFx(r)).ao(color, lit, this.rt.depthTexture!, camera, fx, w, h, this.aoRt);
       color = this.aoRt.texture;
     }
     this.blur(color, this.rt.depthTexture!, camera, dof ?? NO_DOF, target, 0);
@@ -181,8 +191,7 @@ export class Post {
   }
 
   dispose(): void {
-    this.rt.depthTexture?.dispose();
-    this.rt.dispose();
+    for (const t of [this.rt, this.litRt]) { t.depthTexture?.dispose(); t.dispose(); }
     for (const t of this.focusRt) t.dispose();
     this.lookFx?.dispose();
     this.aoRt.dispose();

@@ -42,10 +42,11 @@ void main() {
   gl_FragColor = vec4(vec3(max(1.0 - 2.0 * radius * occ / ${AO_N}.0, 0.0)), 1.0);
 }`;
 
-// depth-aware 4x4 blur of the AO (its noise is a 4x4 pattern), multiplied into the colour
+// depth-aware 4x4 blur of the AO (its noise is a 4x4 pattern), multiplied into the colour under its fog: tLit is the frame with
+// the fog black, so colour - lit is the fog's own share, which the AO leaves alone
 const AO_APPLY_FS = /* glsl */ `
 #include <packing>
-uniform sampler2D tColor, tAo, tDepth;
+uniform sampler2D tColor, tLit, tAo, tDepth;
 uniform vec2 texel;
 uniform float near, far, strength;
 varying vec2 vUv;
@@ -59,7 +60,8 @@ void main() {
     w += k;
   }
   vec4 c = texture2D(tColor, vUv);
-  gl_FragColor = vec4(c.rgb * mix(1.0, sum / w, strength), c.a);
+  vec3 lit = texture2D(tLit, vUv).rgb;
+  gl_FragColor = vec4(max(c.rgb - lit, 0.0) + lit * mix(1.0, sum / w, strength), c.a);
 }`;
 
 const quadMat = (fs: string, uniforms: Record<string, THREE.IUniform>) =>
@@ -68,7 +70,7 @@ const plainTarget = () => new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false
 
 export class LookFx {
   private readonly aoMat = quadMat(AO_FS, { tDepth: { value: null }, invProj: { value: new THREE.Matrix4() }, radius: { value: 1 }, radiusUv: { value: new THREE.Vector2() } });
-  private readonly aoApply = quadMat(AO_APPLY_FS, { tColor: { value: null }, tAo: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() }, near: { value: 0.1 }, far: { value: 1000 }, strength: { value: 1 } });
+  private readonly aoApply = quadMat(AO_APPLY_FS, { tColor: { value: null }, tLit: { value: null }, tAo: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() }, near: { value: 0.1 }, far: { value: 1000 }, strength: { value: 1 } });
   private readonly aoRt = plainTarget();
   private readonly quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2));
   private readonly cam = new THREE.OrthographicCamera();
@@ -83,8 +85,8 @@ export class LookFx {
     this.r.render(this.quad, this.cam);
   }
 
-  /** `color` with ambient occlusion from `depth`, into `target` (same size as the frame) */
-  ao(color: THREE.Texture, depth: THREE.Texture, camera: THREE.PerspectiveCamera, p: LookFxParams, w: number, h: number, target: THREE.WebGLRenderTarget): void {
+  /** `color` with ambient occlusion from `depth` under its fog (`lit`: the same frame with the fog black), into `target` (same size as the frame) */
+  ao(color: THREE.Texture, lit: THREE.Texture, depth: THREE.Texture, camera: THREE.PerspectiveCamera, p: LookFxParams, w: number, h: number, target: THREE.WebGLRenderTarget): void {
     if (this.aoRt.width !== w || this.aoRt.height !== h) this.aoRt.setSize(w, h);
     const a = this.aoMat.uniforms, b = this.aoApply.uniforms;
     a.tDepth.value = depth;
@@ -94,7 +96,7 @@ export class LookFx {
     const e = camera.projectionMatrix.elements;
     a.radiusUv.value.set(e[0], e[5]).multiplyScalar(radius * 0.5); // the radius at 1 m, in uv
     this.draw(this.aoMat, this.aoRt);
-    b.tColor.value = color; b.tAo.value = this.aoRt.texture; b.tDepth.value = depth;
+    b.tColor.value = color; b.tLit.value = lit; b.tAo.value = this.aoRt.texture; b.tDepth.value = depth;
     b.texel.value.set(1 / w, 1 / h); b.near.value = camera.near; b.far.value = camera.far; b.strength.value = THREE.MathUtils.clamp(p.aoStrength, 0, 1);
     this.draw(this.aoApply, target);
   }
