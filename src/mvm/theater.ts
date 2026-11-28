@@ -70,7 +70,6 @@ async function loadWeaponChoices(): Promise<WeaponChoices> {
 
 const ICON = {
   wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/>',
-  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   focus: '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>',
   reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
@@ -1144,7 +1143,6 @@ export class Theater {
       case "zoomIn": this.setZoom(ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(this.uiZoom) + 1)]); break;
       case "zoomReset": this.setZoom(1); break;
       case "closeEdit": this.openEdit(null); break;
-      case "watchActor": if (this.editId) this.setMode(this.mode === "third" ? "third" : "pov", this.editId); break;
       case "resetActor": {
         const id = this.editId, d = this.net.demo;
         if (!id) break;
@@ -1158,8 +1156,8 @@ export class Theater {
         break;
       }
       case "focusActor":
-        this.dofActor = this.editId;
-        this.dof.mode = 3;
+        if (this.dofActor === this.editId && this.dof.mode === 3) this.dof.mode = 0;
+        else { this.dofActor = this.editId; this.dof.mode = 3; }
         this.drawSide();
         break;
       case "lookLoad": void this.loadLook(); break;
@@ -1513,10 +1511,6 @@ export class Theater {
     el.style.top = `${Math.max(0, Math.min(y, window.innerHeight - el.offsetHeight * z)) / z}px`;
   }
 
-  private watching(id: string): boolean {
-    return (this.mode === "pov" || this.mode === "third") && this.host.game.observedId === id;
-  }
-
   /** theater edits on that actor: name, model, hat, each weapon swap and each death clip */
   private editsOf(id: string): number {
     const d = this.net.demo;
@@ -1533,7 +1527,7 @@ export class Theater {
     if ((a?.charVisual.root ?? null) !== this.outlineRoot) this.setOutline(id); // the model was swapped in
     // redrawn only when what it shows changes: a rebuild would close an open dropdown
     const hat = this.net.hatOf(id), worn = actorEquip(id), wEd = this.net.demo.weapons?.[id];
-    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}|${name}|${JSON.stringify(wEd ?? {})}|${this.weaponList.length}|${this.dofActor === id && this.dof.mode === 3}|${this.watching(id)}`;
+    const sig = `${death?.key}|${death?.clip}|${a?.alive}|${anim?.deathClip}|${ch.chara}|${ch.edited}|${this.charas.length}|${hat?.head}/${hat?.beret}|${this.hats.length}|${worn?.head}/${worn?.beret}|${name}|${JSON.stringify(wEd ?? {})}|${this.weaponList.length}|${this.dofActor === id && this.dof.mode === 3}`;
     if (sig === this.editSig) return;
     this.editSig = sig;
     if (!this.charas.length) void charaChoices().then((c) => { this.charas = c; });
@@ -1570,7 +1564,6 @@ export class Theater {
     el.style.setProperty("--team", team.color);
     el.innerHTML = `<div class="ed-head" title="Drag to move">
         <div class="ed-id"><b>${esc(name)}</b><span>${team.name} team · ${a?.alive === false ? "dead" : "alive"}${n ? ` · <i>${n} change${n > 1 ? "s" : ""}</i>` : ""}</span></div>
-        <button class="ic ${this.watching(id) ? "on" : ""}" data-a="watchActor" title="Watch this player">${icon("eye")}</button>
         <button class="ic ${this.dofActor === id && this.dof.mode === 3 ? "on" : ""}" data-a="focusActor" title="Depth of field: keep this player in focus">${icon("focus")}</button>
         <button class="ic" data-a="closeEdit" title="Close">${icon("close")}</button></div>
       ${sec("Identity", fld("Name", name !== nm.recorded, rename))}
