@@ -41,9 +41,11 @@ export class HudCapture {
     };
     for (const el of root.children) {
       if (el.classList.contains("pbhud-dbg") || getComputedStyle(el).display === "none") continue; // the port's debug lines are not the game's
+      if (el.classList.contains("pbhud-flash")) continue; // the flash whites out the scene: in the HUD pass it would cover the key
       if (el instanceof HTMLCanvasElement) { place(el, el); continue; }
+      const own = plainSprite(el as HTMLElement, getComputedStyle(el), el); // a layer that is one sprite itself (chain banner): raster() looks inside
       // laid out at the HUD's own size (the theater shrinks it with a transform), drawn at w x h
-      const { img, sprites } = await this.raster(el, css, root.offsetWidth, root.offsetHeight, w, h);
+      const { img, sprites } = own ? { img: null, sprites: [own] } : await this.raster(el, css, root.offsetWidth, root.offsetHeight, w, h);
       for (const sp of sprites) {
         const sheet = await this.sheet(sp.url), r = sp.el.getBoundingClientRect(), kx = sp.bw / sheet.naturalWidth, ky = sp.bh / sheet.naturalHeight;
         if (r.width && r.height) draws.push(() => {
@@ -165,5 +167,5 @@ function plainSprite(e: HTMLElement, cs: CSSStyleDeclaration, layer: Element): S
     if (as.overflow !== "visible") return null; // a clip (bars): the sheet draw would ignore it
     alpha *= Number(as.opacity);
   }
-  return { el: e, url, alpha, w: e.offsetWidth, h: e.offsetHeight, bw: +size[1], bh: +size[2], bx: +pos[1], by: +pos[2] };
+  return { el: e, url, alpha, w: parseFloat(cs.width), h: parseFloat(cs.height), bw: +size[1], bh: +size[2], bx: +pos[1], by: +pos[2] };
 }
