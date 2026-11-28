@@ -486,20 +486,24 @@ export class CharAnimator {
    * LoadMagazineReady state (M1887, UTS-15, Cerberus, WaterGun, M70: ReloadA) opens with it, then LoadMagazine runs
    * over the rest of the time. [INFERIDO]: the exe rule for Ready -> LoadMagazine is not decoded.
    */
-  reload(duration?: number): void {
+  /** returns the LoadMagazineReady seconds (0 = none played) */
+  reload(duration?: number): number {
     this.queued = null;
     const ready = this.upperTable().LoadMagazineReady, rc = ready && this.clips.get(ready.clip);
     if (rc && this.playUpper("LoadMagazineReady")) {
       this.queued = { state: "LoadMagazine", dur: duration && duration > rc.duration + 0.1 ? duration - rc.duration : duration, at: this.t + rc.duration };
-      return;
+      return rc.duration;
     }
     this.reloadShell(duration);
+    return 0;
   }
   // [INFERIDO] the Ready -> LoadMagazine rule is not decoded: Ready over the lead-in, the shells follow
-  reloadOpen(lead: number): void {
+  reloadOpen(lead: number): boolean {
     this.queued = null;
-    this.playUpper("LoadMagazineReady", lead);
+    return this.playUpper("LoadMagazineReady", lead);
   }
+  /** the queued LoadMagazine started (the weapon's own LoadMag follows it) */
+  onQueued?: (dur?: number) => void;
   reloadShell(duration?: number): void {
     this.playUpper("LoadMagazine", duration) || this.playUpper("LoadBullet", duration);
   }
@@ -699,7 +703,7 @@ export class CharAnimator {
     if (this.queued && this.t >= this.queued.at) {
       const q = this.queued;
       this.queued = null;
-      this.playUpper(q.state, q.dur);
+      if (this.playUpper(q.state, q.dur)) this.onQueued?.(q.dur);
     }
     if (this.oneShot && this.t >= this.oneShot.until) {
       const tr = this.oneShot.track;

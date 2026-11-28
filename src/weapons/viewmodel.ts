@@ -852,7 +852,7 @@ export class Viewmodel {
     this.wAnimL = null;
     this.wChangingL = false;
     this.wReloadL = -1;
-    this.wReloadingL = false;
+    this.wReloadingL = this.wReadyL = false;
     this.wAnimTok++;
   }
 
@@ -1278,18 +1278,20 @@ export class Viewmodel {
   private wReloadT = -1;
   private wReloadElapsed = 0;
   private wReloading = false;
+  private wReady = false;
   private wChanging = false;
   /** DualKnife: the left blade's own animator (Change_Left), driven with the right one */
   private wAnimL: WeaponAnimator | null = null;
   private wChangingL = false;
   private wReloadL = -1;
   private wReloadingL = false;
+  private wReadyL = false;
 
   private bindWeaponAnim(inst: WeaponModelInstance): void {
     const tok = ++this.wAnimTok;
     this.wAnim = null; // the old gun's clips are gone with its model; this one's come below
     this.wReloadT = -1;
-    this.wReloading = this.wChanging = false;
+    this.wReloading = this.wReady = this.wChanging = false;
     void inst.animator("1pv").then((a) => {
       if (tok !== this.wAnimTok) return;
       if (a) a.gender = pbLive.fpsFamily === "female" ? "female" : "male";
@@ -1319,12 +1321,19 @@ export class Viewmodel {
       if (this.wReloadT < 0) {
         this.wReloadElapsed = this.reloadStartElapsed();
         this.wChanging = false;
-        this.wReloading = a.drive("reload");
+        // [INFERIDO] shell-by-shell opening: the weapon's LoadMag_Ready over the 0.3 s lead-in, only with the arms' LoadMagazineReady (updateRig)
+        this.wReady = !!this.lastDef?.params.reloadPerShell && !!this.rig?.hasReady() && this.wReloadElapsed < 0.3 && a.drive("reloadReady");
+        this.wReloading = this.wReady || a.drive("reload");
       } else this.wReloadElapsed += dt;
-      if (this.wReloading) a.setTime(this.reloadClipTime(a.duration, this.wReloadElapsed));
+      if (this.wReady && this.wReloadElapsed >= 0.3) {
+        this.wReady = false;
+        this.wReloading = a.drive("reload");
+        if (!this.wReloading) a.end(); // no LoadMag state: the Ready clip and its shells must not stay up
+      }
+      if (this.wReloading) a.setTime(this.wReady ? (this.wReloadElapsed / 0.3) * a.duration : this.reloadClipTime(a.duration, this.wReloadElapsed));
     } else if (this.wReloadT >= 0 && this.wReloading) {
       a.end();
-      this.wReloading = false;
+      this.wReloading = this.wReady = false;
     }
     this.wReloadT = this.reloadT;
     if (!this.wReloading) {
@@ -1343,12 +1352,18 @@ export class Viewmodel {
       if (this.reloadT >= 0) {
         if (this.wReloadL < 0) {
           this.wChangingL = false;
-          this.wReloadingL = aL.drive("reload");
+          this.wReadyL = this.wReady && aL.drive("reloadReady");
+          this.wReloadingL = this.wReadyL || aL.drive("reload");
         }
-        if (this.wReloadingL) aL.setTime(this.reloadClipTime(aL.duration, this.wReloadElapsed));
+        if (this.wReadyL && !this.wReady) {
+          this.wReadyL = false;
+          this.wReloadingL = aL.drive("reload");
+          if (!this.wReloadingL) aL.end();
+        }
+        if (this.wReloadingL) aL.setTime(this.wReadyL ? (this.wReloadElapsed / 0.3) * aL.duration : this.reloadClipTime(aL.duration, this.wReloadElapsed));
       } else if (this.wReloadingL) {
         aL.end();
-        this.wReloadingL = false;
+        this.wReloadingL = this.wReadyL = false;
       }
       this.wReloadL = this.reloadT;
       if (!this.wReloadingL) {

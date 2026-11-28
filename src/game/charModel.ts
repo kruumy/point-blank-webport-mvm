@@ -369,6 +369,7 @@ export class CharVisual {
       this.anim = CharAnimator.hasLayers(t.clips) ? new CharAnimator(inner, t.clips) : null;
       if (this.anim) {
         this.anim.aimFrame = this.root;
+        this.anim.onQueued = (dur) => { for (const a of [this.weaponAnim, this.weaponAnimL]) a?.play("reload", dur); };
         if (animLog) this.anim.onState = (layer, clip) => console.info(`[anim] ${team ? "blue" : "red"}#${this.id} ${layer}: ${clip}`);
       }
     } else {
@@ -522,12 +523,16 @@ export class CharVisual {
   reload(duration?: number): void {
     this.nextLeft = false; // WeaponDualHandGun reload 0x649c60: the right gun fires first again
     this.changeAt = -1;
-    this.anim?.reload(duration);
-    this.weaponAnim?.play("reload", duration); // LoadMag over ReloadTime, like the upper LoadMagazine (exe 0x611980)
-    this.weaponAnimL?.play("reload", duration);
+    // [INFERIDO] with an upper LoadMagazineReady the weapon's LoadMag_Ready opens too, its LoadMag follows the queued one (onQueued)
+    const ready = this.anim?.reload(duration) ?? 0;
+    for (const a of [this.weaponAnim, this.weaponAnimL]) {
+      if (ready) a?.play("reloadReady", ready);
+      else a?.play("reload", duration); // LoadMag over ReloadTime, like the upper LoadMagazine (exe 0x611980)
+    }
   }
   reloadOpen(lead: number): void {
-    this.anim?.reloadOpen(lead);
+    // [INFERIDO] the weapon's LoadMag_Ready only with the arms' (DualShotGun/Cerberus has none)
+    if (this.anim?.reloadOpen(lead)) for (const a of [this.weaponAnim, this.weaponAnimL]) a?.play("reloadReady", lead);
   }
   reloadShell(duration: number): void {
     this.changeAt = -1;

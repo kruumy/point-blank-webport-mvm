@@ -32,9 +32,9 @@ interface AnimIndex {
 }
 
 export type WeaponView = "1pv" | "3pv";
-export type WeaponAnimKind = "fire" | "reload" | "loadBullet" | "change" | "idle" | "extOn" | "extOff" | "attackA" | "attackB" | "secondary";
+export type WeaponAnimKind = "fire" | "reload" | "reloadReady" | "loadBullet" | "change" | "idle" | "extOn" | "extOff" | "attackA" | "attackB" | "secondary";
 const STATE: Record<WeaponAnimKind, string> = {
-  fire: "Fire", reload: "LoadMag", loadBullet: "LoadBullet", change: "Change", idle: "Idle", extOn: "ExtensionActivate", extOff: "ExtensionDeactivate",
+  fire: "Fire", reload: "LoadMag", reloadReady: "LoadMag_Ready", loadBullet: "LoadBullet", change: "Change", idle: "Idle", extOn: "ExtensionActivate", extOff: "ExtensionDeactivate",
   // DualKnife blades: each hand's own swing clip (Attack<A|B>_<Male_>Left / _Right) re-orients the blade in the hand
   attackA: "AttackA", attackB: "AttackB",
   // M1887 DirectMelee stock blow: Fire_Sec_1PV / Fire_Sec_3PV
@@ -185,11 +185,13 @@ export class WeaponAnimator {
 
   /**
    * Loose shells of the shotguns (M1887 Model_VOL01..05): Idle / Fire park them beside the receiver (one static key), so they
-   * hung in the air. Only the reload clips move them into the hand. Visibility rule not decoded [INFERIDO]: shown in reload only.
+   * hung in the air. Only LoadMag_Ready / LoadMag keep them in the left hand; LoadBullet (reloadc, the lever / pump) carries them
+   * 25-48 cm off it. Visibility rule not decoded [INFERIDO]: shown in those two states only.
    */
   private volMesh: THREE.Object3D[] = [];
+  private kind: WeaponAnimKind | null = null;
   private showVol(): void {
-    const on = /reload/i.test(this.current);
+    const on = this.kind === "reload" || this.kind === "reloadReady";
     for (const m of this.volMesh) m.visible = on;
   }
   private silencerMesh: THREE.Object3D[] = [];
@@ -261,6 +263,7 @@ export class WeaponAnimator {
     // [INFERIDO] gender states (LoadMag1PVMale) beat the plain one (LoadMag1PV) when both exist (7 weapons, audit-weapon-anim.mjs):
     // no exe proof for the opposite order, so the preference stays. Dual packs: <State>1PV_DualGun_<Left|Right> beats <State>1PV.
     for (const k of [s + v + g, `${s}${v}_${g}`, `${s}_${g}`, `${s}${v}_DualGun_${h}`, s + v, `${s}_${v}`, s, `${s}_${g}_${v}`, `${s}_${g}_${h}`, `${s}_${h}`]) if (st[k]) return k;
+    if (kind === "reloadReady" && st[`LoadMagReady${v}${g}`]) return `LoadMagReady${v}${g}`; // M70 pack spelling
     // UTS-15 pack names the pump clips by letter (reload_a/b/c/d_<gender>); same letters as the M1887 / 870MCS clips:
     // b = LoadMag (shell), c = LoadBullet (pump after the shot). [INFERIDO] from the M1887 / 870MCS letter convention
     const letter = kind === "reload" ? "B" : kind === "loadBullet" ? "C" : "";
@@ -293,6 +296,7 @@ export class WeaponAnimator {
     this.driven = driven;
     this.idle?.setEffectiveWeight(0);
     this.current = s.clip.name;
+    this.kind = kind;
     this.leftHand = !!s.left;
     this.apply();
     this.showVol();
@@ -342,6 +346,7 @@ export class WeaponAnimator {
     this.cur = null;
     this.driven = false;
     this.current = "";
+    this.kind = null;
     this.leftHand = false;
     this.extBusy = false;
     if (this.extOffPending) { this.extOffPending = false; this._ext = false; this.rebindIdle(); }
