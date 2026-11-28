@@ -178,6 +178,8 @@ const PASS_INFO: Record<PassName, { label: string; note: (alpha: boolean) => str
     swatch: () => "radial-gradient(circle at 55% 50%,#fff6d0 0 9%,#ffb84a 20%,rgba(255,120,20,.35) 38%,transparent 58%),#050505" },
   depth: { label: "Depth", note: () => "16-bit · white near, black far", swatch: () => "linear-gradient(90deg,#f2f2f2,#101010)" },
   normals: { label: "Normals", note: () => "Surface direction, view space", swatch: () => "linear-gradient(135deg,#9a80ff,#7f7fff 35%,#80ffa8 70%,#ff9a80)" },
+  wireframe: { label: "Wireframe", note: () => "Mesh edges on black, hidden lines removed",
+    swatch: () => svg(`<rect width="30" height="20" fill="#050505"/><path d="M2 18L10 3l8 15zM10 3l16 3-8 12 10-1-2-11" fill="none" stroke="#e8e8e8" stroke-width=".8"/>`) },
 };
 /** layers only first person draws: his gun and his HUD */
 const povOnly = (p: PassName) => p === "viewmodel" || p === "hud";
@@ -858,7 +860,7 @@ export class Theater {
     return head === "world" && j.includes("players") && j.includes("effects") && (j.includes("viewmodel") || this.mode !== "pov") ? "default" : head;
   }
 
-  /** the layers recorded in one pass with p, the pass's own first; [p] for default, depth, normals */
+  /** the layers recorded in one pass with p, the pass's own first; [p] for default, depth, normals, wireframe */
   private layersOf(p: PassName): readonly PassName[] {
     return layerPasses(this.renderOpts.joined).find((g) => (g as readonly PassName[]).includes(p)) ?? [p];
   }
@@ -1084,7 +1086,7 @@ export class Theater {
   }
 
   private key(e: KeyboardEvent): void {
-    const digit = /^Digit([1-7])$/.exec(e.code);
+    const digit = /^Digit([1-8])$/.exec(e.code);
     if (digit) { this.setPreview(PASSES[+digit[1] - 1]); return; }
     switch (e.code) {
       case "Space": this.action("play"); break;

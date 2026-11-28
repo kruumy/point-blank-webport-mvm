@@ -3,7 +3,7 @@ import { QUAD_VS, canvasTarget } from "./post";
 import { withHidden } from "../render/onTop";
 import { FX_LAYER } from "../render/layers";
 
-export const PASSES = ["world", "players", "effects", "viewmodel", "hud", "depth", "normals"] as const;
+export const PASSES = ["world", "players", "effects", "viewmodel", "hud", "depth", "normals", "wireframe"] as const;
 /** "default": the world's pass with every layer joined, drawn as the game draws the frame (one scene render, not composited) */
 export type PassName = "default" | (typeof PASSES)[number];
 /** the frame's layers, bottom to top: each pass of them is a run of these, composited in this order */
@@ -35,7 +35,7 @@ export interface PassFrame {
   hud: THREE.Texture | null;
   /** without alpha, the screen colour of a pass holding the HUD (hudKey) */
   hudKey: readonly [number, number, number];
-  /** the default pass's depth of field (post.ts Post.blur); null = off. Never on depth / normals: they are data */
+  /** the default pass's depth of field (post.ts Post.blur); null = off. Never on depth / normals / wireframe: they are data */
   dof: ((color: THREE.Texture, depth: THREE.Texture, target: THREE.WebGLRenderTarget, matte: Matte) => void) | null;
 }
 
@@ -130,6 +130,24 @@ function fxCoverage(roots: readonly THREE.Object3D[]): () => void {
   return () => { for (const [m, [b, s, d, sa, da]] of saved) { m.blending = b; m.blendSrc = s; m.blendDst = d; m.blendSrcAlpha = sa; m.blendDstAlpha = da; } };
 }
 
+/** [RECRIADO] the meshes under `roots` all drawn with the material `use` sets, see-through ones (glass, cutouts) only when `seeThrough`;
+ * skies (no depth test), sprites, lines and points hidden till `undo` */
+function swapMeshes(roots: readonly THREE.Object3D[]): { use: (m: THREE.Material, seeThrough: boolean) => void; undo: () => void } {
+  const meshes = new Map<THREE.Mesh, [THREE.Material | THREE.Material[], boolean, boolean]>(), hidden: THREE.Object3D[] = [];
+  // the PB shaders are all flagged transparent and alpha-test by their own uniform (render/pbLighting.ts, -1 = off): blended ones skip the depth
+  const see = (x: THREE.Material) => !x.depthWrite || x.alphaTest > 0 || ((x as THREE.ShaderMaterial).uniforms?.alphaTest?.value ?? 0) > 0 || !!(x as THREE.MeshBasicMaterial).alphaMap;
+  for (const root of roots) root.traverse((o) => {
+    const m = (o as THREE.Mesh).material;
+    if (!m || meshes.has(o as THREE.Mesh)) return;
+    if ((o as THREE.Mesh).isMesh && [m].flat().every((x) => x.depthTest)) meshes.set(o as THREE.Mesh, [m, [m].flat().some(see), o.visible]);
+    else if (o.visible) { hidden.push(o); o.visible = false; }
+  });
+  return {
+    use: (mat, seeThrough) => { for (const [o, [, s, v]] of meshes) { o.material = mat; if (s) o.visible = v && seeThrough; } },
+    undo: () => { for (const [o, [m, , v]] of meshes) { o.material = m; o.visible = v; } for (const o of hidden) o.visible = true; },
+  };
+}
+
 /** [RECRIADO] the theater's render passes (IWXMVM-style streams): all from one simulated frame, the world drawn once for all */
 export class Passes {
   private readonly def: THREE.WebGLRenderTarget;
@@ -137,6 +155,11 @@ export class Passes {
   private readonly vm: THREE.WebGLRenderTarget;
   // a colour pass after the depth of field
   private readonly soft: THREE.WebGLRenderTarget;
+  private readonly wire: THREE.WebGLRenderTarget;
+  // hidden-line wireframe: black faces pushed back fill the depth, the edges drawn over them
+  private readonly wireFill = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  // three builds each geometry's line index on first use (a hitch on a big map) and again whenever a non-indexed one moves
+  private readonly wireLine = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, fog: false, toneMapped: false });
   private readonly out = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
   private readonly half = new THREE.WebGLRenderTarget(1, 1, { depthBuffer: false });
   private readonly outMat = quadMat(OUT_FS, { t: { value: null }, gain: { value: 1 }, key: { value: 2 }, straight: { value: 0 }, keyRgb: { value: new THREE.Vector3(0, 1, 0) } });
@@ -161,6 +184,7 @@ export class Passes {
     this.geo = canvasTarget(r, true);
     this.vm = canvasTarget(r, true);
     this.soft = canvasTarget(r);
+    this.wire = canvasTarget(r);
     this.quad.frustumCulled = false;
   }
 
@@ -179,7 +203,7 @@ export class Passes {
     const r = this.r, { scene, camera } = f, has = (p: PassName) => passes.includes(p), reads = new Map<PassName, Promise<Bytes>>();
     r.getDrawingBufferSize(this.size);
     const { x: w, y: h } = this.size;
-    for (const t of [this.def, this.geo, this.vm, this.soft, this.out]) if (t.width !== w || t.height !== h) t.setSize(w, h);
+    for (const t of [this.def, this.geo, this.vm, this.soft, this.wire, this.out]) if (t.width !== w || t.height !== h) t.setSize(w, h);
     if (this.half.width !== Math.ceil(w / 2) || this.half.height !== h) this.half.setSize(Math.ceil(w / 2), h);
     // pass = read the target back as that pass's file; null = only drawn (the canvas)
     const emit = (pass: PassName | null, mat: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null) => {
@@ -196,7 +220,7 @@ export class Passes {
       const keyed = layerPasses(f.joined).find((g) => g[0] === pass)?.includes("hud");
       (u.keyRgb.value as THREE.Vector3).set(...(keyed ? f.hudKey : ([0, 1, 0] as const)));
       if (read) {
-        u.gain.value = gain; u.key.value = !matte ? 2 : f.alpha ? 0 : matte === 1 ? 1 : 2; u.straight.value = f.alpha && matte === 1 ? 1 : 0;
+        u.gain.value = pass === "wireframe" ? 1 : gain; u.key.value = !matte ? 2 : f.alpha ? 0 : matte === 1 ? 1 : 2; u.straight.value = f.alpha && matte === 1 ? 1 : 0;
         emit(pass, this.outMat, this.out);
       }
       if (pass === monitor) {
@@ -220,7 +244,8 @@ export class Passes {
       r.autoClear = false;
       try { r.render(this.quad, this.cam); } finally { r.autoClear = auto; }
     };
-    if ((read && has("default")) || f.dof) {
+    // the depth of field only blurs the colour layer passes (soft), never the viewmodel, HUD or data passes
+    if ((read && has("default")) || (f.dof && layerPasses(f.joined).some((g) => has(g[0]) && g[0] !== "viewmodel" && g[0] !== "hud"))) {
       r.setRenderTarget(this.def);
       drawDefault();
       if (has("default")) {
@@ -289,6 +314,19 @@ export class Passes {
         if (read) { if (pass === "depth") u.pack.value = 1; emit(pass, mat, pass === "depth" ? this.half : this.out); }
         if (pass === monitor) { if (pass === "depth") u.pack.value = 0; emit(null, mat, null); }
       }
+      if (has("wireframe")) {
+        // the gun after a depth clear, so walls cannot hide it (as in the default pass)
+        r.setRenderTarget(this.wire);
+        clear();
+        scene.background = null;
+        camera.layers.set(0);
+        const swap = swapMeshes([scene, ...f.viewmodel]), vm = f.viewmodel.filter((o) => o.visible);
+        try {
+          for (const mat of [this.wireFill, this.wireLine]) { swap.use(mat, mat === this.wireLine); withHidden([...f.editor, ...f.viewmodel], () => r.render(scene, camera)); }
+          if (vm.length) { r.clearDepth(); for (const mat of [this.wireFill, this.wireLine]) { swap.use(mat, mat === this.wireLine); for (const o of vm) r.render(o, camera); } }
+        } finally { swap.undo(); scene.background = bg; }
+        image("wireframe", this.wire.texture, 0);
+      }
       const fx = of("effects");
       if (fx) {
         // behind the world and the players (their depth is still in geo); a colour background would clear it
@@ -325,10 +363,10 @@ export class Passes {
   }
 
   dispose(): void {
-    for (const t of [this.def, this.geo, this.vm, this.soft]) { t.depthTexture?.dispose(); t.dispose(); }
+    for (const t of [this.def, this.geo, this.vm, this.soft, this.wire]) { t.depthTexture?.dispose(); t.dispose(); }
     this.out.dispose();
     this.half.dispose();
-    for (const m of [this.outMat, this.depthMat, this.normalMat, this.matteMat, this.overMat]) m.dispose();
+    for (const m of [this.outMat, this.depthMat, this.normalMat, this.matteMat, this.overMat, this.wireFill, this.wireLine]) m.dispose();
     this.quad.geometry.dispose();
   }
 }
