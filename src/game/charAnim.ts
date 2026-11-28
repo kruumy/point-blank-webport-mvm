@@ -436,8 +436,12 @@ export class CharAnimator {
     const scale = duration && duration > 0 ? c.duration / duration : 1;
     const len = c.duration / scale;
     if (since >= len) return false;
-    if (this.oneShot && this.oneShot.track.key !== s.clip) this.oneShot.track.target = 0;
-    const tr = this.track(s.clip, false)!;
+    // re-entered while it still shows (shots faster than the attack clip): its twin action blends in from the running pose, no jump to frame 0
+    const twin = `${s.clip}#2`, cur = this.tracks.get(s.clip);
+    const key = s.blend > 0 && cur && cur.w > 0 && (this.tracks.get(twin)?.w ?? 0) < cur.w ? twin : s.clip;
+    if (key === twin && !this.clips.has(twin)) this.clips.set(twin, c.clone());
+    if (this.oneShot && this.oneShot.track.key !== key) this.oneShot.track.target = 0;
+    const tr = this.track(key, false)!;
     tr.layer = "shot";
     tr.action.reset().play();
     tr.action.setLoop(THREE.LoopOnce, 1);
